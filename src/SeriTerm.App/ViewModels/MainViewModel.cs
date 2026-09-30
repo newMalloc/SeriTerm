@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using System.IO.Ports;
 using System.Text;
 using System.Windows;
@@ -8,30 +10,54 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using SeriTerm.App.Common;
 using SeriTerm.App.Services;
+using SeriTerm.Core.Documents;
+using SeriTerm.Core.Pipeline;
 using SeriTerm.Core.Serial;
+using SeriTerm.Core.Text;
 
 namespace SeriTerm.App.ViewModels;
 
 /// <summary>
-/// 主窗口视图模型。M1 范围：串口枚举、参数配置、打开/关闭、收发字节计数，
-/// 以及一个最小的文本发送入口（正式的 HEX / 行尾 / 定时发送在 M4 补齐）。
+/// 主窗口视图模型。
+///
+/// 线程模型（关键）：
+/// <list type="bullet">
+/// <item>串口读取线程只做两件事：累加计数、在 <c>_pipelineLock</c> 保护下把字节喂给 <see cref="ReceiveProcessor"/>；</item>
+/// <item>界面定时器（约 30 fps）负责把管线产出的行批量搬到 <see cref="LogDocument"/>，
+///       这样无论串口多快，界面每帧最多刷新一次；</item>
+/// <item>断帧的"最后一帧"依赖定时器调用 FlushIdle 才会显示出来。</item>
+/// </list>
 /// </summary>
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
+    /// <summary>界面刷新间隔（约 30 fps）。</summary>
+    private static readonly TimeSpan UiRefreshInterval = TimeSpan.FromMilliseconds(33);
+
+    /// <summary>暂停显示期间最多缓冲的行数，超出部分丢弃（避免内存无上限增长）。</summary>
+    private const int MaxPausedBufferLines = 10_000;
+
     private readonly ISerialTransport _transport;
     private readonly PortFriendlyNameProvider _friendlyNames;
     private readonly IUserNotifier _notifier;
     private readonly ISettingsStore _settingsStore;
     private readonly IThemeService _themeService;
+    private readonly IFileDialogService _fileDialogs;
     private readonly ILogger<MainViewModel> _logger;
     private readonly AppSettings _settings;
     private readonly Dispatcher _dispatcher;
 
-    /// <summary>计数器用 Interlocked 累加，避免读线程每收一块数据就跨线程刷 UI。</summary>
+    private readonly object _pipelineLock = new();
+    private readonly ReceiveProcessor _processor;
+    private readonly List<DisplayLine> _pendingLines = [];
+    private readonly List<DisplayLine> _scratch = [];
+    private readonly List<DisplayLine> _pausedBuffer = [];
+
+    private ReceiveOptions _appliedOptions;
+
     private long _rxBytes;
     private long _txBytes;
 
-    private readonly DispatcherTimer _counterTimer;
+    private readonly DispatcherTimer _uiTimer;
 
     public MainViewModel(
         ISerialTransport transport,
@@ -39,6 +65,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         IUserNotifier notifier,
         ISettingsStore settingsStore,
         IThemeService themeService,
+        IFileDialogService fileDialogs,
         ILogger<MainViewModel> logger)
     {
         _transport = transport;
@@ -46,6 +73,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _notifier = notifier;
         _settingsStore = settingsStore;
         _themeService = themeService;
+        _fileDialogs = fileDialogs;
         _logger = logger;
         _settings = settingsStore.Load();
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
@@ -56,23 +84,40 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         ParityOptions = [.. SerialSettings.ParityOptions.Select(o => new Choice<Parity>(o.Value, o.Display))];
         StopBitsOptions = [.. SerialSettings.StopBitsOptions.Select(o => new Choice<StopBits>(o.Value, o.Display))];
         HandshakeOptions = [.. SerialSettings.HandshakeOptions.Select(o => new Choice<Handshake>(o.Value, o.Display))];
+        EncodingOptions = StatefulTextDecoder.SupportedEncodingNames;
+
+        // 注意顺序：_processor 必须先建好，因为 ApplySettingsToUi 改动接收设置时会触发
+        // ApplyReceiveOptions，那里要用到 _processor。
+        _processor = new ReceiveProcessor(BuildReceiveOptions());
+        _appliedOptions = _processor.Options;
+
+        ApplySettingsToUi(_settings);
+
+        Log.SearchChanged += (_, _) => UpdateSearchStatus();
 
         _transport.StateChanged += OnTransportStateChanged;
         _transport.BytesReceived += OnBytesReceived;
 
-        // 200 ms 批量刷新一次计数，而不是每块数据刷一次
-        _counterTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        _uiTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(200),
+            Interval = UiRefreshInterval,
         };
-        _counterTimer.Tick += (_, _) => FlushCounters();
-        _counterTimer.Start();
+        _uiTimer.Tick += (_, _) => OnUiRefresh();
+        _uiTimer.Start();
 
-        ApplySettingsToUi(_settings);
         State = _transport.State;
         StatusText = State.ToDisplayText();
         UpdateThemeButtonText();
+        UpdateSearchStatus();
     }
+
+    /// <summary>请求把某一行滚入视野（由日志视图处理）。</summary>
+    public event EventHandler<DisplayLine?>? ScrollToLineRequested;
+
+    /// <summary>请求滚动到最新位置。</summary>
+    public event EventHandler? ScrollToEndRequested;
+
+    public LogDocument Log { get; } = new();
 
     // ---------- 集合与选项 ----------
 
@@ -87,6 +132,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<Choice<StopBits>> StopBitsOptions { get; }
 
     public IReadOnlyList<Choice<Handshake>> HandshakeOptions { get; }
+
+    public IReadOnlyList<string> EncodingOptions { get; }
 
     // ---------- 串口参数 ----------
 
@@ -114,7 +161,29 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _rtsEnable;
 
-    // ---------- 状态 ----------
+    // ---------- 接收设置 ----------
+
+    [ObservableProperty]
+    private bool _hexDisplay;
+
+    [ObservableProperty]
+    private bool _autoFrame = true;
+
+    [ObservableProperty]
+    private string _autoFrameGapText = "20";
+
+    [ObservableProperty]
+    private string _selectedEncodingName = "UTF-8";
+
+    [ObservableProperty]
+    private bool _showTimestamp = true;
+
+    // ---------- 发送设置（M1 最小入口，M4 完善） ----------
+
+    [ObservableProperty]
+    private string _sendText = "SeriTerm loopback test";
+
+    // ---------- 界面状态 ----------
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOpen))]
@@ -138,18 +207,56 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _txText = "0 B";
 
     [ObservableProperty]
-    private string _sendText = "SeriTerm loopback test";
+    private double _logFontSize = 13;
+
+    [ObservableProperty]
+    private bool _lineWrap = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PauseButtonText))]
+    private bool _isPaused;
+
+    [ObservableProperty]
+    private string _pausedHintText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPendingNewLines))]
+    [NotifyPropertyChangedFor(nameof(NewDataBarText))]
+    private int _pendingNewLines;
+
+    [ObservableProperty]
+    private bool _autoScroll = true;
+
+    // ---------- 搜索状态 ----------
+
+    [ObservableProperty]
+    private bool _searchVisible;
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _searchCaseSensitive;
+
+    [ObservableProperty]
+    private string _searchStatusText = "输入关键字开始查找";
 
     public bool IsOpen => State == TransportState.Open;
 
-    /// <summary>只有关闭或故障状态下才允许改参数。</summary>
     public bool CanEditSettings => State is TransportState.Closed or TransportState.Faulted;
 
     public string OpenButtonText => IsOpen ? "关闭" : "打开";
 
+    public string PauseButtonText => IsPaused ? "继续显示" : "暂停显示";
+
+    public bool HasPendingNewLines => PendingNewLines > 0;
+
+    public string NewDataBarText => $"▾ {PendingNewLines} 条新数据（点击回到最新）";
+
+    public AppSettings Settings => _settings;
+
     // ---------- 命令 ----------
 
-    /// <summary>启动时调用。</summary>
     public Task InitializeAsync() => RefreshPortsAsync();
 
     [RelayCommand]
@@ -186,7 +293,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (IsOpen)
         {
             await _transport.CloseAsync().ConfigureAwait(true);
-            StatusDetail = "串口已关闭。";
             return;
         }
 
@@ -201,6 +307,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _transport.OpenAsync(settings).ConfigureAwait(true);
             _settings.LastSerial = settings;
             StatusDetail = settings.ToShortDescription();
+            AddSystemLine($"串口已打开：{settings.ToShortDescription()}");
         }
         catch (SerialLinkException ex)
         {
@@ -218,10 +325,199 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         UpdateThemeButtonText();
     }
 
-    /// <summary>
-    /// M1 的最小发送入口：固定 UTF-8 + CRLF。M4 会替换为完整的
-    /// 文本/HEX 切换、行尾可选、定时发送与文件发送。
-    /// </summary>
+    [RelayCommand]
+    private void IncreaseFontSize() => LogFontSize = Math.Min(30, LogFontSize + 1);
+
+    [RelayCommand]
+    private void DecreaseFontSize() => LogFontSize = Math.Max(9, LogFontSize - 1);
+
+    [RelayCommand]
+    private void ToggleLineWrap() => LineWrap = !LineWrap;
+
+    [RelayCommand]
+    private void ClearLog()
+    {
+        Log.Clear();
+        PendingNewLines = 0;
+        _pausedBuffer.Clear();
+        PausedHintText = string.Empty;
+
+        lock (_pipelineLock)
+        {
+            _pendingLines.Clear();
+            _processor.Reset();
+        }
+
+        UpdateSearchStatus();
+        AddSystemLine("显示数据已清空。");
+    }
+
+    [RelayCommand]
+    private async Task SaveLogAsync()
+    {
+        if (Log.Lines.Count == 0)
+        {
+            _notifier.ShowInfo("提示", "当前没有可保存的数据。");
+            return;
+        }
+
+        var path = _fileDialogs.AskSaveFile(
+            $"SeriTerm_{DateTime.Now:yyyyMMdd_HHmmss}.log",
+            "文本日志 (*.log)|*.log|所有文件 (*.*)|*.*",
+            "保存显示数据");
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var builder = new StringBuilder();
+            foreach (var line in Log.Lines)
+            {
+                builder.Append(line.TimeText)
+                    .Append(" [")
+                    .Append(line.DirectionText)
+                    .Append("] ")
+                    .AppendLine(line.Text);
+            }
+
+            // 带 BOM 的 UTF-8：记事本/Excel 打开中文不乱码
+            await File.WriteAllTextAsync(path, builder.ToString(), new UTF8Encoding(true)).ConfigureAwait(true);
+
+            StatusDetail = $"已保存 {Log.Lines.Count} 行到 {path}";
+            _notifier.ShowInfo("保存完成", $"已保存 {Log.Lines.Count} 行到：\n{path}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "保存显示数据失败");
+            _notifier.ShowError("保存失败", ex.Message);
+        }
+    }
+
+    [RelayCommand]
+    private void TogglePause()
+    {
+        if (IsPaused)
+        {
+            IsPaused = false;
+            PausedHintText = string.Empty;
+
+            if (_pausedBuffer.Count > 0)
+            {
+                var buffered = _pausedBuffer.Count;
+                AppendToLog([.. _pausedBuffer]);
+                _pausedBuffer.Clear();
+                AddSystemLine($"已恢复显示（补显示暂停期间的 {buffered} 行）。");
+            }
+
+            return;
+        }
+
+        IsPaused = true;
+        PausedHintText = "已暂停显示（数据仍在接收，恢复后补显示）";
+    }
+
+    // ---------- 自动滚动 ----------
+
+    /// <summary>离开底部时调用：停止跟随。</summary>
+    public void PauseAutoScroll()
+    {
+        if (AutoScroll)
+        {
+            AutoScroll = false;
+        }
+    }
+
+    /// <summary>回到最新位置时调用：恢复跟随并滚到底。</summary>
+    public void ResumeAutoScroll()
+    {
+        PendingNewLines = 0;
+
+        var changed = !AutoScroll;
+        AutoScroll = true;
+
+        // 值发生变化时由 OnAutoScrollChanged 统一请求滚动，避免重复请求
+        if (!changed)
+        {
+            ScrollToEndRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    partial void OnAutoScrollChanged(bool value)
+    {
+        if (!value)
+        {
+            return;
+        }
+
+        PendingNewLines = 0;
+        ScrollToEndRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void ToggleAutoScroll()
+    {
+        if (AutoScroll)
+        {
+            AutoScroll = false;
+        }
+        else
+        {
+            ResumeAutoScroll();
+        }
+    }
+
+    [RelayCommand]
+    private void ScrollToLatest() => ResumeAutoScroll();
+
+    // ---------- 搜索 ----------
+
+    [RelayCommand]
+    private void OpenSearch() => SearchVisible = true;
+
+    [RelayCommand]
+    private void CloseSearch()
+    {
+        SearchVisible = false;
+        SearchText = string.Empty;
+        Log.ClearSearch();
+        UpdateSearchStatus();
+    }
+
+    [RelayCommand]
+    private void SearchNext() => MoveToMatch(Log.MoveNextMatch());
+
+    [RelayCommand]
+    private void SearchPrevious() => MoveToMatch(Log.MovePreviousMatch());
+
+    private void MoveToMatch(DisplayLine? line)
+    {
+        if (line is null)
+        {
+            return;
+        }
+
+        // 跳到命中位置时必须停止跟随，否则新数据会立刻把视野拉走
+        PauseAutoScroll();
+        ScrollToLineRequested?.Invoke(this, line);
+        UpdateSearchStatus();
+    }
+
+    partial void OnSearchTextChanged(string value) => Log.SetSearch(value, SearchCaseSensitive);
+
+    partial void OnSearchCaseSensitiveChanged(bool value) => Log.SetSearch(SearchText, value);
+
+    private void UpdateSearchStatus()
+        => SearchStatusText = !Log.HasSearch
+            ? "输入关键字开始查找"
+            : Log.MatchCount == 0
+                ? "无匹配"
+                : $"第 {Log.CurrentMatchIndex + 1} / 共 {Log.MatchCount} 条";
+
+    // ---------- 发送（M1 最小入口） ----------
+
     [RelayCommand]
     private async Task SendAsync()
     {
@@ -233,14 +529,71 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var payload = Encoding.UTF8.GetBytes(SendText + "\r\n");
 
+        // 先取时间：回环时数据可能在本机写完成之前就回来了，
+        // 用发送前的时刻记 Tx 行，日志顺序才符合直觉（Tx 在回显的 Rx 之前）
+        var sentAt = DateTime.Now;
+
         try
         {
             await _transport.WriteAsync(payload).ConfigureAwait(true);
             Interlocked.Add(ref _txBytes, payload.Length);
+            RecordTransmitted(payload, sentAt);
         }
         catch (SerialLinkException ex)
         {
             _notifier.ShowError("发送失败", ex.Message);
+        }
+    }
+
+    // ---------- 接收设置联动 ----------
+
+    partial void OnHexDisplayChanged(bool value) => ApplyReceiveOptions();
+
+    partial void OnAutoFrameChanged(bool value) => ApplyReceiveOptions();
+
+    partial void OnAutoFrameGapTextChanged(string value) => ApplyReceiveOptions();
+
+    partial void OnSelectedEncodingNameChanged(string value) => ApplyReceiveOptions();
+
+    private ReceiveOptions BuildReceiveOptions() => new()
+    {
+        AutoFrame = AutoFrame,
+        AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20,
+        HexDisplay = HexDisplay,
+        EncodingName = SelectedEncodingName,
+        ShowTimestamp = ShowTimestamp,
+    };
+
+    private void ApplyReceiveOptions()
+    {
+        var options = BuildReceiveOptions();
+        List<DisplayLine>? flushed = null;
+
+        lock (_pipelineLock)
+        {
+            _scratch.Clear();
+            _processor.ApplyOptions(options, DateTime.Now, _scratch);
+
+            if (_scratch.Count > 0)
+            {
+                flushed = [.. _scratch];
+            }
+        }
+
+        if (flushed is not null)
+        {
+            AppendToLog(flushed);
+        }
+
+        // 只有显示方式变化才需要重刷历史行；断帧参数变化不影响已有内容
+        var reformatNeeded = options.HexDisplay != _appliedOptions.HexDisplay
+            || !string.Equals(options.EncodingName, _appliedOptions.EncodingName, StringComparison.OrdinalIgnoreCase);
+
+        _appliedOptions = options;
+
+        if (reformatNeeded)
+        {
+            Log.Reformat(_processor.Reformat);
         }
     }
 
@@ -287,16 +640,21 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public AppSettings Settings => _settings;
-
-    /// <summary>窗口关闭时保存配置。</summary>
     public void PersistSettings()
     {
         _settings.Theme = _themeService.Current;
+        _settings.AutoScroll = AutoScroll;
+        _settings.HexDisplay = HexDisplay;
+        _settings.EncodingName = SelectedEncodingName;
+        _settings.AutoFrame = AutoFrame;
+        _settings.AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20;
+        _settings.ShowTimestamp = ShowTimestamp;
+        _settings.LineWrap = LineWrap;
+        _settings.LogFontSize = LogFontSize;
 
-        if (TryBuildSettings(out var settings, out _))
+        if (TryBuildSettings(out var serial, out _))
         {
-            _settings.LastSerial = settings;
+            _settings.LastSerial = serial;
         }
 
         _settingsStore.Save(_settings);
@@ -313,6 +671,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         SelectedHandshake = HandshakeOptions.FirstOrDefault(o => o.Value == serial.Handshake) ?? HandshakeOptions[0];
         DtrEnable = serial.DtrEnable;
         RtsEnable = serial.RtsEnable;
+
+        HexDisplay = settings.HexDisplay;
+        AutoFrame = settings.AutoFrame;
+        AutoFrameGapText = settings.AutoFrameGapMilliseconds.ToString();
+        SelectedEncodingName = EncodingOptions.Contains(settings.EncodingName) ? settings.EncodingName : "UTF-8";
+        ShowTimestamp = settings.ShowTimestamp;
+        AutoScroll = settings.AutoScroll;
+        LineWrap = settings.LineWrap;
+        LogFontSize = settings.LogFontSize < 9 ? 13 : settings.LogFontSize;
     }
 
     private void UpdateThemeButtonText()
@@ -322,8 +689,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnBytesReceived(object? sender, BytesReceivedEventArgs e)
     {
-        // 只做计数：这里在串口读取线程上，绝不能碰 UI
+        // 这里在串口读取线程上：只做计数与入管线，绝不碰 UI
         Interlocked.Add(ref _rxBytes, e.Length);
+
+        lock (_pipelineLock)
+        {
+            _processor.ProcessReceived(e.Data, e.Timestamp, DateTime.Now, _pendingLines);
+        }
     }
 
     private void OnTransportStateChanged(object? sender, TransportStateChangedEventArgs e)
@@ -338,22 +710,130 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 StatusDetail = e.Message.Split('\n')[0];
             }
 
-            if (e.NewState == TransportState.Faulted && !string.IsNullOrWhiteSpace(e.Message))
+            switch (e.NewState)
             {
-                _notifier.ShowError("串口连接中断", e.Message);
+                case TransportState.Faulted when !string.IsNullOrWhiteSpace(e.Message):
+                    AddSystemLine($"链路中断：{StatusDetail}");
+                    _notifier.ShowError("串口连接中断", e.Message);
+                    break;
+
+                case TransportState.Closed when e.OldState != TransportState.Closed:
+                    AddSystemLine("串口已关闭。");
+                    break;
             }
         });
     }
 
-    private void FlushCounters()
+    // ---------- 界面刷新 ----------
+
+    private void OnUiRefresh()
     {
+        List<DisplayLine>? batch = null;
+
+        lock (_pipelineLock)
+        {
+            _scratch.Clear();
+            _processor.FlushIdle(Stopwatch.GetTimestamp(), DateTime.Now, _scratch);
+
+            if (_scratch.Count > 0)
+            {
+                _pendingLines.AddRange(_scratch);
+            }
+
+            if (_pendingLines.Count > 0)
+            {
+                batch = [.. _pendingLines];
+                _pendingLines.Clear();
+            }
+        }
+
+        if (batch is not null)
+        {
+            if (IsPaused)
+            {
+                BufferWhilePaused(batch);
+            }
+            else
+            {
+                AppendToLog(batch);
+            }
+        }
+
         RxText = ByteSize.Format(Interlocked.Read(ref _rxBytes));
         TxText = ByteSize.Format(Interlocked.Read(ref _txBytes));
     }
 
+    private void AppendToLog(List<DisplayLine> lines)
+    {
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
+        Log.Append(lines);
+
+        if (!AutoScroll)
+        {
+            PendingNewLines += lines.Count;
+        }
+    }
+
+    private void BufferWhilePaused(List<DisplayLine> lines)
+    {
+        _pausedBuffer.AddRange(lines);
+
+        if (_pausedBuffer.Count > MaxPausedBufferLines)
+        {
+            var overflow = _pausedBuffer.Count - MaxPausedBufferLines;
+            _pausedBuffer.RemoveRange(0, overflow);
+            PausedHintText = $"已暂停显示（缓冲已满，最早的 {overflow} 行被丢弃）";
+            return;
+        }
+
+        PausedHintText = $"已暂停显示（{_pausedBuffer.Count} 行待显示）";
+    }
+
+    private void RecordTransmitted(byte[] payload, DateTime sentAt)
+    {
+        List<DisplayLine> lines = [];
+
+        lock (_pipelineLock)
+        {
+            _processor.ProcessTransmitted(payload, sentAt, lines);
+        }
+
+        if (IsPaused)
+        {
+            BufferWhilePaused(lines);
+        }
+        else
+        {
+            AppendToLog(lines);
+        }
+    }
+
+    private void AddSystemLine(string message)
+    {
+        List<DisplayLine> lines = [];
+
+        lock (_pipelineLock)
+        {
+            _processor.ProcessSystem(message, DateTime.Now, lines);
+        }
+
+        if (IsPaused)
+        {
+            BufferWhilePaused(lines);
+        }
+        else
+        {
+            AppendToLog(lines);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        _counterTimer.Stop();
+        _uiTimer.Stop();
         _transport.StateChanged -= OnTransportStateChanged;
         _transport.BytesReceived -= OnBytesReceived;
         await _transport.DisposeAsync().ConfigureAwait(false);

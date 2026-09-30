@@ -44,6 +44,7 @@ public partial class App : Application
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IUserNotifier, MessageBoxNotifier>();
+        services.AddSingleton<IFileDialogService, FileDialogService>();
         services.AddSingleton<PortFriendlyNameProvider>();
 
         // 传输层：将来接 TCP/UDP 时，这里换成对应实现即可

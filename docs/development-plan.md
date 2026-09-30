@@ -441,3 +441,58 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 - **不提交**：发布产物、日志样本、含设备敏感信息的抓包、本机端口配置（配置放 `%AppData%\SeriTerm\`）。
 - 每个里程碑提交前必须：`dotnet build` 通过 + 单测通过 + 手工验收项走一遍。
 
+---
+
+## 11. 实现记录（踩坑与决策）
+
+开发中真实踩到、值得写下来避免重复踩的点：
+
+### 11.1 有状态解码器不能用 `GetCharCount` + `GetChars`
+
+对 `Decoder` 先调 `GetCharCount` 再调 `GetChars`，会让内部挂起状态被消费两次，
+结果是**半个汉字变成替换字符**（正是我们要消灭的乱码）。
+正确做法：一次 `GetChars` 写进足够大的缓冲（`bytes.Length + 2`），用返回值确定字符数。
+
+### 11.2 自动滚动的"滚动来源"判定
+
+- 程序自身滚动（`ScrollIntoView`）必须用抑制标志排除，否则会被当成用户操作而关掉跟随；
+  抑制标志用 `DispatcherPriority.Background` 延后解除，因为 `ScrollIntoView` 引发的
+  `ScrollChanged` 可能在布局阶段才派发。
+- 用户滚动判定：只有 `ExtentHeightChange == 0 && VerticalChange != 0` 才是拖动/滚轮；
+  追加或淘汰数据导致的偏移变化必须忽略。
+- 判定"在底部"留 8 px 容差，避免浮点误差导致永远判不到底部。
+
+### 11.3 日志区的性能三条
+
+1. 一批追加合并成**一次 Reset**（`BulkObservableCollection`），不是逐行 `Add`。
+2. 淘汰旧行用**整段重建**；`RemoveAt(0)` 循环在 20 万行规模下是 O(n²)，会卡死数秒。
+3. 淘汰要同时受**行数与字节数**双重预算约束：1 Mbps + 20 ms 断帧时每帧约 2.5 KB，
+   只按 20 万行限制会吃 500 MB 内存。
+
+### 11.4 重刷显示时要跳过系统提示行
+
+切换 HEX/编码会重刷所有行；系统提示行（"串口已打开…"）没有原始字节，
+若不跳过会被刷成空字符串。
+
+### 11.5 视图模型的构造顺序
+
+`_processor` 必须在 `ApplySettingsToUi` **之前**创建：读配置会设置 `HexDisplay` 等属性，
+其变更回调会走到 `ApplyReceiveOptions`，此时若 `_processor` 还是 null 就会崩在构造函数里。
+（初始值恰好与默认值相同时不会触发，属于"换个配置就启动失败"的隐藏 bug。）
+
+### 11.6 硬件相关测试的稳定性
+
+- 串口是**独占**资源：测试程序集必须 `DisableTestParallelization`。
+- 上一个用例关闭端口后，系统释放句柄有延迟：打开要**带重试**，否则偶发"被占用"。
+- 每个用例开始前先**排空驱动缓冲里的残留字节**，否则会读到上一次的数据。
+- 端口不存在时用 `Skip`（自定义 `LoopbackFact`）而不是让测试失败。
+
+### 11.7 自动化脚本的两个坑
+
+- Windows PowerShell 5.1 会把**无 BOM 的 UTF-8** 脚本当 ANSI 读，中文控件名会乱码
+  → `tools/*.ps1` 必须存成"带 BOM 的 UTF-8"。
+- `SendKeys` 只有当窗口**确实在前台**时才会打到它身上；UIA 的 `ValuePattern.SetValue`
+  不依赖焦点，更适合自动化。查找控件优先用 `AutomationId`（即 XAML 的 `x:Name`），比中文 `Name` 稳。
+- 异常退出的自动化会留下占用串口与 exe 的僵尸进程，必须清理后再构建/测试。
+
+

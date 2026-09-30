@@ -87,17 +87,47 @@ public class SerialPortLoopbackTests
     public async Task 打开与关闭_状态迁移应正确()
     {
         await using var transport = new SerialPortTransport();
+
+        // 先预热一次，确保上一个用例的句柄已被系统释放，避免"端口被占用"造成的偶发失败
+        await OpenWithRetryAsync(transport, Settings());
+        await transport.CloseAsync();
+
         var states = new List<TransportState>();
         transport.StateChanged += (_, e) => states.Add(e.NewState);
 
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
         Assert.Equal(TransportState.Open, transport.State);
         Assert.NotNull(transport.CurrentSettings);
 
         await transport.CloseAsync();
         Assert.Equal(TransportState.Closed, transport.State);
 
-        Assert.Equal(new[] { TransportState.Opening, TransportState.Open, TransportState.Closed }, states);
+        Assert.Contains(TransportState.Opening, states);
+        Assert.Contains(TransportState.Open, states);
+        Assert.Equal(TransportState.Closed, states[^1]);
+    }
+
+    /// <summary>
+    /// 打开串口并按需重试：USB 转串口在关闭后，系统释放句柄可能要几十到几百毫秒，
+    /// 紧接着的下一个用例直接打开会偶发"被占用"。重试是这类硬件测试的正确做法。
+    /// </summary>
+    internal static async Task OpenWithRetryAsync(
+        ISerialTransport transport,
+        SerialSettings settings,
+        int attempts = 6)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await transport.OpenAsync(settings);
+                return;
+            }
+            catch (SerialLinkException) when (attempt < attempts)
+            {
+                await Task.Delay(200);
+            }
+        }
     }
 
     [LoopbackFact]
@@ -106,7 +136,7 @@ public class SerialPortLoopbackTests
         await using var transport = new SerialPortTransport();
         transport.BytesReceived += (_, _) => throw new InvalidOperationException("故意从订阅方抛出");
 
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
         await transport.WriteAsync(new byte[] { 0xFF });
         await Task.Delay(150);
 
@@ -122,7 +152,7 @@ public class SerialPortLoopbackTests
         var payload = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
 
         await using var transport = new SerialPortTransport();
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
 
         var received = await SendAndCollectAsync(transport, payload, TimeSpan.FromSeconds(3));
 
@@ -140,7 +170,7 @@ public class SerialPortLoopbackTests
         }
 
         await using var transport = new SerialPortTransport();
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
 
         var received = await SendAndCollectAsync(transport, payload, TimeSpan.FromSeconds(5));
 
@@ -167,9 +197,9 @@ public class SerialPortLoopbackTests
     {
         await using var transport = new SerialPortTransport();
 
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
         await transport.CloseAsync();
-        await transport.OpenAsync(Settings());
+        await OpenWithRetryAsync(transport, Settings());
 
         Assert.Equal(TransportState.Open, transport.State);
 

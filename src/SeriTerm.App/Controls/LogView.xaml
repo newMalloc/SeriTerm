@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="SeriTerm.App.Controls.LogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:SeriTerm.Core.Pipeline;assembly=SeriTerm.Core"
+             x:Name="Root">
+
+    <Grid Background="{DynamicResource LogBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Ctrl+F 搜索条 ===== -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource PanelBackgroundBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,5"
+                Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="查找:" Style="{StaticResource FieldLabel}" />
+
+                <TextBox x:Name="SearchBox"
+                         Width="240"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="OnSearchBoxKeyDown"
+                         ToolTip="Ctrl+F 打开 / Esc 关闭，回车查找下一个，Shift+回车查找上一个" />
+
+                <TextBlock Text="{Binding SearchStatusText}"
+                           Margin="10,0,10,0"
+                           Foreground="{DynamicResource SubtleForegroundBrush}" />
+
+                <Button Style="{StaticResource ToolbarButton}" Content="▲" MinWidth="28"
+                        Command="{Binding SearchPreviousCommand}" ToolTip="上一个（Shift+Enter）" />
+                <Button Style="{StaticResource ToolbarButton}" Content="▼" MinWidth="28"
+                        Command="{Binding SearchNextCommand}" ToolTip="下一个（Enter）" />
+
+                <CheckBox Content="区分大小写" Margin="8,0,10,0"
+                          IsChecked="{Binding SearchCaseSensitive}" />
+
+                <Button Style="{StaticResource ToolbarButton}" Content="✕"
+                        Command="{Binding CloseSearchCommand}" ToolTip="关闭搜索（Esc）" />
+            </StackPanel>
+        </Border>
+
+        <!-- ===== 日志列表 ===== -->
+        <Grid Grid.Row="1">
+            <ListBox x:Name="LogList"
+                     ItemsSource="{Binding Log.Lines}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0,2,0,2"
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling"
+                     VirtualizingPanel.ScrollUnit="Pixel"
+                     SelectionMode="Extended"
+                     FontFamily="Consolas, Microsoft YaHei UI"
+                     FontSize="{Binding LogFontSize}">
+
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="Row" Padding="6,1" Background="Transparent">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- 时间列 -->
+                                <TextBlock Text="{Binding TimeText}"
+                                           Width="104"
+                                           Margin="0,0,6,0"
+                                           Foreground="{DynamicResource SubtleForegroundBrush}"
+                                           Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
+
+                                <!-- 方向列 -->
+                                <TextBlock Text="{Binding DirectionText}"
+                                           Width="30"
+                                           Margin="0,0,4,0"
+                                           Foreground="{DynamicResource SubtleForegroundBrush}" />
+
+                                <!-- 内容列 -->
+                                <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Setter Property="TextWrapping" Value="NoWrap" />
+                                            <Setter Property="Foreground" Value="{DynamicResource RxForegroundBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.Tx}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource TxForegroundBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.System}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DataContext.LineWrap, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
+                                                    <Setter Property="TextWrapping" Value="Wrap" />
+                                                    <Setter Property="TextTrimming" Value="None" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <DataTemplate.Triggers>
+                            <!-- 命中：整行底色；顺序很重要，当前命中必须排在后面才能覆盖普通命中 -->
+                            <DataTrigger Binding="{Binding IsMatch}" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- ===== 暂停自动滚动时的"新数据"提示条 ===== -->
+            <Button x:Name="NewDataBar"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,14"
+                    Padding="14,6"
+                    Background="{DynamicResource AccentBrush}"
+                    BorderBrush="{DynamicResource AccentBrush}"
+                    Foreground="{DynamicResource AccentForegroundBrush}"
+                    Command="{Binding ScrollToLatestCommand}"
+                    Content="{Binding NewDataBarText}"
+                    ToolTip="点击回到最新位置并恢复自动滚动"
+                    Visibility="{Binding HasPendingNewLines, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- ===== 暂停显示提示 ===== -->
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Margin="0,10,0,0"
+                    Padding="12,5"
+                    CornerRadius="4"
+                    Background="{DynamicResource WarnBrush}"
+                    Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding PausedHintText}" Foreground="#101010" FontWeight="SemiBold" />
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

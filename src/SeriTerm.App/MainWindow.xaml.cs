@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using SeriTerm.App.Services;
 using SeriTerm.App.ViewModels;
 
@@ -25,6 +26,46 @@ public partial class MainWindow : Window
         _themeService.ThemeChanged += (_, _) => TitleBarTheme.Apply(this, _themeService.IsDarkEffective);
 
         Loaded += async (_, _) => await viewModel.InitializeAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 全局快捷键。用 PreviewKeyDown 而不是 InputBindings：
+    /// InputBindings 里的 KeyBinding 不参与 DataContext 继承，绑定命令很容易失效。
+    /// </summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        var control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+
+        switch (e.Key)
+        {
+            case Key.F when control:
+                LogViewControl.FocusSearch();
+                e.Handled = true;
+                return;
+
+            case Key.K when control:
+                _viewModel.ClearLogCommand.Execute(null);
+                e.Handled = true;
+                return;
+
+            case Key.S when control:
+                _viewModel.SaveLogCommand.Execute(null);
+                e.Handled = true;
+                return;
+
+            case Key.T when control && shift:
+                Topmost = !Topmost;
+                e.Handled = true;
+                return;
+
+            case Key.Escape when _viewModel.SearchVisible:
+                _viewModel.CloseSearchCommand.Execute(null);
+                e.Handled = true;
+                return;
+        }
+
+        base.OnPreviewKeyDown(e);
     }
 
     private void RestoreWindowPlacement()

@@ -27,6 +27,21 @@ public sealed class AppSettings
 
     /// <summary>接收区文本编码名（M2）。</summary>
     public string EncodingName { get; set; } = "UTF-8";
+
+    /// <summary>自动断帧开关（M3）。</summary>
+    public bool AutoFrame { get; set; } = true;
+
+    /// <summary>自动断帧的空闲间隔，毫秒。</summary>
+    public int AutoFrameGapMilliseconds { get; set; } = 20;
+
+    /// <summary>显示时间戳列。</summary>
+    public bool ShowTimestamp { get; set; } = true;
+
+    /// <summary>日志区自动换行。</summary>
+    public bool LineWrap { get; set; } = true;
+
+    /// <summary>日志区字号。</summary>
+    public double LogFontSize { get; set; } = 13;
 }
 
 public interface ISettingsStore
