@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application x:Class="SeriTerm.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 控件样式（引用主题画刷，全部用 DynamicResource，切换主题即时生效） -->
+                <ResourceDictionary Source="Themes/Shared.xaml" />
+                <!-- 默认主题；运行时由 ThemeService 按配置整体替换 -->
+                <ResourceDictionary Source="Themes/Dark.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 浅色主题配色：键名必须与 Dark.xaml 完全一致，否则切换会缺资源 -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#FAFAFA" />
+    <SolidColorBrush x:Key="PanelBorderBrush" Color="#D8D8D8" />
+    <SolidColorBrush x:Key="LogBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ForegroundBrush" Color="#1F1F1F" />
+    <SolidColorBrush x:Key="SubtleForegroundBrush" Color="#6B6B6B" />
+    <SolidColorBrush x:Key="DisabledForegroundBrush" Color="#A0A0A0" />
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="#C6C6C6" />
+    <SolidColorBrush x:Key="ControlHoverBrush" Color="#EDEDED" />
+    <SolidColorBrush x:Key="ControlPressedBrush" Color="#E0E0E0" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#0E7AD4" />
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="TxForegroundBrush" Color="#C2610A" />
+    <SolidColorBrush x:Key="RxForegroundBrush" Color="#1F1F1F" />
+    <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#DCE6F0" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#CCE4F7" />
+    <SolidColorBrush x:Key="OkBrush" Color="#1E8E1E" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#B87300" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="#C62828" />
+
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#1F1F1F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#1F1F1F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#CCE4F7" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#1F1F1F" />
+    <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#6B6B6B" />
+
+</ResourceDictionary>
