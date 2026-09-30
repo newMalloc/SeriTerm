@@ -17,6 +17,7 @@ using SeriTerm.Core.Logging;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
+using SeriTerm.Core.Terminal;
 using SeriTerm.Core.Text;
 
 namespace SeriTerm.App.ViewModels;
@@ -288,6 +289,23 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _logStatusText = string.Empty;
 
     public bool IsLoggingEnabled => SaveLogToFile || SaveRawLog;
+
+    // ---------- 终端模式（M5） ----------
+
+    [ObservableProperty]
+    private bool _terminalMode;
+
+    [ObservableProperty]
+    private bool _terminalLocalEcho;
+
+    [ObservableProperty]
+    private bool _terminalBackspaceSendsDel = true;
+
+    /// <summary>当前已敲入但还没回车的终端输入（仅用于界面提示）。</summary>
+    [ObservableProperty]
+    private string _terminalEchoText = string.Empty;
+
+    private readonly StringBuilder _terminalEchoBuffer = new();
 
     // ---------- 自动重连（M6） ----------
 
@@ -756,6 +774,141 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    // ---------- 终端模式（M5） ----------
+
+    partial void OnTerminalModeChanged(bool value)
+    {
+        _terminalEchoBuffer.Clear();
+        TerminalEchoText = string.Empty;
+
+        // 终端模式下过滤 ANSI 转义序列，否则彩色/光标控制会把日志刷成乱码
+        ApplyReceiveOptions();
+
+        if (value)
+        {
+            AddSystemLine("已进入终端模式：键盘输入直接发送到串口（焦点在输入框时不生效）。");
+        }
+    }
+
+    /// <summary>终端模式：敲入普通字符（立即发送，不等回车）。</summary>
+    public async Task TerminalInputAsync(string text)
+    {
+        if (!TerminalMode || string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        await WriteTerminalBytesAsync(TerminalKeyEncoder.EncodeText(text, SelectedEncodingName)).ConfigureAwait(true);
+
+        _terminalEchoBuffer.Append(text);
+        TerminalEchoText = _terminalEchoBuffer.ToString();
+    }
+
+    /// <summary>终端模式：回车。本地回显时整行记成一条 Tx，避免一个字符一行把日志刷爆。</summary>
+    public async Task TerminalEnterAsync()
+    {
+        if (!TerminalMode)
+        {
+            return;
+        }
+
+        var ending = TerminalKeyEncoder.EncodeEnter(SelectedLineEnding?.Value ?? LineEnding.CrLf);
+        await WriteTerminalBytesAsync(ending).ConfigureAwait(true);
+
+        if (TerminalLocalEcho)
+        {
+            var typed = TerminalKeyEncoder.EncodeText(_terminalEchoBuffer.ToString(), SelectedEncodingName);
+            RecordTransmitted([.. typed, .. ending], DateTime.Now);
+        }
+
+        _terminalEchoBuffer.Clear();
+        TerminalEchoText = string.Empty;
+    }
+
+    /// <summary>终端模式：退格。</summary>
+    public async Task TerminalBackspaceAsync()
+    {
+        if (!TerminalMode)
+        {
+            return;
+        }
+
+        await WriteTerminalBytesAsync(TerminalKeyEncoder.EncodeBackspace(TerminalBackspaceSendsDel)).ConfigureAwait(true);
+
+        if (_terminalEchoBuffer.Length > 0)
+        {
+            _terminalEchoBuffer.Length--;
+            TerminalEchoText = _terminalEchoBuffer.ToString();
+        }
+    }
+
+    /// <summary>终端模式：Ctrl + 字母（如 Ctrl+C → 0x03）。</summary>
+    public async Task TerminalControlAsync(char letter)
+    {
+        if (!TerminalMode)
+        {
+            return;
+        }
+
+        await WriteTerminalBytesAsync(TerminalKeyEncoder.EncodeControl(letter)).ConfigureAwait(true);
+    }
+
+    /// <summary>终端模式：粘贴多行内容，逐行发送并补行尾。</summary>
+    public async Task TerminalPasteAsync(string text)
+    {
+        if (!TerminalMode || string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var ending = SelectedLineEnding?.Value ?? LineEnding.CrLf;
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+
+        foreach (var line in lines)
+        {
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            var payload = TerminalKeyEncoder.EncodeText(line, SelectedEncodingName);
+            await WriteTerminalBytesAsync(payload).ConfigureAwait(true);
+            await WriteTerminalBytesAsync(TerminalKeyEncoder.EncodeEnter(ending)).ConfigureAwait(true);
+
+            if (TerminalLocalEcho)
+            {
+                RecordTransmitted([.. payload, .. TerminalKeyEncoder.EncodeEnter(ending)], DateTime.Now);
+            }
+        }
+
+        _terminalEchoBuffer.Clear();
+        TerminalEchoText = string.Empty;
+    }
+
+    private async Task WriteTerminalBytesAsync(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            return;
+        }
+
+        if (!IsOpen)
+        {
+            _notifier.ShowInfo("提示", "请先打开串口。");
+            return;
+        }
+
+        try
+        {
+            await _transport.WriteAsync(bytes).ConfigureAwait(true);
+            Interlocked.Add(ref _txBytes, bytes.Length);
+        }
+        catch (SerialLinkException ex)
+        {
+            _notifier.ShowError("发送失败", ex.Message);
+        }
+    }
+
     // ---------- 发送 ----------
 
     [RelayCommand]
@@ -1017,6 +1170,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         HexDisplay = HexDisplay,
         EncodingName = SelectedEncodingName,
         ShowTimestamp = ShowTimestamp,
+        StripAnsi = TerminalMode,
     };
 
     private void ApplyReceiveOptions()
@@ -1120,6 +1274,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         _settings.AutoReconnect = AutoReconnect;
         _settings.AutoOpenOnStartup = AutoOpenOnStartup;
+        _settings.TerminalLocalEcho = TerminalLocalEcho;
+        _settings.TerminalBackspaceSendsDel = TerminalBackspaceSendsDel;
         _settings.SaveLogToFile = SaveLogToFile;
         _settings.SaveRawLog = SaveRawLog;
         _settings.LogDirectory = LogDirectory;
@@ -1167,6 +1323,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         AutoReconnect = settings.AutoReconnect;
         AutoOpenOnStartup = settings.AutoOpenOnStartup;
+        TerminalLocalEcho = settings.TerminalLocalEcho;
+        TerminalBackspaceSendsDel = settings.TerminalBackspaceSendsDel;
     }
 
     private void UpdateThemeButtonText()

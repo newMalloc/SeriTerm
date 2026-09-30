@@ -25,6 +25,9 @@ public sealed record ReceiveOptions
     /// <summary>显示方向列（Rx/Tx）。</summary>
     public bool ShowDirection { get; init; } = true;
 
+    /// <summary>过滤 ANSI 转义序列（终端类设备的输出，如彩色/光标控制）。</summary>
+    public bool StripAnsi { get; init; }
+
     public const int MinGapMilliseconds = 1;
 
     public const int MaxGapMilliseconds = 1000;

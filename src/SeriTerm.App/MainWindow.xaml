@@ -335,6 +335,23 @@
                         <StackPanel>
                             <TextBlock Text="发送设置" Style="{StaticResource SectionHeader}" />
 
+                            <CheckBox x:Name="TerminalModeCheck" Content="终端模式" IsChecked="{Binding TerminalMode}"
+                                      Margin="0,0,0,4"
+                                      ToolTip="键盘输入直接进串口：可打印字符立即发送，回车按行尾设置发送，退格与 Ctrl+C 透传；焦点在输入框时不生效" />
+
+                            <StackPanel Margin="18,0,0,6"
+                                        Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}">
+                                <CheckBox Content="本地回显（整行记一条 Tx）" IsChecked="{Binding TerminalLocalEcho}"
+                                          Margin="0,0,0,4"
+                                          ToolTip="终端模式下按行记录发送内容；设备本身会回显时可关掉以免重复" />
+                                <CheckBox Content="退格发送 0x7F(DEL)" IsChecked="{Binding TerminalBackspaceSendsDel}"
+                                          Margin="0,0,0,4"
+                                          ToolTip="取消勾选则发送 0x08(BS)；有些 CLI 只认其中一种" />
+                                <TextBlock Style="{StaticResource HintText}">
+                                    <Run Text="当前输入：" /><Run Text="{Binding TerminalEchoText, Mode=OneWay}" />
+                                </TextBlock>
+                            </StackPanel>
+
                             <TextBox x:Name="SendTextBox"
                                      Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
                                      Margin="0,0,0,6"

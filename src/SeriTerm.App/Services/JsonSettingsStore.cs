@@ -63,6 +63,12 @@ public sealed class AppSettings
     /// <summary>启动时自动打开上次的串口（M6）。</summary>
     public bool AutoOpenOnStartup { get; set; }
 
+    /// <summary>终端模式本地回显（M5）。</summary>
+    public bool TerminalLocalEcho { get; set; }
+
+    /// <summary>终端模式退格发送 0x7F 还是 0x08（M5）。</summary>
+    public bool TerminalBackspaceSendsDel { get; set; } = true;
+
     /// <summary>显示时间戳列。</summary>
     public bool ShowTimestamp { get; set; } = true;
 

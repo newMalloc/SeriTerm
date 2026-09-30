@@ -146,7 +146,7 @@ public sealed class ReceiveProcessor
         }
 
         _reformatDecoder.SetEncoding(Options.EncodingName);
-        return Sanitize(_reformatDecoder.Decode(payload, flush: true));
+        return RenderText(_reformatDecoder.Decode(payload, flush: true));
     }
 
     /// <summary>清空挂起数据并重置解码状态。</summary>
@@ -193,7 +193,7 @@ public sealed class ReceiveProcessor
 
             var text = Options.HexDisplay
                 ? HexCodec.Format(payload)
-                : Sanitize(_rxDecoder.Decode(payload, flush: false));
+                : RenderText(_rxDecoder.Decode(payload, flush: false));
 
             var lag = nowTicks > frame.StartTimestamp
                 ? TimeSpan.FromSeconds((nowTicks - frame.StartTimestamp) / (double)Stopwatch.Frequency)
@@ -210,6 +210,10 @@ public sealed class ReceiveProcessor
 
         frames.Clear();
     }
+
+    /// <summary>接收文本的显示处理：先按需过滤 ANSI，再做换行净化。</summary>
+    private string RenderText(string text)
+        => Sanitize(Options.StripAnsi ? AnsiFilter.Strip(text) : text);
 
     /// <summary>
     /// 文本模式下的显示净化：把 CR/LF 显示成空格（否则一行文本会被拆成多行、界面错乱），

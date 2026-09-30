@@ -537,6 +537,26 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 正确做法是通过界面把"将接收保存到文件"取消勾选（触发 `DisposeAsync` → Flush），
 或者在测试里显式 `await DisposeAsync()`。这一点也提醒了产品行为：异常退出会丢最后一块缓冲。
 
+### 11.14 终端模式必须先关掉输入法（中文用户必踩）
+
+装了中文输入法时，终端模式的按键会先进**系统输入法的组合过程**：
+WPF 把按键报成 `Key.ImeProcessed`（`ImeProcessedKey` 也是 `ImeProcessed`，拿不到真实键），
+**回车会被输入法当作"上屏"吃掉**，结果是"敲了 AT 却发不出去、回车没反应"。
+
+试过的做法与结论：
+- `ImmAssociateContext(hwnd, NULL)` 摘输入法上下文：对现代 TSF 输入法**无效**（旧 API）；
+- 真正有效的是 WPF 层的 `InputMethod.SetPreferredImeState(..., InputMethodState.Off)`
+  配合 `InputMethod.Current.ImeState = InputMethodState.Off`。
+  设置之后按键恢复成 `A`/`T`/`Return`，回车正常。
+
+### 11.15 用 SendKeys 做自动化时的一个陷阱
+
+`SendKeys` 注入字符用的是 `VK_PACKET`（KEYEVENTF_UNICODE），WPF 同样会把它报成
+`Key.ImeProcessed`——**看起来像"输入法问题"，其实是注入方式问题**。
+自动化里要用真实的虚拟键（`keybd_event` 发 VK_RETURN/VK_BACK 等）才能模拟真人按键。
+排查时正是靠"关掉输入法后按键变成 A/T/Return"这一现象，才把两者区分开。
+
+
 
 
 
