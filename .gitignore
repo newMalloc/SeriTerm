@@ -1,0 +1,64 @@
+# ---- 构建产物 ----
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+artifacts/
+publish/
+*.binlog
+
+# ---- Visual Studio / Rider / VS Code ----
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.DotSettings.user
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# ---- 测试与覆盖率 ----
+[Tt]est[Rr]esult*/
+TestResults/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+
+# ---- NuGet ----
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+project.lock.json
+project.fragment.lock.json
+
+# ---- 发布/分发产物 ----
+*.publishproj
+*.exe
+*.dll
+*.pdb
+
+# ---- 运行时数据（不提交本机配置与日志样本）----
+*.log
+*.trx
+Logs/
+settings.local.json
+*.seriallog
+*.rawlog
+
+# ---- 操作系统 ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- 全解决方案统一编译约定。TFM 由各项目自行声明。
+       升级到 .NET 10 时，只需改各 csproj 的 TargetFramework。 -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>SeriTerm 串口调试助手</Product>
+    <Company>SeriTerm</Company>
+    <Copyright>Copyright © 2026</Copyright>
+  </PropertyGroup>
+
+</Project>
