@@ -13,6 +13,7 @@ using SeriTerm.App.Common;
 using SeriTerm.App.Services;
 using SeriTerm.Core.Documents;
 using SeriTerm.Core.Framing;
+using SeriTerm.Core.Logging;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
@@ -65,6 +66,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private readonly TimedSender _timedSender;
 
+    /// <summary>自动重连监督者（M6）。</summary>
+    private readonly ReconnectSupervisor _reconnect;
+
+    /// <summary>当前日志落盘会话（M7）；未开启时为 null。</summary>
+    private SessionLogger? _sessionLogger;
+
     /// <summary>断帧间隔/分隔符输入防抖：避免每敲一个字符就重建断帧器并把挂起数据吐出来。</summary>
     private readonly DispatcherTimer _receiveOptionsDebounce;
 
@@ -109,6 +116,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 定时发送器：发送动作复用界面上的发送内容与当前设置
         _timedSender = new TimedSender(SendCurrentPayloadAsync);
         _timedSender.SendFailed += OnTimedSendFailed;
+
+        // 自动重连：传输层只报故障，重连策略由监督者负责
+        _reconnect = new ReconnectSupervisor(_transport);
+        _reconnect.StatusChanged += OnReconnectStatusChanged;
 
         _receiveOptionsDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
@@ -260,6 +271,38 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string SendFileButtonText => IsSendingFile ? "取消发送" : "发送文件";
 
+    // ---------- 日志落盘（M7） ----------
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoggingEnabled))]
+    private bool _saveLogToFile;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoggingEnabled))]
+    private bool _saveRawLog;
+
+    [ObservableProperty]
+    private string _logDirectory = LogSessionOptions.DefaultDirectory;
+
+    [ObservableProperty]
+    private string _logStatusText = string.Empty;
+
+    public bool IsLoggingEnabled => SaveLogToFile || SaveRawLog;
+
+    // ---------- 自动重连（M6） ----------
+
+    [ObservableProperty]
+    private bool _autoReconnect = true;
+
+    [ObservableProperty]
+    private bool _autoOpenOnStartup;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReconnectStatus))]
+    private string _reconnectStatusText = string.Empty;
+
+    public bool HasReconnectStatus => !string.IsNullOrEmpty(ReconnectStatusText);
+
     // ---------- 界面状态 ----------
 
     [ObservableProperty]
@@ -334,7 +377,21 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---------- 命令 ----------
 
-    public Task InitializeAsync() => RefreshPortsAsync();
+    public Task InitializeAsync()
+    {
+        return InitializeCoreAsync();
+    }
+
+    private async Task InitializeCoreAsync()
+    {
+        await RefreshPortsAsync().ConfigureAwait(true);
+
+        if (AutoOpenOnStartup && CanEditSettings && SelectedPort is not null)
+        {
+            AddSystemLine($"自动打开串口：{SelectedPort.PortName}");
+            await ToggleOpenAsync().ConfigureAwait(true);
+        }
+    }
 
     [RelayCommand]
     private async Task RefreshPortsAsync()
@@ -372,6 +429,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _transport.CloseAsync().ConfigureAwait(true);
             return;
         }
+
+        // 用户手动操作优先：先停掉可能正在进行的自动重连
+        await _reconnect.StopAsync().ConfigureAwait(true);
 
         if (!TryBuildSettings(out var settings, out var error))
         {
@@ -592,6 +652,109 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             : Log.MatchCount == 0
                 ? "无匹配"
                 : $"第 {Log.CurrentMatchIndex + 1} / 共 {Log.MatchCount} 条";
+
+    [RelayCommand]
+    private void ChooseLogDirectory()
+    {
+        var folder = _fileDialogs.AskFolder("选择日志保存目录", LogDirectory);
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        LogDirectory = folder;
+        RestartLogging();
+    }
+
+    [RelayCommand]
+    private void OpenLogDirectory()
+    {
+        try
+        {
+            Directory.CreateDirectory(LogDirectory);
+            Process.Start(new ProcessStartInfo { FileName = LogDirectory, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _notifier.ShowError("打开日志目录失败", ex.Message);
+        }
+    }
+
+    // ---------- 日志落盘联动 ----------
+
+    partial void OnSaveLogToFileChanged(bool value) => RestartLogging();
+
+    partial void OnSaveRawLogChanged(bool value) => RestartLogging();
+
+    partial void OnAutoReconnectChanged(bool value) => _reconnect.Enabled = value;
+
+    private void RestartLogging()
+    {
+        StopLogging();
+
+        if (!SaveLogToFile && !SaveRawLog)
+        {
+            LogStatusText = string.Empty;
+            return;
+        }
+
+        try
+        {
+            _sessionLogger = new SessionLogger(new LogSessionOptions
+            {
+                Directory = string.IsNullOrWhiteSpace(LogDirectory) ? LogSessionOptions.DefaultDirectory : LogDirectory,
+                TextEnabled = SaveLogToFile,
+                RawEnabled = SaveRawLog,
+                HexText = HexDisplay,
+                EncodingName = SelectedEncodingName,
+            });
+
+            LogStatusText = $"正在记录到 {_sessionLogger.Directory}";
+            AddSystemLine($"开始保存日志到：{_sessionLogger.Directory}");
+        }
+        catch (Exception ex)
+        {
+            _sessionLogger = null;
+            LogStatusText = string.Empty;
+            _sessionLogger = null;
+            _notifier.ShowError("无法开始保存日志", ex.Message);
+        }
+    }
+
+    private void StopLogging()
+    {
+        var logger = _sessionLogger;
+        _sessionLogger = null;
+
+        if (logger is null)
+        {
+            return;
+        }
+
+        // 释放会等待队列落盘，放到后台完成，避免界面卡住
+        _ = logger.DisposeAsync().AsTask().ContinueWith(
+            task => _ = task.Exception,
+            TaskScheduler.Default);
+    }
+
+    private void OnReconnectStatusChanged(object? sender, ReconnectEventArgs e)
+    {
+        _dispatcher.InvokeAsync(() =>
+        {
+            ReconnectStatusText = e.State == ReconnectState.Idle ? string.Empty : e.Message;
+
+            if (!string.IsNullOrWhiteSpace(e.Message))
+            {
+                StatusDetail = e.Message;
+            }
+
+            if (e.State is ReconnectState.Reconnected or ReconnectState.GaveUp)
+            {
+                AddSystemLine(e.Message);
+            }
+        });
+    }
 
     // ---------- 发送 ----------
 
@@ -955,6 +1118,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.LineWrap = LineWrap;
         _settings.LogFontSize = LogFontSize;
 
+        _settings.AutoReconnect = AutoReconnect;
+        _settings.AutoOpenOnStartup = AutoOpenOnStartup;
+        _settings.SaveLogToFile = SaveLogToFile;
+        _settings.SaveRawLog = SaveRawLog;
+        _settings.LogDirectory = LogDirectory;
+
         if (TryBuildSettings(out var serial, out _))
         {
             _settings.LastSerial = serial;
@@ -988,6 +1157,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         SendHex = settings.SendHex;
         SelectedLineEnding = LineEndingOptions.FirstOrDefault(o => o.Value == settings.SendLineEnding) ?? LineEndingOptions[0];
         TimedSendIntervalText = settings.TimedSendIntervalSeconds.ToString("0.##", CultureInfo.InvariantCulture);
+
+        // 日志目录要先于保存开关设置，因为开关变化会立刻用到目录
+        LogDirectory = string.IsNullOrWhiteSpace(settings.LogDirectory)
+            ? LogSessionOptions.DefaultDirectory
+            : settings.LogDirectory;
+        SaveRawLog = settings.SaveRawLog;
+        SaveLogToFile = settings.SaveLogToFile;
+
+        AutoReconnect = settings.AutoReconnect;
+        AutoOpenOnStartup = settings.AutoOpenOnStartup;
     }
 
     private void UpdateThemeButtonText()
@@ -1074,6 +1253,18 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             TimedSendStatusText = $"定时发送中：已发送 {_timedSender.SentCount} 次";
         }
+
+        var logger = _sessionLogger;
+
+        if (logger is not null)
+        {
+            var path = logger.TextFilePath ?? logger.RawFilePath;
+            var name = path is null ? logger.Directory : Path.GetFileName(path);
+
+            LogStatusText = logger.DroppedRecords > 0
+                ? $"日志 {name}：已写入 {ByteSize.Format(logger.WrittenBytes)}，丢弃 {logger.DroppedRecords} 条（磁盘跟不上）"
+                : $"日志 {name}：已写入 {ByteSize.Format(logger.WrittenBytes)}";
+        }
     }
 
     private void AppendToLog(List<DisplayLine> lines)
@@ -1084,6 +1275,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         Log.Append(lines);
+
+        var logger = _sessionLogger;
+
+        if (logger is not null)
+        {
+            foreach (var line in lines)
+            {
+                logger.Log(line);
+            }
+        }
 
         if (!AutoScroll)
         {
@@ -1166,6 +1367,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         _timedSender.SendFailed -= OnTimedSendFailed;
         await _timedSender.DisposeAsync().ConfigureAwait(false);
+
+        _reconnect.StatusChanged -= OnReconnectStatusChanged;
+        await _reconnect.DisposeAsync().ConfigureAwait(false);
+
+        var logger = _sessionLogger;
+        _sessionLogger = null;
+
+        if (logger is not null)
+        {
+            await logger.DisposeAsync().ConfigureAwait(false);
+        }
 
         _transport.StateChanged -= OnTransportStateChanged;
         _transport.BytesReceived -= OnBytesReceived;

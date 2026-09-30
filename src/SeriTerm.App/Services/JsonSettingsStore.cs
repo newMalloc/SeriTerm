@@ -48,6 +48,21 @@ public sealed class AppSettings
     /// <summary>定时发送间隔，秒（M4）。</summary>
     public double TimedSendIntervalSeconds { get; set; } = 1.0;
 
+    /// <summary>将接收保存到文本日志（M7）。</summary>
+    public bool SaveLogToFile { get; set; }
+
+    /// <summary>同时保存原始字节（可重放，M7）。</summary>
+    public bool SaveRawLog { get; set; }
+
+    /// <summary>日志目录；空表示用默认目录（M7）。</summary>
+    public string LogDirectory { get; set; } = string.Empty;
+
+    /// <summary>自动重连（M6）。</summary>
+    public bool AutoReconnect { get; set; } = true;
+
+    /// <summary>启动时自动打开上次的串口（M6）。</summary>
+    public bool AutoOpenOnStartup { get; set; }
+
     /// <summary>显示时间戳列。</summary>
     public bool ShowTimestamp { get; set; } = true;
 

@@ -199,6 +199,16 @@
                                           ToolTip="RTS 信号线状态；使用硬件流控时由驱动接管" />
                             </StackPanel>
 
+                            <CheckBox Content="自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,4"
+                                      ToolTip="链路中断后按 1/2/4/8/10 秒退避自动重连，设备插回来自动恢复" />
+                            <CheckBox Content="启动时自动打开串口" IsChecked="{Binding AutoOpenOnStartup}"
+                                      Margin="0,0,0,6"
+                                      ToolTip="下次启动时自动打开上次使用的串口" />
+
+                            <TextBlock Text="{Binding ReconnectStatusText}" Style="{StaticResource HintText}"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding HasReconnectStatus, Converter={StaticResource BoolToVisibility}}" />
+
                             <Button Style="{StaticResource PrimaryButton}"
                                     Command="{Binding ToggleOpenCommand}"
                                     Content="{Binding OpenButtonText}"
@@ -275,6 +285,34 @@
                             <CheckBox Content="显示时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,0,6" />
                             <CheckBox Content="自动滚动" IsChecked="{Binding AutoScroll}" Margin="0,0,0,8"
                                       ToolTip="滚离底部自动停止，拉回底部自动恢复" />
+
+                            <CheckBox x:Name="SaveLogCheck" Content="将接收保存到文件"
+                                      IsChecked="{Binding SaveLogToFile}" Margin="0,0,0,4"
+                                      ToolTip="实时写入文本日志；中文按当前编码解码" />
+                            <CheckBox Content="同时保存原始字节（可重放）"
+                                      IsChecked="{Binding SaveRawLog}" Margin="0,0,0,6"
+                                      ToolTip="写入 .bin，含方向与时间戳，可用 RawLogReader 读回重放" />
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding LogDirectory}" Style="{StaticResource HintText}"
+                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                           ToolTip="{Binding LogDirectory}" />
+                                <Button Grid.Column="1" Content="选择" Padding="8,1" MinHeight="22" FontSize="11.5"
+                                        Margin="4,0,0,0" Command="{Binding ChooseLogDirectoryCommand}"
+                                        ToolTip="更改日志保存目录" />
+                                <Button Grid.Column="2" Content="打开" Padding="8,1" MinHeight="22" FontSize="11.5"
+                                        Margin="4,0,0,0" Command="{Binding OpenLogDirectoryCommand}"
+                                        ToolTip="在资源管理器中打开日志目录" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding LogStatusText}" Style="{StaticResource HintText}"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding IsLoggingEnabled, Converter={StaticResource BoolToVisibility}}" />
 
                             <Grid>
                                 <Grid.ColumnDefinitions>

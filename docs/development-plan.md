@@ -523,5 +523,20 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 `RecordTransmitted` / `AddSystemLine` 都先检查 `Dispatcher.CheckAccess()`，不在界面线程时
 `InvokeAsync` 切回去，否则定时发送一开就抛跨线程访问异常。
 
+### 11.12 自动重连：不要把"自己造成的 Closed"当成用户关闭
+
+重连尝试失败时，传输层会把状态置为 `Closed`（这是对的）。但监督者如果不加区分地
+在 `Closed` 时取消重连循环，就会**取消掉自己**：表现为第一次重连失败后再也不试了。
+解法：用 `_connecting` 标志标记"这次 Closed 是我自己造成的"，只有非自身原因
+（用户点了关闭）才取消循环。这个 bug 是被"达到最大尝试次数应放弃"这条单测抓出来的。
+
+### 11.13 日志落盘：直接杀进程会丢缓冲
+
+`BufferedLogWriter` 只在写满 32 KB 时主动 Flush，退出时才做最终 Flush。
+因此自动化验证不能"写完就 Kill 进程"——那样文件里什么都没有。
+正确做法是通过界面把"将接收保存到文件"取消勾选（触发 `DisposeAsync` → Flush），
+或者在测试里显式 `await DisposeAsync()`。这一点也提醒了产品行为：异常退出会丢最后一块缓冲。
+
+
 
 

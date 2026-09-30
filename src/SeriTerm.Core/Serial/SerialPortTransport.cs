@@ -66,8 +66,8 @@ public sealed class SerialPortTransport : ISerialTransport
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // 打开前清掉上一次的残留（例如链路故障后用户直接再点"打开"）
-            if (_port is not null)
+            // 打开前清掉上一次的残留（例如链路故障后用户直接再点"打开"，或自动重连）
+            if (_port is not null || _cts is not null || _readerThread is not null)
             {
                 await CleanupCoreAsync().ConfigureAwait(false);
             }
