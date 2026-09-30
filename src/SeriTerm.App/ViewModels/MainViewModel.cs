@@ -119,8 +119,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _timedSender = new TimedSender(SendCurrentPayloadAsync);
         _timedSender.SendFailed += OnTimedSendFailed;
 
-        // 自动重连：传输层只报故障，重连策略由监督者负责
-        _reconnect = new ReconnectSupervisor(_transport);
+        // 自动重连：传输层只报故障，重连策略由监督者负责。
+        //
+        // 注意这里必须显式给 Enabled 赋初值：AutoReconnect 字段默认就是 true，
+        // 若配置文件里也是 true，属性值没有变化 → OnAutoReconnectChanged 不会被调用，
+        // 监督者就会一直是"关"的（界面勾着自动重连却从不重连）。这个坑真的踩过。
+        _reconnect = new ReconnectSupervisor(_transport) { Enabled = AutoReconnect };
         _reconnect.StatusChanged += OnReconnectStatusChanged;
 
         _receiveOptionsDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
@@ -139,6 +143,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _appliedOptions = _processor.Options;
 
         ApplySettingsToUi(_settings);
+
+        // 兜底：配置里的值与字段默认值相同时属性通知不会触发，这里再同步一次
+        _reconnect.Enabled = AutoReconnect;
 
         Log.SearchChanged += (_, _) => UpdateSearchStatus();
 
@@ -925,6 +932,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 AddSystemLine(e.Message);
             }
+
+            // 放弃重连才是真的没救了，这时必须强提示；重连成功不打扰用户
+            if (e.State == ReconnectState.GaveUp)
+            {
+                _notifier.ShowError("自动重连已停止", e.Message);
+            }
         });
     }
 
@@ -1521,7 +1534,23 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 case TransportState.Faulted when !string.IsNullOrWhiteSpace(e.Message):
                     AddSystemLine($"链路中断：{StatusDetail}");
-                    _notifier.ShowError("串口连接中断", e.Message);
+
+                    // 自动重连会接管：只做非阻塞提示。
+                    // 这里绝不能弹模态框——它挡住界面、也让用户以为程序卡死了，而他其实什么都不用做。
+                    if (AutoReconnect)
+                    {
+                        AddSystemLine("已开启自动重连：设备插回后会自动重新打开串口。");
+                    }
+                    else
+                    {
+                        _notifier.ShowError("串口连接中断", e.Message);
+                    }
+
+                    break;
+
+                case TransportState.Open:
+                    // 重连成功也要把上一次的故障说明换掉，否则状态栏会停在"链路故障"的旧文案上
+                    StatusDetail = _transport.CurrentSettings?.ToShortDescription() ?? StatusDetail;
                     break;
 
                 case TransportState.Closed when e.OldState != TransportState.Closed:

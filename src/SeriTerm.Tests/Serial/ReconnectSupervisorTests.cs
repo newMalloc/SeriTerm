@@ -11,6 +11,7 @@ public class ReconnectSupervisorTests
         BaseSeconds = 0.02,
         MaxSeconds = 0.02,
         MaxAttempts = maxAttempts,
+        PresencePollSeconds = 0.02,
     };
 
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)
@@ -74,6 +75,55 @@ public class ReconnectSupervisorTests
 
         Assert.Equal(1, transport.OpenCount);
         Assert.Equal(ReconnectState.Idle, supervisor.State);
+    }
+
+    [Fact]
+    public async Task 设备不在时只等待且不消耗重试次数()
+    {
+        await using var transport = new FakeTransport();
+        var present = false;
+
+        // MaxAttempts = 2：如果"设备不在"被算成失败，这里早就该 GaveUp 了
+        await using var supervisor = new ReconnectSupervisor(transport, FastPolicy(maxAttempts: 2), _ => present)
+        {
+            Enabled = true,
+        };
+
+        await transport.OpenAsync(Settings);
+        transport.RaiseFault("设备被拔出");
+
+        Assert.True(await WaitUntilAsync(() => supervisor.State == ReconnectState.WaitingForPort));
+
+        await Task.Delay(250);
+
+        Assert.Equal(1, transport.OpenCount);
+        Assert.Equal(0, supervisor.Attempts);
+        Assert.NotEqual(ReconnectState.GaveUp, supervisor.State);
+
+        // 设备插回：应当很快自动打开，而不是继续等到退避周期结束
+        present = true;
+
+        Assert.True(await WaitUntilAsync(() => supervisor.State == ReconnectState.Reconnected), "设备插回后没有自动重连");
+        Assert.Equal(2, transport.OpenCount);
+    }
+
+    [Fact]
+    public async Task 等待设备插入的提示不应说成重连失败()
+    {
+        await using var transport = new FakeTransport();
+        await using var supervisor = new ReconnectSupervisor(transport, FastPolicy(), _ => false) { Enabled = true };
+
+        var messages = new List<string>();
+        supervisor.StatusChanged += (_, e) => messages.Add(e.Message);
+
+        await transport.OpenAsync(Settings);
+        transport.RaiseFault("设备被拔出");
+
+        Assert.True(await WaitUntilAsync(() => messages.Count > 0));
+        await Task.Delay(120);
+
+        Assert.Contains(messages, m => m.Contains("等待设备插入"));
+        Assert.DoesNotContain(messages, m => m.Contains("重连失败"));
     }
 
     [Fact]

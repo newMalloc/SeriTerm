@@ -17,6 +17,15 @@ public sealed record ReconnectPolicy
     /// <summary>最大尝试次数；0 表示一直重试。</summary>
     public int MaxAttempts { get; init; }
 
+    /// <summary>
+    /// 设备不在时探测"是否插回"的间隔秒数。
+    /// 这一段用固定短间隔而不是退避：用户插回设备后希望立刻重连，而不是等 10 秒。
+    /// </summary>
+    public double PresencePollSeconds { get; init; } = 0.5;
+
+    /// <summary>探测间隔。</summary>
+    public TimeSpan PresencePollInterval => TimeSpan.FromSeconds(PresencePollSeconds);
+
     /// <summary>取第 <paramref name="attempt"/> 次（从 1 开始）重连前的等待时长。</summary>
     public TimeSpan GetDelay(int attempt)
     {

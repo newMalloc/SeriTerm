@@ -176,8 +176,28 @@ public sealed class ReconnectSupervisor : IAsyncDisposable
 
     private async Task ReconnectLoopAsync(SerialSettings settings, CancellationToken cancellationToken)
     {
-        for (var attempt = 1; !cancellationToken.IsCancellationRequested; attempt++)
+        // 只统计"端口在、但打开失败"的次数。设备还没插回来只算等待，不该消耗重试次数，
+        // 否则拔线放着不管一会儿就会"连续 N 次失败，已停止自动重连"。
+        var attempt = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
         {
+            if (!_isPortPresent(settings.PortName))
+            {
+                SetState(
+                    ReconnectState.WaitingForPort,
+                    attempt,
+                    $"{settings.PortName} 未连接，正在等待设备插入…（插回后自动重新打开）");
+
+                if (!await DelayAsync(Policy.PresencePollInterval, cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                continue;
+            }
+
+            attempt++;
             Attempts = attempt;
             var delay = Policy.GetDelay(attempt);
 
@@ -186,15 +206,12 @@ public sealed class ReconnectSupervisor : IAsyncDisposable
                 attempt,
                 $"{settings.PortName} 已断开，{delay.TotalSeconds:0.#} 秒后尝试第 {attempt} 次重连…");
 
-            try
-            {
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
+            if (!await DelayAsync(delay, cancellationToken).ConfigureAwait(false))
             {
                 return;
             }
 
+            // 等待期间又被拔掉：不算一次失败，回到"等待插入"
             if (!_isPortPresent(settings.PortName))
             {
                 continue;
@@ -231,6 +248,20 @@ public sealed class ReconnectSupervisor : IAsyncDisposable
                 SetState(ReconnectState.GaveUp, attempt, $"连续 {attempt} 次重连失败，已停止自动重连。");
                 return;
             }
+        }
+    }
+
+    /// <summary>等待一段时间；被取消时返回 false。</summary>
+    private static async Task<bool> DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
     }
 

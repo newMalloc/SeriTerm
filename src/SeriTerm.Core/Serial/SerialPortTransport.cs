@@ -27,6 +27,13 @@ public sealed class SerialPortTransport : ISerialTransport
     /// <summary>写超时（毫秒）。</summary>
     private const int WriteTimeoutMs = 2000;
 
+    /// <summary>
+    /// 确认"端口是否还在"时的等待窗口（毫秒）。
+    /// 拔线瞬间注册表 SERIALCOMM 可能还没更新，直接查会把"设备已拔出"误判成"被其它程序占用"，
+    /// 所以第一次查到"还在"时稍等再确认一次。只在故障路径上付出这点代价。
+    /// </summary>
+    private const int PresenceGraceMs = 120;
+
     private readonly ILogger<SerialPortTransport>? _logger;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -96,8 +103,14 @@ public sealed class SerialPortTransport : ISerialTransport
             catch (Exception ex)
             {
                 TryDispose(port);
-                var message = SerialErrorTranslator.DescribeOpenFailure(ex, settings);
-                _logger?.LogWarning(ex, "打开串口 {Port} 失败", settings.PortName);
+
+                // 打开失败也要先问清楚"端口还在不在"，否则拔线和被占用会给出同一句误导性提示
+                var present = await Task
+                    .Run(() => ConfirmPortPresence(settings.PortName), CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                var message = SerialErrorTranslator.DescribeOpenFailure(ex, settings, present);
+                _logger?.LogWarning(ex, "打开串口 {Port} 失败（端口存在={Present}）", settings.PortName, present);
                 SetState(TransportState.Closed, message);
                 throw new SerialLinkException(message, ex);
             }
@@ -268,14 +281,31 @@ public sealed class SerialPortTransport : ISerialTransport
     /// <summary>链路故障：先报状态（触发自动重连），再摘掉句柄释放资源。</summary>
     private void HandleReaderFault(Exception ex)
     {
-        var message = SerialErrorTranslator.DescribeLinkFailure(ex, CurrentSettings);
-        _logger?.LogWarning(ex, "串口链路故障");
+        // 在读取线程（或写失败时的工作线程）上，只阻塞 120 ms 做一次确认，之后状态立刻上报
+        var present = ConfirmPortPresence(CurrentSettings?.PortName);
+        var message = SerialErrorTranslator.DescribeLinkFailure(ex, CurrentSettings, present);
+        _logger?.LogWarning(ex, "串口链路故障（端口存在={Present}）", present);
         SetState(TransportState.Faulted, message);
 
         // 这里刻意不取 _lifecycleGate：避免与用户主动 CloseAsync 相互等待。
         // 只是把句柄摘下来释放，重复 Dispose 已在 TryDispose 里被吞掉。
         var port = Interlocked.Exchange(ref _port, null);
         TryDispose(port);
+    }
+
+    /// <summary>
+    /// 端口现在是否真的还在系统里。查到"在"时等 <see cref="PresenceGraceMs"/> 毫秒再确认一次，
+    /// 用来吸收拔线瞬间的注册表滞后。
+    /// </summary>
+    private static bool ConfirmPortPresence(string? portName)
+    {
+        if (string.IsNullOrWhiteSpace(portName) || !PortEnumerator.IsPortPresent(portName))
+        {
+            return false;
+        }
+
+        Thread.Sleep(PresenceGraceMs);
+        return PortEnumerator.IsPortPresent(portName);
     }
 
     /// <summary>释放句柄并等待读取线程退出；不改变状态（调用方决定置为 Closed 还是保留 Faulted）。</summary>

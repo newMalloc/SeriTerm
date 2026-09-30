@@ -556,6 +556,60 @@ WPF 把按键报成 `Key.ImeProcessed`（`ImeProcessedKey` 也是 `ImeProcessed`
 自动化里要用真实的虚拟键（`keybd_event` 发 VK_RETURN/VK_BACK 等）才能模拟真人按键。
 排查时正是靠"关掉输入法后按键变成 A/T/Return"这一现象，才把两者区分开。
 
+### 11.16 拔线 = UnauthorizedAccessException，与"被其它程序占用"同码不同因
+
+真机反馈：USB-TTL 手动拔掉后，界面报**"COM5 访问被拒绝：设备可能被其它程序抢占"**
+并弹模态框——把一个"你拔了线"的普通事实，说成了"有别的程序在抢你的串口"，
+让人去找一个根本不存在的元凶。
+
+原因：设备被拔出时，`SerialPort` 底层拿到的是 Win32 的 `ERROR_ACCESS_DENIED(5)`，
+于是抛 `UnauthorizedAccessException: Access to the path 'COM5' is denied.`——
+**和"端口被别的程序独占"是同一个异常类型、同一个错误码**。只看异常类型必然误判。
+
+结论与做法：
+- 唯一可靠的判据是**问系统"这个端口现在还枚举得到吗"**（`PortEnumerator.IsPortPresent`，
+  即注册表 `HARDWARE\DEVICEMAP\SERIALCOMM`）。于是新增 `SerialFaultKind`
+  （`DeviceRemoved` / `PortBusy` / `DriverError` / `InvalidPort`），
+  `Classify(ex, portPresent)` 一律要求调用方提供**故障当下**查到的端口存在性；
+- 查询时留 **120 ms 二次确认窗口**：查到"还在"时稍等再查一次，吸收拔线瞬间的注册表滞后，
+  否则仍会误判成"被占用"。实测该窗口并非必需（拔线与"端口消失"同秒生效），但作为保险保留；
+- 错误码判据只认 HResult，不再按消息文本猜（原来的 `ex.Message.Contains("设备")` 之流
+  既不可靠又会误伤，已删除）。
+
+### 11.17 自动重连"勾着却没生效"：属性默认值把变更通知吃掉了
+
+**这是本轮最严重的 bug，只有真机拔插才能暴露。**
+
+```csharp
+private bool _autoReconnect = true;                    // 字段默认 true
+_reconnect = new ReconnectSupervisor(_transport);      // Enabled 默认 false
+// ApplySettingsToUi: AutoReconnect = settings.AutoReconnect;  // 载入值也是 true
+partial void OnAutoReconnectChanged(bool v) => _reconnect.Enabled = v;  // 值没变化 → 从不执行
+```
+
+`[ObservableProperty]` 生成的 setter 在**值未变化时直接返回**，于是源生成的部分方法
+从不被调用，监督者永远是关的。用户界面上"自动重连"是勾选状态（因为默认就是勾的），
+实际拔线后一动不动——比不提供该功能更糟。
+
+教训：**"带默认值的可观察属性"作为另一个组件的开关时，不能只依赖变更通知**。
+修法是构造时显式给初值（`new ReconnectSupervisor(_transport) { Enabled = AutoReconnect }`），
+载入配置后再同步一次兜底。凡"默认开"的功能，冒烟测试必须真的走一遍触发路径——
+单测里 `{ Enabled = true }` 是手工设的，永远碰不到这个坑。
+
+### 11.18 链路故障不要弹模态框
+
+非用户操作直接引发的故障（拔线、驱动报错）弹模态框有三个坏处：
+挡住界面、阻塞键盘、并且暗示"你必须做点什么"——而自动重连开着时用户**什么都不用做**。
+现在只有两种情况弹框：用户主动点"打开"失败（那是他的直接操作），以及**放弃重连**（真的没救了）。
+拔线改用一行日志 + 状态栏文字。
+
+另外两条随之修正的小问题：
+- 重连等待设备时**不计入重试次数**。否则拔线放着不管一会儿就会"连续 N 次失败，已停止自动重连"——
+  而设备没插回来并不是失败；
+- 设备不在时用**固定 0.5 秒轮询**而不是退避：原来每次都要等完退避（上限 10 秒）才检查端口，
+  插回后最坏要等 10 秒才恢复。现在插回后约 1 秒重连。
+
+
 
 
 
