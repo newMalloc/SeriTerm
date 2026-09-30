@@ -23,7 +23,7 @@ public sealed class ReceiveProcessor
     /// <summary>重刷已有行时使用的独立解码器。</summary>
     private StatefulTextDecoder _reformatDecoder;
 
-    private GapFrameSplitter _splitter;
+    private IFrameSplitter _splitter;
     private long _sequence;
 
     public ReceiveProcessor(ReceiveOptions options)
@@ -32,7 +32,7 @@ public sealed class ReceiveProcessor
         _rxDecoder = new StatefulTextDecoder(Options.EncodingName);
         _txDecoder = new StatefulTextDecoder(Options.EncodingName);
         _reformatDecoder = new StatefulTextDecoder(Options.EncodingName);
-        _splitter = new GapFrameSplitter(TimeSpan.FromMilliseconds(Options.AutoFrameGapMilliseconds));
+        _splitter = CreateSplitter(Options);
     }
 
     public ReceiveOptions Options { get; private set; }
@@ -41,18 +41,22 @@ public sealed class ReceiveProcessor
     public int PendingByteCount => _splitter.PendingByteCount;
 
     /// <summary>
-    /// 应用新设置。变更断帧间隔前会先把挂起数据吐出来，避免这部分数据丢失。
+    /// 应用新设置。断帧方式/间隔/分隔符变化时，会先把挂起数据吐出来，避免这段数据永远不显示。
     /// </summary>
     public void ApplyOptions(ReceiveOptions options, DateTime wallClock, List<DisplayLine> output)
     {
         var normalized = (options ?? new ReceiveOptions()).Normalize();
-        var gapChanged = normalized.AutoFrameGapMilliseconds != Options.AutoFrameGapMilliseconds;
 
-        if (gapChanged)
+        var framingChanged = normalized.Framing != Options.Framing
+            || normalized.AutoFrameGapMilliseconds != Options.AutoFrameGapMilliseconds
+            || !string.Equals(normalized.DelimiterText, Options.DelimiterText, StringComparison.Ordinal);
+
+        if (framingChanged)
         {
-            _splitter.FlushIdle(long.MaxValue, _frames);
+            _frames.Clear();
+            _splitter.FlushAll(_frames);
             Materialize(_frames, LineDirection.Rx, wallClock, Stopwatch.GetTimestamp(), output);
-            _splitter = new GapFrameSplitter(TimeSpan.FromMilliseconds(normalized.AutoFrameGapMilliseconds));
+            _splitter = CreateSplitter(normalized);
         }
 
         Options = normalized;
@@ -76,14 +80,14 @@ public sealed class ReceiveProcessor
 
         _frames.Clear();
 
-        if (Options.AutoFrame)
+        if (Options.Framing == FramingMode.None)
         {
-            _splitter.Append(data, timestamp, _frames);
+            // 不断帧：每块数据直接作为一帧
+            _frames.Add(new RawFrame(timestamp, data.ToArray()));
         }
         else
         {
-            // 不自动断帧：每块数据直接作为一行
-            _frames.Add(new RawFrame(timestamp, data.ToArray()));
+            _splitter.Append(data, timestamp, _frames);
         }
 
         Materialize(_frames, LineDirection.Rx, wallClock, timestamp, output);
@@ -93,6 +97,11 @@ public sealed class ReceiveProcessor
     public void FlushIdle(long now, DateTime wallClock, List<DisplayLine> output)
     {
         ArgumentNullException.ThrowIfNull(output);
+
+        if (Options.Framing == FramingMode.None)
+        {
+            return;
+        }
 
         _frames.Clear();
         _splitter.FlushIdle(now, _frames);
@@ -125,15 +134,19 @@ public sealed class ReceiveProcessor
     }
 
     /// <summary>切换 HEX/编码后重刷已有一行的显示文本（不复用流式解码状态）。</summary>
-    public string Reformat(byte[] raw)
+    public string Reformat(DisplayLine line)
     {
+        ArgumentNullException.ThrowIfNull(line);
+
+        var payload = line.DisplayBytes;
+
         if (Options.HexDisplay)
         {
-            return HexCodec.Format(raw);
+            return HexCodec.Format(payload);
         }
 
         _reformatDecoder.SetEncoding(Options.EncodingName);
-        return Sanitize(_reformatDecoder.Decode(raw, flush: true));
+        return Sanitize(_reformatDecoder.Decode(payload, flush: true));
     }
 
     /// <summary>清空挂起数据并重置解码状态。</summary>
@@ -143,6 +156,18 @@ public sealed class ReceiveProcessor
         _rxDecoder.Reset();
         _txDecoder.Reset();
         _reformatDecoder.Reset();
+    }
+
+    private static IFrameSplitter CreateSplitter(ReceiveOptions options)
+    {
+        if (options.Framing == FramingMode.Delimiter
+            && BytePatternParser.TryParse(options.DelimiterText, out var delimiter, out _))
+        {
+            return new DelimiterFrameSplitter(delimiter);
+        }
+
+        // 分隔符写错时退回空闲断帧，保证有数据显示而不是静默失效
+        return new GapFrameSplitter(TimeSpan.FromMilliseconds(options.AutoFrameGapMilliseconds));
     }
 
     /// <summary>
@@ -163,15 +188,24 @@ public sealed class ReceiveProcessor
 
         foreach (var frame in frames)
         {
+            // 只渲染有效载荷：分隔符断帧时行尾的 CRLF 不算内容
+            var payload = frame.DisplayBytes;
+
             var text = Options.HexDisplay
-                ? HexCodec.Format(frame.Data)
-                : Sanitize(_rxDecoder.Decode(frame.Data, flush: false));
+                ? HexCodec.Format(payload)
+                : Sanitize(_rxDecoder.Decode(payload, flush: false));
 
             var lag = nowTicks > frame.StartTimestamp
                 ? TimeSpan.FromSeconds((nowTicks - frame.StartTimestamp) / (double)Stopwatch.Frequency)
                 : TimeSpan.Zero;
 
-            output.Add(new DisplayLine(++_sequence, wallClock - lag, direction, frame.Data, text));
+            output.Add(new DisplayLine(
+                ++_sequence,
+                wallClock - lag,
+                direction,
+                frame.Data,
+                text,
+                frame.DisplayLength));
         }
 
         frames.Clear();

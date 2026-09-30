@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using SeriTerm.Core.Framing;
+using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 
 namespace SeriTerm.App.Services;
@@ -28,11 +30,23 @@ public sealed class AppSettings
     /// <summary>接收区文本编码名（M2）。</summary>
     public string EncodingName { get; set; } = "UTF-8";
 
-    /// <summary>自动断帧开关（M3）。</summary>
-    public bool AutoFrame { get; set; } = true;
+    /// <summary>断帧方式（M3）。</summary>
+    public FramingMode Framing { get; set; } = FramingMode.Gap;
 
     /// <summary>自动断帧的空闲间隔，毫秒。</summary>
     public int AutoFrameGapMilliseconds { get; set; } = 20;
+
+    /// <summary>分隔符断帧使用的分隔符写法。</summary>
+    public string DelimiterText { get; set; } = "\\r\\n";
+
+    /// <summary>发送时是否按十六进制解析输入（M4）。</summary>
+    public bool SendHex { get; set; }
+
+    /// <summary>发送内容末尾附加的换行符（M4）。</summary>
+    public LineEnding SendLineEnding { get; set; } = LineEnding.CrLf;
+
+    /// <summary>定时发送间隔，秒（M4）。</summary>
+    public double TimedSendIntervalSeconds { get; set; } = 1.0;
 
     /// <summary>显示时间戳列。</summary>
     public bool ShowTimestamp { get; set; } = true;

@@ -71,6 +71,12 @@ public sealed class GapFrameSplitter : IFrameSplitter
         }
     }
 
+    public void FlushAll(List<RawFrame> output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        Flush(output);
+    }
+
     public void Reset()
     {
         _pending.Clear();

@@ -495,4 +495,33 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
   不依赖焦点，更适合自动化。查找控件优先用 `AutomationId`（即 XAML 的 `x:Name`），比中文 `Name` 稳。
 - 异常退出的自动化会留下占用串口与 exe 的僵尸进程，必须清理后再构建/测试。
 
+### 11.8 UIA 自动化：不要缓存"刚出现"的窗口元素
+
+窗口句柄（HWND）比 WPF 内容出现得早。如果在这一刻抓取窗口的 UIA 元素并长期持有，
+拿到的往往是**旧式 HWND 代理**，它的子树永远是空的（`FindAll` 返回 0 个元素），
+表现为"等待控件超时"却百思不得其解。
+正确做法：每次从 `RootElement` 按进程号重新枚举，而不是缓存窗口元素。
+
+另外 `FindFirst(PropertyCondition)` 在 WPF 上也不可靠（某些 peer 的 Name/AutomationId
+是延迟计算的，条件匹配可能查不到，稍后枚举又能看到）。统一用"枚举 + 手动比较"。
+
+### 11.9 其它两个小坑
+
+- PowerShell 5.1 的 `Set-Content -Encoding UTF8` 会写 BOM；给程序读的 JSON 配置必须用
+  `UTF8Encoding($false)` 写**不带 BOM**，否则 `JsonSerializer` 会因 BOM 解析失败而静默退回默认配置。
+- PowerShell 里 `[char]0x53D1 + [char]0x9001` 是**整数加法**，不是字符串拼接；
+  带 BOM 的脚本直接用中文字面量即可。
+
+### 11.10 界面易用性：不要把输入框绑成"未打开就禁用"
+
+发送内容输入框最初绑定了 `IsEnabled="{Binding IsOpen}"`，结果用户（和自动化）在打开串口前
+无法先准备好要发的内容，只能"先连上再打字"。正确做法是：输入框始终可编辑，只禁用"发送"动作。
+
+### 11.11 定时发送的线程边界
+
+`TimedSender` 跑在线程池线程上，而写日志会碰绑定到界面的集合。因此
+`RecordTransmitted` / `AddSystemLine` 都先检查 `Dispatcher.CheckAccess()`，不在界面线程时
+`InvokeAsync` 切回去，否则定时发送一开就抛跨线程访问异常。
+
+
 

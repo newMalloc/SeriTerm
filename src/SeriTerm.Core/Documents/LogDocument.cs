@@ -108,8 +108,10 @@ public sealed class LogDocument
     /// 用新的渲染方式重刷所有行（切换 HEX/编码后调用），只发一次 Reset。
     /// 系统提示行（没有原始字节）跳过，否则会被刷成空字符串。
     /// </summary>
-    public void Reformat(Func<byte[], string> formatter)
+    public void Reformat(Func<DisplayLine, string> formatter)
     {
+        ArgumentNullException.ThrowIfNull(formatter);
+
         using (Lines.Defer())
         {
             foreach (var line in Lines)
@@ -119,7 +121,7 @@ public sealed class LogDocument
                     continue;
                 }
 
-                line.Text = formatter(line.Raw);
+                line.Text = formatter(line);
             }
         }
 

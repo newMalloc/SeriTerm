@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.IO.Ports;
 using System.Text;
@@ -11,7 +12,9 @@ using Microsoft.Extensions.Logging;
 using SeriTerm.App.Common;
 using SeriTerm.App.Services;
 using SeriTerm.Core.Documents;
+using SeriTerm.Core.Framing;
 using SeriTerm.Core.Pipeline;
+using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 using SeriTerm.Core.Text;
 
@@ -36,6 +39,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>暂停显示期间最多缓冲的行数，超出部分丢弃（避免内存无上限增长）。</summary>
     private const int MaxPausedBufferLines = 10_000;
 
+    /// <summary>断帧方式下拉项。</summary>
+    private static readonly (FramingMode Value, string Display)[] FramingModeOptions =
+    [
+        (FramingMode.Gap, "空闲间隔断帧"),
+        (FramingMode.Delimiter, "分隔符断帧"),
+        (FramingMode.None, "不断帧（每块一行）"),
+    ];
+
     private readonly ISerialTransport _transport;
     private readonly PortFriendlyNameProvider _friendlyNames;
     private readonly IUserNotifier _notifier;
@@ -51,6 +62,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly List<DisplayLine> _pendingLines = [];
     private readonly List<DisplayLine> _scratch = [];
     private readonly List<DisplayLine> _pausedBuffer = [];
+
+    private readonly TimedSender _timedSender;
+
+    /// <summary>断帧间隔/分隔符输入防抖：避免每敲一个字符就重建断帧器并把挂起数据吐出来。</summary>
+    private readonly DispatcherTimer _receiveOptionsDebounce;
+
+    private CancellationTokenSource? _sendFileCts;
 
     private ReceiveOptions _appliedOptions;
 
@@ -84,7 +102,23 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         ParityOptions = [.. SerialSettings.ParityOptions.Select(o => new Choice<Parity>(o.Value, o.Display))];
         StopBitsOptions = [.. SerialSettings.StopBitsOptions.Select(o => new Choice<StopBits>(o.Value, o.Display))];
         HandshakeOptions = [.. SerialSettings.HandshakeOptions.Select(o => new Choice<Handshake>(o.Value, o.Display))];
+        FramingOptions = [.. FramingModeOptions.Select(o => new Choice<FramingMode>(o.Value, o.Display))];
+        LineEndingOptions = [.. SendPayloadBuilder.LineEndingOptions.Select(o => new Choice<LineEnding>(o.Value, o.Display))];
         EncodingOptions = StatefulTextDecoder.SupportedEncodingNames;
+
+        // 定时发送器：发送动作复用界面上的发送内容与当前设置
+        _timedSender = new TimedSender(SendCurrentPayloadAsync);
+        _timedSender.SendFailed += OnTimedSendFailed;
+
+        _receiveOptionsDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(400),
+        };
+        _receiveOptionsDebounce.Tick += (_, _) =>
+        {
+            _receiveOptionsDebounce.Stop();
+            ApplyReceiveOptions();
+        };
 
         // 注意顺序：_processor 必须先建好，因为 ApplySettingsToUi 改动接收设置时会触发
         // ApplyReceiveOptions，那里要用到 _processor。
@@ -133,6 +167,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public IReadOnlyList<Choice<Handshake>> HandshakeOptions { get; }
 
+    public IReadOnlyList<Choice<FramingMode>> FramingOptions { get; }
+
+    public IReadOnlyList<Choice<LineEnding>> LineEndingOptions { get; }
+
     public IReadOnlyList<string> EncodingOptions { get; }
 
     // ---------- 串口参数 ----------
@@ -167,21 +205,60 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _hexDisplay;
 
     [ObservableProperty]
-    private bool _autoFrame = true;
+    [NotifyPropertyChangedFor(nameof(IsGapFraming))]
+    [NotifyPropertyChangedFor(nameof(IsDelimiterFraming))]
+    private Choice<FramingMode>? _selectedFraming;
 
     [ObservableProperty]
     private string _autoFrameGapText = "20";
 
     [ObservableProperty]
+    private string _delimiterText = "\\r\\n";
+
+    [ObservableProperty]
     private string _selectedEncodingName = "UTF-8";
 
     [ObservableProperty]
-    private bool _showTimestamp = true;
+    private bool _showTimestamp;
 
-    // ---------- 发送设置（M1 最小入口，M4 完善） ----------
+    public bool IsGapFraming => SelectedFraming?.Value == FramingMode.Gap;
+
+    public bool IsDelimiterFraming => SelectedFraming?.Value == FramingMode.Delimiter;
+
+    // ---------- 发送设置 ----------
 
     [ObservableProperty]
     private string _sendText = "SeriTerm loopback test";
+
+    [ObservableProperty]
+    private bool _sendHex;
+
+    [ObservableProperty]
+    private Choice<LineEnding>? _selectedLineEnding;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TimedSendButtonText))]
+    private bool _timedSendEnabled;
+
+    [ObservableProperty]
+    private string _timedSendIntervalText = "1.0";
+
+    [ObservableProperty]
+    private string _timedSendStatusText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SendFileButtonText))]
+    private bool _isSendingFile;
+
+    [ObservableProperty]
+    private double _sendFileProgress;
+
+    [ObservableProperty]
+    private string _sendFileStatusText = string.Empty;
+
+    public string TimedSendButtonText => TimedSendEnabled ? "停止定时" : "定时发送";
+
+    public string SendFileButtonText => IsSendingFile ? "取消发送" : "发送文件";
 
     // ---------- 界面状态 ----------
 
@@ -516,28 +593,26 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 ? "无匹配"
                 : $"第 {Log.CurrentMatchIndex + 1} / 共 {Log.MatchCount} 条";
 
-    // ---------- 发送（M1 最小入口） ----------
+    // ---------- 发送 ----------
 
     [RelayCommand]
     private async Task SendAsync()
     {
+        if (!TryBuildSendPayload(out var payload, out var error))
+        {
+            _notifier.ShowError("发送内容不合法", error);
+            return;
+        }
+
         if (!IsOpen)
         {
             _notifier.ShowInfo("提示", "请先打开串口。");
             return;
         }
 
-        var payload = Encoding.UTF8.GetBytes(SendText + "\r\n");
-
-        // 先取时间：回环时数据可能在本机写完成之前就回来了，
-        // 用发送前的时刻记 Tx 行，日志顺序才符合直觉（Tx 在回显的 Rx 之前）
-        var sentAt = DateTime.Now;
-
         try
         {
-            await _transport.WriteAsync(payload).ConfigureAwait(true);
-            Interlocked.Add(ref _txBytes, payload.Length);
-            RecordTransmitted(payload, sentAt);
+            await WriteAndRecordAsync(payload).ConfigureAwait(true);
         }
         catch (SerialLinkException ex)
         {
@@ -545,20 +620,237 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    [RelayCommand]
+    private void ToggleTimedSend()
+    {
+        if (!TimedSendEnabled)
+        {
+            if (!IsOpen)
+            {
+                _notifier.ShowInfo("提示", "请先打开串口。");
+                return;
+            }
+
+            if (!TryBuildSendPayload(out _, out var contentError))
+            {
+                _notifier.ShowError("发送内容不合法", contentError);
+                return;
+            }
+
+            if (!TryGetTimedSendInterval(out _, out var intervalError))
+            {
+                _notifier.ShowError("定时发送间隔不合法", intervalError);
+                return;
+            }
+        }
+
+        TimedSendEnabled = !TimedSendEnabled;
+    }
+
+    partial void OnTimedSendEnabledChanged(bool value)
+    {
+        if (value)
+        {
+            _timedSender.Interval = TimeSpan.FromSeconds(GetTimedSendSeconds());
+            _timedSender.Start();
+            AddSystemLine($"定时发送已开始：每 {_timedSender.Interval.TotalSeconds:0.##} 秒一次。");
+            return;
+        }
+
+        _ = _timedSender.StopAsync();
+        TimedSendStatusText = string.Empty;
+        AddSystemLine("定时发送已停止。");
+    }
+
+    partial void OnTimedSendIntervalTextChanged(string value)
+    {
+        if (!TimedSendEnabled || !TryGetTimedSendInterval(out var seconds, out _))
+        {
+            return;
+        }
+
+        _ = RestartTimedSendAsync(seconds);
+    }
+
+    private async Task RestartTimedSendAsync(double seconds)
+    {
+        await _timedSender.StopAsync().ConfigureAwait(true);
+        _timedSender.Interval = TimeSpan.FromSeconds(seconds);
+        _timedSender.Start();
+    }
+
+    [RelayCommand]
+    private async Task SendFileAsync()
+    {
+        if (IsSendingFile)
+        {
+            _sendFileCts?.Cancel();
+            return;
+        }
+
+        if (!IsOpen)
+        {
+            _notifier.ShowInfo("提示", "请先打开串口。");
+            return;
+        }
+
+        var path = _fileDialogs.AskOpenFile("所有文件 (*.*)|*.*", "选择要发送的文件");
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var fileName = Path.GetFileName(path);
+        _sendFileCts = new CancellationTokenSource();
+        IsSendingFile = true;
+        SendFileProgress = 0;
+        SendFileStatusText = $"正在发送 {fileName}…";
+
+        try
+        {
+            await using var stream = File.OpenRead(path);
+
+            var progress = new Progress<double>(ratio =>
+            {
+                SendFileProgress = ratio * 100;
+                SendFileStatusText = $"正在发送 {fileName}… {ratio * 100:0}%";
+            });
+
+            var sent = await StreamSendJob.SendAsync(
+                stream,
+                WriteFileChunkAsync,
+                StreamSendJob.DefaultChunkSize,
+                TimeSpan.Zero,
+                progress,
+                _sendFileCts.Token).ConfigureAwait(true);
+
+            AddSystemLine($"文件发送完成：{fileName}（{sent} 字节）");
+            SendFileStatusText = $"已发送 {sent} 字节";
+        }
+        catch (OperationCanceledException)
+        {
+            AddSystemLine($"文件发送已取消：{fileName}");
+            SendFileStatusText = "已取消";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "发送文件失败");
+            _notifier.ShowError("发送文件失败", ex.Message);
+            SendFileStatusText = "发送失败";
+        }
+        finally
+        {
+            IsSendingFile = false;
+            _sendFileCts?.Dispose();
+            _sendFileCts = null;
+        }
+    }
+
+    /// <summary>定时发送的发送动作（在后台线程执行，写日志时会自动切回界面线程）。</summary>
+    private async ValueTask SendCurrentPayloadAsync(CancellationToken cancellationToken)
+    {
+        if (!TryBuildSendPayload(out var payload, out var error))
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        await WriteAndRecordAsync(payload, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask WriteAndRecordAsync(byte[] payload, CancellationToken cancellationToken = default)
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("串口尚未打开。");
+        }
+
+        // 先取时间：回环时数据可能在本机写完成之前就回来了，
+        // 用发送前的时刻记 Tx 行，日志顺序才符合直觉（Tx 在回显的 Rx 之前）
+        var sentAt = DateTime.Now;
+
+        await _transport.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+        Interlocked.Add(ref _txBytes, payload.Length);
+        RecordTransmitted(payload, sentAt);
+    }
+
+    /// <summary>发送文件时的分块写出。逐块写日志会瞬间刷屏，因此只在开始/结束时留系统提示。</summary>
+    private async ValueTask WriteFileChunkAsync(byte[] chunk, CancellationToken cancellationToken)
+    {
+        await _transport.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
+        Interlocked.Add(ref _txBytes, chunk.Length);
+    }
+
+    private bool TryBuildSendPayload(out byte[] payload, out string error)
+        => SendPayloadBuilder.TryBuild(
+            SendText,
+            SendHex,
+            SelectedLineEnding?.Value ?? LineEnding.CrLf,
+            SelectedEncodingName,
+            out payload,
+            out error);
+
+    private bool TryGetTimedSendInterval(out double seconds, out string error)
+    {
+        error = string.Empty;
+
+        if (!double.TryParse(TimedSendIntervalText?.Trim(), out seconds) || seconds <= 0)
+        {
+            seconds = 0;
+            error = "间隔必须是大于 0 的数字（秒）。";
+            return false;
+        }
+
+        if (seconds < 0.05)
+        {
+            seconds = 0.05;
+        }
+
+        return true;
+    }
+
+    private double GetTimedSendSeconds()
+        => TryGetTimedSendInterval(out var seconds, out _) ? seconds : 1.0;
+
+    private void OnTimedSendFailed(object? sender, Exception exception)
+    {
+        _dispatcher.InvokeAsync(() =>
+        {
+            if (TimedSendEnabled)
+            {
+                TimedSendEnabled = false;
+            }
+
+            var message = exception is SerialLinkException serial ? serial.Message : exception.Message;
+            StatusDetail = "定时发送已停止。";
+            AddSystemLine($"定时发送失败已停止：{message}");
+            _notifier.ShowError("定时发送失败", message);
+        });
+    }
+
     // ---------- 接收设置联动 ----------
 
     partial void OnHexDisplayChanged(bool value) => ApplyReceiveOptions();
 
-    partial void OnAutoFrameChanged(bool value) => ApplyReceiveOptions();
+    partial void OnSelectedFramingChanged(Choice<FramingMode>? value) => ApplyReceiveOptions();
 
-    partial void OnAutoFrameGapTextChanged(string value) => ApplyReceiveOptions();
+    partial void OnAutoFrameGapTextChanged(string value) => ScheduleReceiveOptionsApply();
+
+    partial void OnDelimiterTextChanged(string value) => ScheduleReceiveOptionsApply();
 
     partial void OnSelectedEncodingNameChanged(string value) => ApplyReceiveOptions();
 
+    private void ScheduleReceiveOptionsApply()
+    {
+        _receiveOptionsDebounce.Stop();
+        _receiveOptionsDebounce.Start();
+    }
+
     private ReceiveOptions BuildReceiveOptions() => new()
     {
-        AutoFrame = AutoFrame,
+        Framing = SelectedFraming?.Value ?? FramingMode.Gap,
         AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20,
+        DelimiterText = DelimiterText,
         HexDisplay = HexDisplay,
         EncodingName = SelectedEncodingName,
         ShowTimestamp = ShowTimestamp,
@@ -567,6 +859,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ApplyReceiveOptions()
     {
         var options = BuildReceiveOptions();
+
+        if (options.Framing == FramingMode.Delimiter
+            && !BytePatternParser.TryParse(options.DelimiterText, out _, out var delimiterError))
+        {
+            StatusDetail = $"分隔符写法无效（{delimiterError}）已临时按空闲间隔断帧。";
+        }
+
         List<DisplayLine>? flushed = null;
 
         lock (_pipelineLock)
@@ -646,8 +945,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.AutoScroll = AutoScroll;
         _settings.HexDisplay = HexDisplay;
         _settings.EncodingName = SelectedEncodingName;
-        _settings.AutoFrame = AutoFrame;
+        _settings.Framing = SelectedFraming?.Value ?? FramingMode.Gap;
         _settings.AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20;
+        _settings.DelimiterText = DelimiterText;
+        _settings.SendHex = SendHex;
+        _settings.SendLineEnding = SelectedLineEnding?.Value ?? LineEnding.CrLf;
+        _settings.TimedSendIntervalSeconds = GetTimedSendSeconds();
         _settings.ShowTimestamp = ShowTimestamp;
         _settings.LineWrap = LineWrap;
         _settings.LogFontSize = LogFontSize;
@@ -673,13 +976,18 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         RtsEnable = serial.RtsEnable;
 
         HexDisplay = settings.HexDisplay;
-        AutoFrame = settings.AutoFrame;
+        SelectedFraming = FramingOptions.FirstOrDefault(o => o.Value == settings.Framing) ?? FramingOptions[0];
         AutoFrameGapText = settings.AutoFrameGapMilliseconds.ToString();
+        DelimiterText = settings.DelimiterText;
         SelectedEncodingName = EncodingOptions.Contains(settings.EncodingName) ? settings.EncodingName : "UTF-8";
         ShowTimestamp = settings.ShowTimestamp;
         AutoScroll = settings.AutoScroll;
         LineWrap = settings.LineWrap;
         LogFontSize = settings.LogFontSize < 9 ? 13 : settings.LogFontSize;
+
+        SendHex = settings.SendHex;
+        SelectedLineEnding = LineEndingOptions.FirstOrDefault(o => o.Value == settings.SendLineEnding) ?? LineEndingOptions[0];
+        TimedSendIntervalText = settings.TimedSendIntervalSeconds.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
     private void UpdateThemeButtonText()
@@ -761,6 +1069,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         RxText = ByteSize.Format(Interlocked.Read(ref _rxBytes));
         TxText = ByteSize.Format(Interlocked.Read(ref _txBytes));
+
+        if (TimedSendEnabled)
+        {
+            TimedSendStatusText = $"定时发送中：已发送 {_timedSender.SentCount} 次";
+        }
     }
 
     private void AppendToLog(List<DisplayLine> lines)
@@ -795,6 +1108,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void RecordTransmitted(byte[] payload, DateTime sentAt)
     {
+        // 定时发送在后台线程触发，而写日志要碰绑定到界面的集合，必须切回界面线程
+        if (!_dispatcher.CheckAccess())
+        {
+            _dispatcher.InvokeAsync(() => RecordTransmitted(payload, sentAt));
+            return;
+        }
+
         List<DisplayLine> lines = [];
 
         lock (_pipelineLock)
@@ -814,6 +1134,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void AddSystemLine(string message)
     {
+        if (!_dispatcher.CheckAccess())
+        {
+            _dispatcher.InvokeAsync(() => AddSystemLine(message));
+            return;
+        }
+
         List<DisplayLine> lines = [];
 
         lock (_pipelineLock)
@@ -834,6 +1160,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _uiTimer.Stop();
+        _receiveOptionsDebounce.Stop();
+        _sendFileCts?.Cancel();
+        _sendFileCts?.Dispose();
+
+        _timedSender.SendFailed -= OnTimedSendFailed;
+        await _timedSender.DisposeAsync().ConfigureAwait(false);
+
         _transport.StateChanged -= OnTransportStateChanged;
         _transport.BytesReceived -= OnBytesReceived;
         await _transport.DisposeAsync().ConfigureAwait(false);

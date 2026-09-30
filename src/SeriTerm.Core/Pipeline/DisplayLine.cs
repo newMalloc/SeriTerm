@@ -28,13 +28,20 @@ public sealed class DisplayLine : INotifyPropertyChanged
     private bool _isMatch;
     private bool _isCurrentMatch;
 
-    public DisplayLine(long sequence, DateTime timestamp, LineDirection direction, byte[] raw, string text)
+    public DisplayLine(
+        long sequence,
+        DateTime timestamp,
+        LineDirection direction,
+        byte[] raw,
+        string text,
+        int? displayLength = null)
     {
         Sequence = sequence;
         Timestamp = timestamp;
         Direction = direction;
         Raw = raw;
         Text = text;
+        DisplayLength = Math.Clamp(displayLength ?? raw.Length, 0, raw.Length);
     }
 
     /// <summary>单调递增序号（清空显示后仍继续递增，用于稳定标识）。</summary>
@@ -46,6 +53,12 @@ public sealed class DisplayLine : INotifyPropertyChanged
 
     /// <summary>原始字节，保留下来以便切换 HEX/文本显示时重新渲染。</summary>
     public byte[] Raw { get; }
+
+    /// <summary>其中属于有效载荷、应该显示的长度（分隔符断帧时不含行尾分隔符）。</summary>
+    public int DisplayLength { get; }
+
+    /// <summary>应该显示的字节。</summary>
+    public ReadOnlySpan<byte> DisplayBytes => Raw.AsSpan(0, DisplayLength);
 
     /// <summary>显示文本（HEX 串或解码后的文本）。</summary>
     public string Text { get; set; }

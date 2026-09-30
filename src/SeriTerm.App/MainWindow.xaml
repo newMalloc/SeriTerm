@@ -235,17 +235,41 @@
 
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="断帧:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding FramingOptions}"
+                                          SelectedItem="{Binding SelectedFraming}"
+                                          ToolTip="空闲间隔断帧按时间切分；分隔符断帧按 CRLF 等字符切分，报文间隔再长也准确" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <CheckBox Content="自动断帧" IsChecked="{Binding AutoFrame}"
-                                          ToolTip="空闲超过设定时间即认为一帧结束，一帧显示一行" />
-                                <TextBox Grid.Column="1" Margin="8,0,4,0"
-                                         Text="{Binding AutoFrameGapText, UpdateSourceTrigger=PropertyChanged}"
-                                         IsEnabled="{Binding AutoFrame}" />
+                                <TextBlock Text="间隔:" Style="{StaticResource FieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding AutoFrameGapText}"
+                                         IsEnabled="{Binding IsGapFraming}"
+                                         ToolTip="空闲超过该毫秒数即认为一帧结束" />
                                 <TextBlock Grid.Column="2" Text="ms" Style="{StaticResource FieldLabel}"
-                                           Margin="0" />
+                                           Margin="4,0,0,0" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="分隔符:" Style="{StaticResource FieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding DelimiterText}"
+                                         IsEnabled="{Binding IsDelimiterFraming}"
+                                         ToolTip="支持 \r \n \t \xNN 转义，或 hex:0D 0A；也可直接写普通文本如 OK" />
                             </Grid>
 
                             <CheckBox Content="显示时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,0,6" />
@@ -272,13 +296,71 @@
                     <Border Style="{StaticResource SectionPanel}">
                         <StackPanel>
                             <TextBlock Text="发送设置" Style="{StaticResource SectionHeader}" />
-                            <TextBox Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsOpen}" Margin="0,0,0,6" />
+
+                            <TextBox x:Name="SendTextBox"
+                                     Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,0,6"
+                                     MinHeight="46" MaxHeight="90" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     ToolTip="十六进制发送时填写 01 02 FF 这类内容；未打开串口时也可以先准备好内容" />
+
+                            <CheckBox x:Name="SendHexCheck" Content="十六进制发送" IsChecked="{Binding SendHex}"
+                                      Margin="0,0,0,6"
+                                      ToolTip="勾选后按十六进制解析输入（宽容格式：空格、逗号、0x 前缀都可）" />
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="行尾:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding LineEndingOptions}"
+                                          SelectedItem="{Binding SelectedLineEnding}"
+                                          ToolTip="文本发送时自动附加的换行符；发二进制帧时选“无”" />
+                            </Grid>
+
                             <Button Command="{Binding SendCommand}" Content="发送" Height="30"
-                                    IsEnabled="{Binding IsOpen}" />
-                            <TextBlock Style="{StaticResource HintText}" Margin="0,7,0,0">
-                                M1 临时入口：固定 UTF-8 编码 + CRLF 行尾。<LineBreak />
-                                HEX 发送、行尾可选、定时发送、文件发送在 M4 实现。
+                                    IsEnabled="{Binding IsOpen}" Margin="0,0,0,6" />
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="定时:" Style="{StaticResource FieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding TimedSendIntervalText}"
+                                         ToolTip="定时发送间隔（秒），最小 0.05" />
+                                <TextBlock Grid.Column="2" Text="秒" Style="{StaticResource FieldLabel}"
+                                           Margin="4,0,0,0" />
+                            </Grid>
+
+                            <Button Command="{Binding ToggleTimedSendCommand}"
+                                    Content="{Binding TimedSendButtonText}"
+                                    Height="28" Margin="0,0,0,6"
+                                    ToolTip="按设定间隔循环发送当前内容" />
+
+                            <TextBlock Text="{Binding TimedSendStatusText}" Style="{StaticResource HintText}"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding TimedSendEnabled, Converter={StaticResource BoolToVisibility}}" />
+
+                            <Button Command="{Binding SendFileCommand}"
+                                    Content="{Binding SendFileButtonText}"
+                                    Height="28" Margin="0,0,0,6"
+                                    ToolTip="把文件内容分块写入串口；发送中可点击取消" />
+
+                            <ProgressBar Value="{Binding SendFileProgress}" Minimum="0" Maximum="100"
+                                         Height="6" Margin="0,0,0,4"
+                                         Visibility="{Binding IsSendingFile, Converter={StaticResource BoolToVisibility}}" />
+
+                            <TextBlock Text="{Binding SendFileStatusText}" Style="{StaticResource HintText}"
+                                       Margin="0,0,0,6" />
+
+                            <TextBlock Style="{StaticResource HintText}">
+                                文本发送按当前编码转字节；HEX 发送解析 01 02 FF 这类内容。<LineBreak />
+                                发送内容会以橙色 Tx 行记入日志（发送文件时只记开始与结束，避免刷屏）。
                             </TextBlock>
                         </StackPanel>
                     </Border>
