@@ -7,7 +7,13 @@
     <RootNamespace>SeriTerm.App</RootNamespace>
     <AssemblyName>SeriTerm</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\seriterm.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 同时作为资源，供窗口标题栏使用 -->
+    <Resource Include="Assets\seriterm.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />

@@ -15,6 +15,7 @@ using SeriTerm.Core.Documents;
 using SeriTerm.Core.Framing;
 using SeriTerm.Core.Logging;
 using SeriTerm.Core.Pipeline;
+using SeriTerm.Core.Presets;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 using SeriTerm.Core.Terminal;
@@ -320,6 +321,159 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _reconnectStatusText = string.Empty;
 
     public bool HasReconnectStatus => !string.IsNullOrEmpty(ReconnectStatusText);
+
+    // ---------- 配置预设（M8） ----------
+
+    /// <summary>已保存的配置预设；下拉选择即套用。</summary>
+    public ObservableCollection<SerialPreset> Presets { get; } = [];
+
+    [ObservableProperty]
+    private SerialPreset? _selectedPreset;
+
+    /// <summary>套用预设期间抑制"选择变化 → 再套用"的回环。</summary>
+    private bool _applyingPreset;
+
+    [RelayCommand]
+    private void SavePreset()
+    {
+        if (!TryBuildSettings(out var serial, out var error))
+        {
+            _notifier.ShowError("参数不合法", error);
+            return;
+        }
+
+        var name = _notifier.AskText("保存预设", "预设名称：", SerialPreset.BuildDefaultName(serial));
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var preset = BuildPreset(name, serial);
+        var updated = SerialPreset.Upsert([.. Presets], preset);
+
+        _applyingPreset = true;
+        try
+        {
+            Presets.Clear();
+            foreach (var item in updated)
+            {
+                Presets.Add(item);
+            }
+
+            SelectedPreset = Presets.First(p => string.Equals(p.Name, preset.Name, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _applyingPreset = false;
+        }
+
+        _settings.Presets = [.. Presets];
+        StatusDetail = $"已保存预设：{preset.Name}";
+        AddSystemLine($"已保存配置预设：{preset.Name}");
+    }
+
+    [RelayCommand]
+    private void DeletePreset()
+    {
+        var current = SelectedPreset;
+
+        if (current is null)
+        {
+            _notifier.ShowInfo("提示", "请先在预设下拉框里选择一个预设。");
+            return;
+        }
+
+        var remaining = SerialPreset.Remove([.. Presets], current.Name, out var removed);
+
+        if (!removed)
+        {
+            return;
+        }
+
+        _applyingPreset = true;
+        try
+        {
+            Presets.Clear();
+            foreach (var item in remaining)
+            {
+                Presets.Add(item);
+            }
+
+            SelectedPreset = null;
+        }
+        finally
+        {
+            _applyingPreset = false;
+        }
+
+        _settings.Presets = [.. Presets];
+        StatusDetail = $"已删除预设：{current.Name}";
+        AddSystemLine($"已删除配置预设：{current.Name}");
+    }
+
+    partial void OnSelectedPresetChanged(SerialPreset? value)
+    {
+        if (value is null || _applyingPreset)
+        {
+            return;
+        }
+
+        ApplyPreset(value);
+    }
+
+    private void ApplyPreset(SerialPreset preset)
+    {
+        _applyingPreset = true;
+        try
+        {
+            var serial = preset.Serial;
+
+            BaudRateText = serial.BaudRate.ToString();
+            DataBits = DataBitOptions.Contains(serial.DataBits) ? serial.DataBits : 8;
+            SelectedParity = ParityOptions.FirstOrDefault(o => o.Value == serial.Parity) ?? ParityOptions[0];
+            SelectedStopBits = StopBitsOptions.FirstOrDefault(o => o.Value == serial.StopBits) ?? StopBitsOptions[0];
+            SelectedHandshake = HandshakeOptions.FirstOrDefault(o => o.Value == serial.Handshake) ?? HandshakeOptions[0];
+            DtrEnable = serial.DtrEnable;
+            RtsEnable = serial.RtsEnable;
+
+            var port = Ports.FirstOrDefault(p => string.Equals(p.PortName, serial.PortName, StringComparison.OrdinalIgnoreCase));
+
+            if (port is not null)
+            {
+                SelectedPort = port;
+            }
+
+            SelectedFraming = FramingOptions.FirstOrDefault(o => o.Value == preset.Framing) ?? FramingOptions[0];
+            AutoFrameGapText = preset.AutoFrameGapMilliseconds.ToString();
+            DelimiterText = preset.DelimiterText;
+            SelectedEncodingName = EncodingOptions.Contains(preset.EncodingName) ? preset.EncodingName : "UTF-8";
+            HexDisplay = preset.HexDisplay;
+            SelectedLineEnding = LineEndingOptions.FirstOrDefault(o => o.Value == preset.SendLineEnding) ?? LineEndingOptions[0];
+            SendHex = preset.SendHex;
+        }
+        finally
+        {
+            _applyingPreset = false;
+        }
+
+        var suffix = IsOpen ? "（串口已打开，重新打开后生效）" : string.Empty;
+        StatusDetail = $"已套用预设：{preset.Name}{suffix}";
+        AddSystemLine($"已套用配置预设：{preset.Name}{suffix}");
+    }
+
+    private SerialPreset BuildPreset(string name, SerialSettings serial) => new()
+    {
+        Name = name,
+        Serial = serial,
+        Framing = SelectedFraming?.Value ?? FramingMode.Gap,
+        AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20,
+        DelimiterText = DelimiterText,
+        EncodingName = SelectedEncodingName,
+        HexDisplay = HexDisplay,
+        SendLineEnding = SelectedLineEnding?.Value ?? LineEnding.CrLf,
+        SendHex = SendHex,
+    };
 
     // ---------- 界面状态 ----------
 
@@ -1279,6 +1433,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.SaveLogToFile = SaveLogToFile;
         _settings.SaveRawLog = SaveRawLog;
         _settings.LogDirectory = LogDirectory;
+        _settings.Presets = [.. Presets];
 
         if (TryBuildSettings(out var serial, out _))
         {
@@ -1325,6 +1480,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         AutoOpenOnStartup = settings.AutoOpenOnStartup;
         TerminalLocalEcho = settings.TerminalLocalEcho;
         TerminalBackspaceSendsDel = settings.TerminalBackspaceSendsDel;
+
+        // 预设只加载不套用：启动时的连接参数来自 LastSerial
+        Presets.Clear();
+        foreach (var preset in settings.Presets)
+        {
+            Presets.Add(preset);
+        }
     }
 
     private void UpdateThemeButtonText()

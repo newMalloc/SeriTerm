@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SeriTerm.Core.Framing;
+using SeriTerm.Core.Presets;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 
@@ -68,6 +69,9 @@ public sealed class AppSettings
 
     /// <summary>终端模式退格发送 0x7F 还是 0x08（M5）。</summary>
     public bool TerminalBackspaceSendsDel { get; set; } = true;
+
+    /// <summary>配置预设（★ 收藏，M8）。</summary>
+    public List<SerialPreset> Presets { get; set; } = [];
 
     /// <summary>显示时间戳列。</summary>
     public bool ShowTimestamp { get; set; } = true;

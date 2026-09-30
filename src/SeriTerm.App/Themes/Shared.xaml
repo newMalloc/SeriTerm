@@ -385,6 +385,33 @@
         </Style.Triggers>
     </Style>
 
+    <!-- ============ 进度条（发送文件用） ============ -->
+    <Style TargetType="ProgressBar">
+        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4">
+                        <Grid>
+                            <Rectangle x:Name="PART_Track" />
+                            <Rectangle x:Name="PART_Indicator"
+                                       Fill="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Left"
+                                       RadiusX="4" RadiusY="4" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============ 分隔条 ============ -->
     <Style TargetType="GridSplitter">
         <Setter Property="Background" Value="{DynamicResource PanelBorderBrush}" />

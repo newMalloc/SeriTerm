@@ -5,6 +5,7 @@
         xmlns:core="clr-namespace:SeriTerm.Core.Serial;assembly=SeriTerm.Core"
         xmlns:controls="clr-namespace:SeriTerm.App.Controls"
         Title="SeriTerm 串口调试助手"
+        Icon="Assets/seriterm.ico"
         Height="800" Width="1280" MinHeight="520" MinWidth="920"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBackgroundBrush}"
@@ -111,6 +112,26 @@
                     <Border Style="{StaticResource SectionPanel}">
                         <StackPanel>
                             <TextBlock Text="端口设置" Style="{StaticResource SectionHeader}" />
+
+                            <Grid Margin="0,0,0,5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="30" />
+                                    <ColumnDefinition Width="30" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="预设:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="PresetCombo" Grid.Column="1"
+                                          ItemsSource="{Binding Presets}"
+                                          SelectedItem="{Binding SelectedPreset}"
+                                          ToolTip="选择即套用该预设的连接与显示配置" />
+                                <Button Grid.Column="2" Margin="4,0,0,0" Padding="0" FontSize="13"
+                                        Command="{Binding SavePresetCommand}" Content="★"
+                                        ToolTip="把当前配置保存为预设（同名覆盖）" />
+                                <Button Grid.Column="3" Margin="4,0,0,0" Padding="0" FontSize="12"
+                                        Command="{Binding DeletePresetCommand}" Content="✕"
+                                        ToolTip="删除选中的预设" />
+                            </Grid>
 
                             <Grid Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>

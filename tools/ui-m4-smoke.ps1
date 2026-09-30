@@ -116,7 +116,30 @@ function Wait-ForControl {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
+    # 原子查询条件：一次服务端查找，比"枚举所有元素再逐个读属性"稳得多。
+    # 日志区高频刷新时枚举很容易撞上失效元素而整体失败，这里先走原子查询。
+    $processCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $ProcessId)
+    $targetCondition = if ($AutomationId) {
+        New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $AutomationId)
+    }
+    else {
+        New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $Text)
+    }
+    $atomicCondition = New-Object System.Windows.Automation.AndCondition($processCondition, $targetCondition)
+
     while ((Get-Date) -lt $deadline) {
+        try {
+            $found = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants, $atomicCondition)
+
+            if ($null -ne $found) { return $found }
+        }
+        catch [System.Windows.Automation.ElementNotAvailableException] {
+        }
+
         $elements = @(Get-ProcessElements -ProcessId $ProcessId)
 
         foreach ($element in $elements) {
