@@ -1,8 +1,12 @@
-# 发布单文件绿色版（自包含，目标机器无需安装 .NET 运行时）。
+﻿# 发布单文件绿色版（自包含，目标机器无需安装 .NET 运行时）。
 #
 # 用法：
 #   pwsh -File tools/publish.ps1                 # 单文件自包含（推荐分发用，约 64 MB）
 #   pwsh -File tools/publish.ps1 -FrameworkDependent   # 精简版约 1.3 MB，需目标机装 .NET 桌面运行时
+#
+# 产物文件名带上版本号（SeriTerm-<版本>-<RID>[-fd].exe），版本号不是在这里写死的：
+# 从刚发布出来的 exe 自己的版本资源里读（MSBuild 把 Directory.Build.props 的 <Version> 写了进去），
+# 所以"exe 里显示的版本"和"文件名上的版本"永远一致，改版本只要改那一处。
 #
 # 注意：不要开 PublishTrimmed —— WPF 不支持裁剪，会得到运行时找不到类型的错误。
 # 注意：单文件压缩只在自包含时可用。框架依赖 + EnableCompressionInSingleFile 会被 SDK 直接拒绝
@@ -23,7 +27,15 @@ $project = 'src/SeriTerm.App/SeriTerm.App.csproj'
 
 if (-not (Test-Path $project)) { throw "找不到项目文件：$project" }
 
-if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
+if (Test-Path $OutputDir) {
+    try {
+        Remove-Item $OutputDir -Recurse -Force
+    }
+    catch {
+        # 最常见的原因不是权限：有人正开着这个目录里的 exe（发布版就放在这里）
+        throw "清空输出目录失败：$OutputDir。若有正在运行的 SeriTerm（或其它程序占着这里的文件），请先关掉它再试。原始错误：$($_.Exception.Message)"
+    }
+}
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $selfContained = if ($FrameworkDependent) { 'false' } else { 'true' }
@@ -54,11 +66,28 @@ if ($LASTEXITCODE -ne 0) { throw "发布失败，退出码 $LASTEXITCODE" }
 $exe = Join-Path $OutputDir 'SeriTerm.exe'
 if (-not (Test-Path $exe)) { throw "发布产物里没有 SeriTerm.exe" }
 
-$info = Get-Item $exe
+# 版本号取自产物自身：产品版本形如 "1.0.0+<提交号>"，取 "+" 之前那段
+$version = ($exe | Get-Item).VersionInfo.ProductVersion
+$version = ($version -split '\+')[0].Trim()
+
+if ([string]::IsNullOrWhiteSpace($version)) {
+    $version = ($exe | Get-Item).VersionInfo.FileVersion
+    Write-Output "== 警告：产物没有产品版本，退回文件版本 $version"
+}
+
+if ([string]::IsNullOrWhiteSpace($version)) { throw "没能从产物里读出版本号：$exe" }
+
+$flavor = if ($FrameworkDependent) { '-fd' } else { '' }
+$named = Join-Path $OutputDir "SeriTerm-$version-$Runtime$flavor.exe"
+
+Move-Item -LiteralPath $exe -Destination $named -Force
+
+$info = Get-Item $named
 $sizeMb = [Math]::Round($info.Length / 1MB, 1)
 
 Write-Output ''
 Write-Output "== 产物：$($info.FullName)"
+Write-Output "== 文件名带版本号（读自 exe 的版本资源）：$($info.Name)"
 Write-Output "== 大小：$sizeMb MB（$($info.Length) 字节）"
 Write-Output "== 目录内容："
 Get-ChildItem $OutputDir | ForEach-Object { Write-Output ("   {0}  {1:N1} MB" -f $_.Name, ($_.Length / 1MB)) }

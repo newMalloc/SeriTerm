@@ -29,14 +29,24 @@ jobs:
       - name: 生成发布说明
         shell: pwsh
         run: |
-          $exe = 'artifacts/publish/SeriTerm.exe'
-          $size = (Get-Item $exe).Length
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          # 产物文件名带版本号：SeriTerm-<版本>-<RID>.exe（版本读自 exe 自身的版本资源）
+          $exe = Get-ChildItem artifacts/publish/SeriTerm-*.exe | Select-Object -First 1
+          if (-not $exe) { throw '发布产物里没有带版本号的 exe（SeriTerm-<版本>-<RID>.exe）' }
+
+          # 标签与产物版本必须一致，否则下载下来的文件名会撒谎。不一致时改 Directory.Build.props 的 <Version>。
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          if (-not $exe.Name.StartsWith("SeriTerm-$tag-", [StringComparison]::Ordinal)) {
+            throw "标签 $env:GITHUB_REF_NAME 与产物版本对不上：产物是 $($exe.Name)。请先把 Directory.Build.props 的 <Version> 改成 $tag 再打标签。"
+          }
+
+          $size = $exe.Length
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          $mb = [math]::Round($size / 1MB, 1)
           Set-Content -Path release-notes.md -Encoding utf8NoBOM -Value @(
             '单文件绿色版（win-x64、自包含）：目标机器无需安装 .NET 运行时，下载后直接双击运行。',
             '',
-            '- 文件：SeriTerm.exe',
-            "- 大小：$size 字节（$([math]::Round($size / 1MB, 1)) MB）",
+            "- 文件：$($exe.Name)（文件名里的 $tag 就是程序内显示的版本号）",
+            "- 大小：$size 字节（$mb MB）",
             "- SHA256：$hash",
             '',
             '首次启动需要自解压到临时目录，会比常规安装版稍慢一点。',
@@ -47,4 +57,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME artifacts/publish/SeriTerm.exe --title "SeriTerm $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+        run: |
+          $exe = Get-ChildItem artifacts/publish/SeriTerm-*.exe | Select-Object -First 1
+          gh release create $env:GITHUB_REF_NAME $exe.FullName --title "SeriTerm $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

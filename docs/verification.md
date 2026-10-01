@@ -191,12 +191,27 @@ SHA256 `536922B7…`），由 `tools/make-icon.ps1 -CropMode Subject` 生成 `se
 - 探针只读使用者的配置（`ProbeSettingsStore.Save` 拒绝写入）：运行期间
   `%AppData%\SeriTerm\settings.json` 的 `LastWriteTime` 保持不变。
 
+## 发布产物命名（文件名带版本号）
+
+`tools/publish.ps1` 现在把产物改名成 `SeriTerm-<版本>-<RID>[-fd].exe`，版本读自产物自身的版本资源
+（属性页里的"产品版本"，形如 `1.0.0+<提交号>`，取 `+` 之前那段），所以文件名与 exe 里显示的版本必然一致。实测：
+
+- 自包含：`artifacts/publish-v3/SeriTerm-1.0.0-win-x64.exe` 67,125,068 字节（64.0 MB）；
+  框架依赖：`artifacts/publish-v3-fd/SeriTerm-1.0.0-win-x64-fd.exe` 1,693,029 字节（1.6 MB）。
+- 改名之后 exe 自身没变：`ProductVersion = 1.0.0+aeb20646…`、`ProductName = SeriTerm 串口调试助手`、
+  32×32 图标仍能抽出。
+- 改名不会把程序弄坏：把探针按同样参数发成单文件（72,442,529 字节）、改名成
+  `aboutprobe-9.9.9-win-x64.exe` 后运行，84 行输出、`RESULT|通过`。
+- `release.yml` 的标签一致性检查（`v*` 去掉 `v` 必须等于产物版本，否则失败并提示先改 `<Version>`）
+  把判断原样在本地跑过正/反两个用例：`v1.0.0` 通过、`v1.0.1` 按预期失败。
+- ⚠️ 未实测：`release.yml` 只能在 GitHub Actions 上跑；框架依赖版的重命名没有实际运行过
+  （真程序启动会去开 COM5、关窗时写使用者的 `settings.json`），它与自包含版是同一条 apphost + 单文件机制。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。
 - 查找浮层遮挡范围：浮层右边界距日志区右边 48 px、顶边界距上边 24 px；无收藏、未搜索时整块折叠。
 - 收藏多于 6 条时列表在 176 px 内自行滚动，浮层不会一直往下长。
-- 发布产物（本轮使用者开着旧实例占住 `artifacts/publish/SeriTerm.exe` 与 COM5，新版发布在侧目录）
-  `artifacts/publish-v2/SeriTerm.exe` 单文件 64.0 MB（67,125,070 字节；自包含 + 压缩，`PublishTrimmed` 必须关闭：WPF 不支持裁剪）。
+- 发布产物文件名带版本号（见上一节）：自包含 `SeriTerm-1.0.0-win-x64.exe` 单文件 64.0 MB（67,125,068 字节；自包含 + 压缩，`PublishTrimmed` 必须关闭：WPF 不支持裁剪）。
   换成设计稿图标后比上一版大 256 KB（图标本身从 10 KB 变成 97 KB，且它同时进 Win32 图标资源与 WPF 资源包）；
   加「关于」窗口后再多几 KB。

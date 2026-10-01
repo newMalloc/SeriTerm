@@ -1333,3 +1333,51 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
 绿色版不会退化成"16px 放大"。探针全程只读使用者的 `settings.json`（探针的 `ProbeSettingsStore.Save` 直接拒绝写入），
 实测探针运行期间该文件 `LastWriteTime` 未变。
 
+### 11.33 发布产物文件名带上版本号
+
+**需求（使用者原话）**：编译生成的 exe 要带上版本号。
+
+先量了现状再问：exe 里**其实已经有**版本资源（文件版本 `1.0.0.0`、产品版本 `1.0.0+<提交号>`、
+产品名 `SeriTerm 串口调试助手`），缺的是**文件名**——本地 `artifacts\publish\` 和 GitHub Release 上传的资源名
+都是不带版本的 `SeriTerm.exe`。使用者选的是"只要文件名带版本"，属性页保持现状。
+
+**做法**（`tools/publish.ps1`）
+
+- 发布完成后从**产物自己的版本资源**里读版本（产品版本形如 `1.0.0+<提交号>`，取 `+` 之前那段），
+  再把 `SeriTerm.exe` 改名成 `SeriTerm-<版本>-<RID>[-fd].exe`。版本号不在这里写死：
+  读的是刚发出来的那个 exe，所以"文件名上的版本"与"属性页里显示的版本"必然一致，
+  改版本只要改 `Directory.Build.props` 的 `<Version>` 一处。框架依赖版加 `-fd` 后缀与自包含版区分。
+- 顺手把"清空输出目录"失败的报错改清楚了：那个目录里的 exe 十有八九正被人开着，
+  而原来的错误只有一句 `Access to the path … is denied`。本项目刚亲身踩过（使用者开着
+  `artifacts\publish\SeriTerm.exe`，脚本第一步就被拒，看着像权限问题其实是占用）。
+- 给 `publish.ps1` 补上 **UTF-8 BOM**（仓库约定：`tools/*.ps1` 要用带 BOM 的 UTF-8，
+  否则 Windows PowerShell 5.1 会把中文当 ANSI 读）。之前只有 `make-icon.ps1` 有 BOM，`publish.ps1` 漏了；
+  一直用 `pwsh`/CI 跑所以没暴露。
+
+**做法**（`.github/workflows/release.yml`）
+
+- Release 资源直接用带版本的文件名（`gh release create` 拿文件名当资产名），发布说明里也写上，
+  并说明"文件名里的版本就是程序内显示的版本号"。
+- 新增**标签与版本一致性检查**：`v*` 标签去掉 `v` 之后必须与产物文件名里的版本相同，否则直接失败，
+  提示"先把 `Directory.Build.props` 的 `<Version>` 改成 X 再打标签"。没有这一条，
+  标签 `v1.0.1` 配一个版本还是 `1.0.0` 的产物，就会发出一个文件名撒谎的 Release。
+
+**实测**
+
+```
+自包含 ：artifacts\publish-v3\SeriTerm-1.0.0-win-x64.exe      67,125,068 字节（64.0 MB）
+框架依赖：artifacts\publish-v3-fd\SeriTerm-1.0.0-win-x64-fd.exe  1,693,029 字节（1.6 MB）
+重命名之后 exe 自身没变：ProductVersion 1.0.0+aeb20646…、ProductName SeriTerm 串口调试助手、
+                        32×32 图标仍可从 exe 里抽出
+改名不会把程序弄坏：把探针按同样参数发成单文件（72,442,529 字节），改名成 aboutprobe-9.9.9-win-x64.exe
+                    后运行，84 行输出、RESULT|通过
+标签一致性检查：把 release.yml 里的判断原样在本地跑正/反两个用例——GITHUB_REF_NAME=v1.0.0 通过，
+                v1.0.1 按预期失败并给出"先改 <Version>"的提示
+tools/ 下的 UI 脚本一律用 -ExePath 传路径，没有任何一个写死 artifacts\publish\SeriTerm.exe，不用跟着改
+```
+
+**没验到的**：release.yml 本身只能在 GitHub Actions 上跑，本地只验了它那两段 PowerShell 判断；
+框架依赖版的重命名**没有实际运行**过（要 .NET 桌面运行时，而且真程序一启动就会去开 COM5、
+关窗时写使用者的 `settings.json`，不适合拿真程序去试）——它与自包含版是同一条 apphost + 单文件机制。
+
+
