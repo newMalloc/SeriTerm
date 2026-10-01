@@ -89,7 +89,9 @@ matched characters are highlighted individually:
 ### UI
 
 - Dark / light themes, switchable at runtime;
-- Custom-drawn title bar (follows the theme) and window background blur (can be turned off).
+- Custom-drawn title bar (follows the theme) and window background blur (can be turned off);
+- An **About** button at the right end of the title bar (or press <kbd>F1</kbd>): version, commit, runtime, license and
+  links to the GitHub repository / releases / docs, plus one-click copy of the version block for bug reports.
 
 ## Requirements
 
@@ -157,7 +159,9 @@ src/
     Documents/                   # Log document (storage / eviction / search) and batched-notification collection
   SeriTerm.App/                  # WPF presentation layer
     Assets/                      # Application icon (design source PNG + the ICO generated from it)
-    Services/                    # Theming, settings store, user prompts, device friendly names, file dialogs, IME
+    MainWindow.xaml              # Main window: custom title bar + settings left / log & send right
+    AboutWindow.xaml             # About window (version, commit, runtime, GitHub links)
+    Services/                    # Theming, settings store, user prompts, device friendly names, file dialogs, IME, version info
     ViewModels/                  # MainViewModel and friends
     Controls/                    # LogView: virtualized log + auto-scroll + search overlay
     Themes/                      # Shared.xaml + Dark.xaml + Light.xaml

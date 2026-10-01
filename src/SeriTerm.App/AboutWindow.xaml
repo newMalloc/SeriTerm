@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「关于」窗口。刻意不显示系统标题栏（WindowStyle=None + WindowChrome）：
+  Windows 10 上系统标题栏不跟随深浅主题，本程序的主窗口早就改成自绘，
+  小窗口再挂一条白条就露馅了。标题栏高度同样取 34，与主窗口一致。
+
+  所有版本/链接文字都在代码后置里从 AppInfo 取，这里不写死版本号与网址
+  （免得将来升版本、换仓库时漏改一处）。
+-->
+<Window x:Class="SeriTerm.App.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关于 SeriTerm 串口调试助手"
+        AutomationProperties.Name="关于 SeriTerm"
+        Width="470"
+        SizeToContent="Height"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource ForegroundBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        FontSize="13"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="34"
+                      ResizeBorderThickness="0"
+                      CornerRadius="0"
+                      GlassFrameThickness="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Border BorderBrush="{DynamicResource WindowBorderBrush}" BorderThickness="1">
+        <DockPanel>
+
+            <!-- ===== 自绘标题栏 ===== -->
+            <Border DockPanel.Dock="Top" Height="34"
+                    Background="{DynamicResource TitleBarBackgroundBrush}">
+                <DockPanel LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Left" Text="关于" Margin="10,0,0,0"
+                               FontSize="12.5" VerticalAlignment="Center" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource CaptionCloseButton}"
+                            Click="OnCloseClick" AutomationProperties.Name="关闭" ToolTip="关闭">
+                        <Path Data="M 0.5,0.5 L 9.5,9.5 M 9.5,0.5 L 0.5,9.5" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </DockPanel>
+            </Border>
+
+            <StackPanel Margin="18,16,18,14">
+
+                <!-- ===== 图标 + 名称 ===== -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 图标帧由代码挑：默认帧是 16×16，直接拉到 64 会糊，见 AboutWindow.xaml.cs -->
+                    <Image x:Name="AppIcon" Grid.Column="0" Source="Assets/seriterm.ico"
+                           Width="64" Height="64" VerticalAlignment="Top"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+
+                    <StackPanel Grid.Column="1" Margin="14,2,0,0">
+                        <TextBlock Text="SeriTerm 串口调试助手" FontSize="16" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="Windows 串口调试助手（C# / WPF / .NET 8）"
+                                   Style="{StaticResource HintText}" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- ===== 版本、提交、运行时、许可 ===== -->
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="版本" Style="{StaticResource FieldLabel}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="VersionText" Margin="0,0,0,4"
+                               FontWeight="SemiBold" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="提交" Style="{StaticResource FieldLabel}"
+                               x:Name="CommitLabel" />
+                    <!-- 等宽字体：提交号是十六进制，用比例字体看着像乱码 -->
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CommitText" Margin="0,0,0,4"
+                               FontFamily="Consolas, Cascadia Mono, Microsoft YaHei UI" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="运行时" Style="{StaticResource FieldLabel}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="RuntimeText" Margin="0,0,0,4"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="许可" Style="{StaticResource FieldLabel}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="LicenseText" TextWrapping="Wrap" />
+                </Grid>
+
+                <TextBlock x:Name="ThirdPartyText" Style="{StaticResource HintText}" Margin="0,12,0,0" />
+
+                <!-- ===== GitHub 链接 ===== -->
+                <!-- 用按钮而不是 Hyperlink：Hyperlink 的默认配色来自系统色，
+                     深色主题下是难以阅读的深蓝，而且点击热区只有文字本身；
+                     按钮还能 Tab 到、回车触发。 -->
+                <WrapPanel Margin="0,14,0,0">
+                    <Button x:Name="RepositoryButton" Content="GitHub 仓库"
+                            Click="OnOpenRepositoryClick" Margin="0,0,6,4" />
+                    <Button x:Name="ReleasesButton" Content="发布版下载"
+                            Click="OnOpenReleasesClick" Margin="0,0,6,4" />
+                    <Button x:Name="ReadmeButton" Content="使用说明"
+                            Click="OnOpenReadmeClick" Margin="0,0,6,4" />
+                    <Button x:Name="PlanButton" Content="开发文档"
+                            Click="OnOpenPlanClick" Margin="0,0,0,4" />
+                </WrapPanel>
+
+                <!-- ===== 底部操作 ===== -->
+                <!-- 用 Grid 而不是"按钮 + 横向 StackPanel"：横向 StackPanel 给子元素无限宽，
+                     状态文字（打开失败时会带上整个网址）不会换行，会把「关闭」挤出窗口。
+                     中间那列是星号列，文字在这里才会自动折行。 -->
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" x:Name="CopyButton" Content="复制版本信息" Click="OnCopyVersionClick"
+                            VerticalAlignment="Center"
+                            ToolTip="把版本、提交、运行时与仓库地址复制到剪贴板（反馈问题时贴这一段）" />
+                    <TextBlock Grid.Column="1" x:Name="StatusHint" Style="{StaticResource HintText}"
+                               Margin="8,0,8,0" Visibility="Collapsed" />
+
+                    <Button Grid.Column="2" Content="关闭" MinWidth="76"
+                            Click="OnCloseClick" IsDefault="True" IsCancel="True" />
+                </Grid>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</Window>

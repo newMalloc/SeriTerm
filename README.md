@@ -72,7 +72,9 @@ Windows 串口调试助手（C# / WPF / .NET 8）。面向嵌入式、单片机�
 ### 界面
 
 - 深 / 浅两套主题，运行中即时切换；
-- 自绘标题栏（跟随主题）+ 窗口背景模糊（可关闭）。
+- 自绘标题栏（跟随主题）+ 窗口背景模糊（可关闭）；
+- 标题栏右上角「关于」（或按 <kbd>F1</kbd>）：版本号、提交号、运行时、许可与 GitHub 仓库 / 发布版 / 文档链接，
+  一键复制版本信息（提 issue 时贴这一段就够）。
 
 ## 环境要求
 
@@ -136,7 +138,9 @@ src/
     Documents/                   # 日志文档（存储 / 淘汰 / 搜索）与批量通知集合
   SeriTerm.App/                  # WPF 表现层
     Assets/                      # 应用图标（设计稿 PNG + 由它生成的 ICO）
-    Services/                    # 主题、配置存储、用户提示、设备友好名、文件对话框、输入法控制
+    MainWindow.xaml              # 主窗口：自绘标题栏 + 左设置 / 右日志发送
+    AboutWindow.xaml             # 「关于」窗口（版本、提交、运行时、GitHub 链接）
+    Services/                    # 主题、配置存储、用户提示、设备友好名、文件对话框、输入法控制、版本信息
     ViewModels/                  # MainViewModel 等
     Controls/                    # LogView：虚拟化日志 + 自动滚动 + 查找浮层
     Themes/                      # Shared.xaml + Dark.xaml + Light.xaml

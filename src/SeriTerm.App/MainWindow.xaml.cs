@@ -123,6 +123,12 @@ public partial class MainWindow : Window
                 _viewModel.CloseSearchCommand.Execute(null);
                 e.Handled = true;
                 return;
+
+            // F1 = 关于。终端模式下不受影响：F1 不在 TryHandleTerminalKey 处理的键里
+            case Key.F1:
+                ShowAbout();
+                e.Handled = true;
+                return;
         }
 
         base.OnPreviewKeyDown(e);
@@ -305,6 +311,11 @@ public partial class MainWindow : Window
         => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>「关于」窗口。每次点都新建：它只是一次性的小对话框，没必要缓存。</summary>
+    private void OnAboutClick(object sender, RoutedEventArgs e) => ShowAbout();
+
+    private void ShowAbout() => new AboutWindow { Owner = this }.ShowDialog();
 
     // ---------- 背景模糊 ----------
 

@@ -1228,10 +1228,69 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
 `artifacts\publish-fd\SeriTerm.exe` 1,684,837 字节，两者抽出的 32px 图标与新 ICO 的 32px 帧**最大像素差均为 0**
 （发布前两者抽出的都是旧图标，与旧 ICO 差 0）。
 
+### 11.32 标题栏加「关于」：版本号从程序集属性取，图标不能直接用默认帧
 
+**需求（使用者原话）**：页面合适的位置增加一个「关于」按钮，点击进去可以看到当前的版本号、GitHub 跳转等核心信息。
 
+**位置**：列了三个候选（底部状态栏右侧 / 标题栏左侧紧挨应用名 / 左侧设置栏底部新增一节）让使用者选，
+选中的是**标题栏右上角、切换深色按钮的右边**。实现上夹在"主题开关"与那条竖分隔线之间：
+分隔线的作用是把右边三个窗口按钮圈成一组，必须紧挨着它们；"这个程序自己是谁"的入口留在左边一组。
+按钮复用 `CaptionButton` 样式（44×32、悬停铺底色、`WindowChrome.IsHitTestVisibleInChrome=True`），
+文字用「关于」而不是图标——旁边两个外观开关都是图标，再加一个 ⓘ 会被当成第三个显示开关。
+补了 <kbd>F1</kbd>：`MainWindow.OnPreviewKeyDown` 的 switch 里加一条，终端模式不受影响（F1 不在终端按键表里）。
 
+**对话框**（`AboutWindow.xaml` + `.cs`，470×360）
 
+- 自绘标题栏，和主窗口一样是 `WindowStyle=None` + `WindowChrome`：Windows 10 的系统标题栏不跟随深浅主题，
+  挂一条白条就露馅。模态（`ShowDialog`）、`Owner` 为主窗口、`ShowInTaskbar=False`。
+- 信息全部来自新的 `Services/AppInfo.cs`，**界面里没有写死的版本号**：版本读程序集上的
+  `AssemblyInformationalVersionAttribute`（也就是 `Directory.Build.props` 里的 `<Version>`），
+  再把 MSBuild 拼在 `+` 后面的提交号拆出来单独显示成短号（7 位，等宽字体），鼠标悬停给出完整号。
+  提 issue 要贴的那段文本由 `AppInfo.BuildCopyText()` 生成，带完整提交号、运行时与仓库地址。
+- **图标帧要自己挑**：WPF 解 ICO 给的默认帧是**第 0 帧**，而 ICO 里的帧按尺寸升序排列，第 0 帧是 16×16，
+  直接 `Width=64 Height=64` 就是拿 16px 放大——糊。`UpdateIconFrame()` 按"当前 DPI 下真要多少物理像素"
+  从 `BitmapFrame.Decoder.Frames` 里选最接近的一帧，打平时取大的（缩小比放大清晰）；`Loaded` 与
+  `OnDpiChanged` 各调一次。150% 缩放下 64 DIP = 96 px，64 与 128 打平 → 选 128。
+  之所以不另做一张 PNG 资源：ICO 本就在资源包里，挑帧零体积成本（另塞 256px PNG 会让发布体积再涨几十上百 KB）。
+- GitHub 链接用普通按钮而不是 `Hyperlink`：Hyperlink 的默认配色走系统色，深色主题下是难以阅读的深蓝，
+  点击热区只有文字本身，也不进 Tab 顺序。四个入口分别是仓库 / 发布版 / 使用说明 / 开发文档，
+  网址只在 `AppInfo` 里各写一份（按钮的 `ToolTip` 也从它取）。打开失败时把网址显示在对话框里，方便手动复制。
 
+**顺带的小重构**：剪贴板写入的"重试三次再认输"原本是 `LogView` 的私有方法，这次 `AboutWindow` 也要用，
+提到 `Common/ClipboardText.cs`（`ClipboardText.TrySet`），`LogView` 的三处调用点改成调它，行为不变。
 
+**⚠️ 三个自己踩的坑（都在探针里）**
 
+1. 用 `ButtonAutomationPeer.Invoke()` 触发点击 → 探针报"没有弹出对话框"。原因是 WPF 的 `Invoke` 把点击
+   **排到 Input 优先级异步执行**，`ShowDialog` 的阻塞（嵌套消息循环）发生在 `invoke()` 返回之后，
+   于是"对话框是在点击期间弹出的"这条证据根本没被记到。改成直接
+   `RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent))` 后同步可测：点击到对话框关闭共约 1.4 s
+   （多次实测 1368~1411 ms，其中大部分是探针自己的等待）。
+2. 截图时渲染的是 `window.Content`：窗口的 `Background` 画在**窗口自己的视觉**上，只渲染 Content 拿到的是
+   透明底，深色主题截图看起来像"白底浅字"的低对比界面——差点当成配色 bug 去改 XAML。改成渲染窗口自身。
+3. 探针里直接调 `ThemeService.Apply` 抛 `IOException: 找不到资源 themes/dark.xaml`：该实现用的是相对 URI
+   （`Themes/dark.xaml`），相对的是**入口程序集**，而探针的入口是 aboutprobe。探针改成自己用 pack URI
+   换字典（与 `ThemeService.SwapThemeDictionary` 等价）。生产代码里入口就是本程序，不受影响。
+
+**实测**（探针 `aboutprobe`：真实 MainWindow + 真实 AboutWindow，150% 缩放，窗口 1507×926 DIP）
+
+```
+标题栏一行（x 为窗口内坐标）：模糊背景 x=1234.7 | 切换到浅色 x=1270.7 | 关于 x=1314.7 | 最小化 x=1374 | 最大化 x=1418 | 关闭 x=1462
+  → 「关于」宽 44、与主题按钮相邻且在其右侧，位于窗口按钮左侧
+对话框：470×360 DIP，Owner=主窗口，模态（点击到关闭约 1.4 s，期间完成检查且关闭后无残留）
+文本：SeriTerm 串口调试助手 / Windows 串口调试助手（C# / WPF / .NET 8）
+      版本 1.0.0（与程序集信息版本一致） / 提交 0c26600（与信息版本里的短号一致）
+      运行时 .NET 8.0.19（x64） / 许可 MIT License · Copyright © 2026 newMalloc
+图标：显示帧 128×128，当前需要 96 物理像素（若用默认帧则是 16×16）
+复制：SeriTerm 串口调试助手 / 版本 1.0.0 / 提交 0c266008028c8eac60af2a14a87e440f1d488312 /
+      运行时 .NET 8.0.19（x64） / MIT License · Copyright © 2026 newMalloc / https://github.com/newMalloc/SeriTerm
+深浅两套主题各出一张截图；提交号那一行取自 SourceLink 注入的信息版本，没有 `+` 段时整行（含标签）收起
+```
+
+**验证**：`dotnet build` 0 警告 0 错误；单测 **296/296**；
+自包含单文件发布 `artifacts\publish\SeriTerm.exe` 67,125,329 字节（64.0 MB，比上一版多 4 KB），
+其 `ProductVersion` = `1.0.0+0c266008028c8eac60af2a14a87e440f1d488312`，与对话框显示的一致。
+单文件场景单独验过一遍：把探针按同一套参数（自包含 + `PublishSingleFile` + 压缩）发布成 72,438,737 字节的单文件再跑，
+`RESULT|通过`，图标帧仍为 128、版本号与提交号一致——`BitmapFrame.Decoder` 在单文件包里同样可用，
+绿色版不会退化成"16px 放大"。探针全程只读使用者的 `settings.json`（探针的 `ProbeSettingsStore.Save` 直接拒绝写入），
+实测探针运行期间该文件 `LastWriteTime` 未变。

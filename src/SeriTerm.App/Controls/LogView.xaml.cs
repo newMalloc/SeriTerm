@@ -1,6 +1,5 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using SeriTerm.App.Common;
 using SeriTerm.App.ViewModels;
 using SeriTerm.Core.Documents;
 using SeriTerm.Core.Pipeline;
@@ -1248,14 +1248,14 @@ public partial class LogView : UserControl
                 ? $"选中的文本（{selected.Length} 字 / {lines} 行）"
                 : $"选中的文本（{selected.Length} 字）";
 
-            _viewModel?.ReportCopyResult(what, TrySetClipboard(selected));
+            _viewModel?.ReportCopyResult(what, ClipboardText.TrySet(selected));
             return;
         }
 
         if (_textSelectionBox is { SelectedText.Length: > 0 } box)
         {
             var selected = box.SelectedText;
-            var copiedText = TrySetClipboard(selected);
+            var copiedText = ClipboardText.TrySet(selected);
             _viewModel?.ReportCopyResult($"选中的文本（{selected.Length} 字）", copiedText);
             return;
         }
@@ -1267,7 +1267,7 @@ public partial class LogView : UserControl
             return;
         }
 
-        var copied = TrySetClipboard(text);
+        var copied = ClipboardText.TrySet(text);
         _viewModel?.ReportCopyResult($"{LogList.SelectedItems.Count} 行日志", copied);
     }
 
@@ -1288,25 +1288,6 @@ public partial class LogView : UserControl
         }
 
         return builder.ToString();
-    }
-
-    private static bool TrySetClipboard(string text)
-    {
-        // 剪贴板被别的进程占用时会抛 COMException（CLIPBRD_E_CANT_OPEN），重试几次再认输
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                Clipboard.SetDataObject(text, true);
-                return true;
-            }
-            catch (ExternalException)
-            {
-                Thread.Sleep(60);
-            }
-        }
-
-        return false;
     }
 
     private void OnScrollChanged(object sender, ScrollChangedEventArgs e)

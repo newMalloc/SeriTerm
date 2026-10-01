@@ -126,6 +126,13 @@
                         </Grid>
                     </Button>
 
+                    <!-- 「关于」夹在主题按钮与分隔线之间：分隔线的作用是把右边三个窗口按钮
+                         圈成一组，必须紧挨着它们；"这个程序自己是谁"的入口留在左边一组。 -->
+                    <Button Style="{StaticResource CaptionButton}" Click="OnAboutClick"
+                            FontSize="12.5" Content="关于"
+                            AutomationProperties.Name="关于"
+                            ToolTip="关于 SeriTerm：版本号、提交、运行时与 GitHub 仓库（F1）" />
+
                     <Border Width="1" Height="16" Margin="6,0,8,0" VerticalAlignment="Center"
                             Background="{DynamicResource PanelBorderBrush}" />
 
