@@ -169,6 +169,12 @@ public partial class MainWindow : Window
                 return true;
 
             case Key.C when control:
+                // 焦点在日志列表里时不抢：那时 Ctrl+C 的意思是"复制选中的日志行"
+                if (LogViewControl.IsLogListFocused)
+                {
+                    return false;
+                }
+
                 _ = _viewModel.TerminalControlAsync('C');
                 e.Handled = true;
                 return true;

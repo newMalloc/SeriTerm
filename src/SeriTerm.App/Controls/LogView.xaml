@@ -18,7 +18,8 @@
                 BorderThickness="0,0,0,1"
                 Padding="8,5"
                 Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel Orientation="Horizontal">
+            <!-- 用 WrapPanel：窄窗口下按钮折行，而不是被裁掉 -->
+            <WrapPanel>
                 <TextBlock Text="查找:" Style="{StaticResource FieldLabel}" />
 
                 <TextBox x:Name="SearchBox"
@@ -26,6 +27,11 @@
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          KeyDown="OnSearchBoxKeyDown"
                          ToolTip="Ctrl+F 打开 / Esc 关闭，回车查找下一个，Shift+回车查找上一个" />
+
+                <Button Style="{StaticResource ToolbarButton}" Content="收藏" Margin="6,0,4,0"
+                        Command="{Binding AddSearchFavoriteCommand}"
+                        IsEnabled="{Binding CanAddSearchFavorite}"
+                        ToolTip="把当前关键字存进左栏「查找收藏」，以后点一下就能填回来" />
 
                 <TextBlock Text="{Binding SearchStatusText}"
                            Margin="10,0,10,0"
@@ -41,7 +47,7 @@
 
                 <Button Style="{StaticResource ToolbarButton}" Content="✕"
                         Command="{Binding CloseSearchCommand}" ToolTip="关闭搜索（Esc）" />
-            </StackPanel>
+            </WrapPanel>
         </Border>
 
         <!-- ===== 日志列表 ===== -->
@@ -58,9 +64,30 @@
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      VirtualizingPanel.ScrollUnit="Pixel"
                      SelectionMode="Extended"
+                     PreviewMouseLeftButtonDown="OnLogListPreviewMouseLeftButtonDown"
+                     PreviewMouseRightButtonDown="OnLogListPreviewMouseRightButtonDown"
+                     MouseMove="OnLogListMouseMove"
                      FontFamily="Consolas, Microsoft YaHei UI"
                      FontSize="{Binding LogFontSize}">
 
+                <!-- 复制选中行：右键菜单与 Ctrl+C 走同一条命令（虚拟化列表不支持逐字选择，
+                     选中粒度是"行"；复制出来的是屏幕上看到的那一行文本） -->
+                <ListBox.CommandBindings>
+                    <CommandBinding Command="Copy" CanExecute="OnCopyCanExecute" Executed="OnCopyExecuted" />
+                </ListBox.CommandBindings>
+
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="复制"
+                                  Command="Copy"
+                                  InputGestureText="Ctrl+C"
+                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+
+                <!-- 选中反馈：整行底色 + 行首一道强调色竖条。
+                     竖条宽度恒定，选中与否都不会让文字左右跳动；
+                     命中行自带蓝底，所以选中态在命中行上只靠竖条体现，两者互不遮挡。 -->
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="0" />
@@ -69,7 +96,17 @@
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <ContentPresenter />
+                                    <Border x:Name="Selection" BorderThickness="2,0,0,0" BorderBrush="Transparent">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Selection" Property="Background"
+                                                    Value="{DynamicResource RowSelectionBrush}" />
+                                            <Setter TargetName="Selection" Property="BorderBrush"
+                                                    Value="{DynamicResource AccentBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Setter.Value>
                         </Setter>

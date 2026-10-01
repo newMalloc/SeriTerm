@@ -473,7 +473,7 @@
                                       IsChecked="{Binding AutoScroll}" Margin="0,0,0,6"
                                       ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
 
-                            <Grid>
+                            <Grid Margin="0,0,0,7">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="62" />
                                     <ColumnDefinition Width="*" />
@@ -484,6 +484,67 @@
                                           SelectedItem="{Binding LogFontSize}"
                                           ToolTip="日志区字号（只影响显示，不影响落盘内容）" />
                             </Grid>
+
+                            <!-- 保存 / 清空作用在"当前显示的内容"上，跟着日志设置一起留在左栏；
+                                 右栏因此不再需要日志工具条那一行，日志区多回一行高度 -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="保存" Margin="0,0,3,0"
+                                        Command="{Binding SaveLogCommand}"
+                                        ToolTip="把当前显示内容保存为文本日志（Ctrl+S）" />
+                                <Button Grid.Column="1" Content="清空" Margin="3,0,0,0"
+                                        Command="{Binding ClearLogCommand}"
+                                        ToolTip="清空显示内容（Ctrl+K）" />
+                            </Grid>
+
+                            <!-- 查找收藏：搜索时点搜索条上的「收藏」存进来，这里是随时可点回去的入口 -->
+                            <TextBlock Text="查找收藏:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
+
+                            <TextBlock Text="搜索时点搜索条上的「收藏」，把常用关键字存到这里。"
+                                       Margin="0,0,0,4">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource HintText}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasSearchFavorites}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <ItemsControl ItemsSource="{Binding SearchFavorites}" Margin="0,0,0,2"
+                                          Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- 整块可点：套用该关键字；右侧 × 只删这一条。
+                                             内层按钮用自己的 Command，点击不会连带触发外层（Click 冒泡不执行外层的命令） -->
+                                        <Button Style="{StaticResource FavoriteChip}"
+                                                ToolTip="{Binding}"
+                                                Command="{Binding DataContext.ApplySearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding}" MaxWidth="96"
+                                                           TextTrimming="CharacterEllipsis" FontSize="11.5"
+                                                           VerticalAlignment="Center" />
+                                                <Button Style="{StaticResource ChipCloseButton}" Content="✕"
+                                                        ToolTip="从收藏里删除这一条"
+                                                        Command="{Binding DataContext.RemoveSearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
 
@@ -528,40 +589,18 @@
             <GridSplitter Grid.Column="1" />
 
             <!-- ===== 右：日志 + 发送。发送区固定在日志下方，永远不用滚动去找"发送" ===== -->
+            <!-- 日志上方不再有工具条那一行：显示设置、保存/清空、查找收藏都在左栏，
+                 右键菜单与 Ctrl+C 负责复制选中的行 -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 日志工具条：只剩"保存 / 清空"这两个作用在当前显示内容上的动作。
-                     查找、暂停显示、自动换行、自动滚动、字号都是显示设置，统一收进左栏
-                     「日志显示」一节，日志上方不再摆一排开关，日志区也拿回了那一行高度。 -->
-                <Border Grid.Row="0"
-                        Background="{DynamicResource PanelBackgroundBrush}"
-                        BorderBrush="{DynamicResource PanelBorderBrush}"
-                        BorderThickness="0,0,0,1"
-                        Padding="10,4">
-                    <DockPanel LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Text="接收日志"
-                                   Foreground="{DynamicResource SubtleForegroundBrush}"
-                                   FontSize="11.5" />
-                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                            <Button Style="{StaticResource ToolbarButton}" Content="保存"
-                                    Command="{Binding SaveLogCommand}"
-                                    ToolTip="把当前显示内容保存为文本日志（Ctrl+S）" />
-                            <Button Style="{StaticResource ToolbarButton}" Content="清空"
-                                    Command="{Binding ClearLogCommand}" Margin="0"
-                                    ToolTip="清空显示内容（Ctrl+K）" />
-                        </StackPanel>
-                    </DockPanel>
-                </Border>
-
-                <controls:LogView x:Name="LogViewControl" Grid.Row="1" />
+                <controls:LogView x:Name="LogViewControl" Grid.Row="0" />
 
                 <!-- ===== 发送区 ===== -->
-                <Border Grid.Row="2"
+                <Border Grid.Row="1"
                         Background="{DynamicResource PanelBackgroundBrush}"
                         BorderBrush="{DynamicResource PanelBorderBrush}"
                         BorderThickness="0,1,0,0"

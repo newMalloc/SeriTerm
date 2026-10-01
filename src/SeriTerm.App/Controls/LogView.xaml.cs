@@ -1,5 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -24,9 +26,15 @@ public partial class LogView : UserControl
     /// <summary>距底部多少像素以内算"在最新位置"。</summary>
     private const double BottomTolerance = 8.0;
 
+    /// <summary>按下后移动超过这么多像素才算"拖动选择"。</summary>
+    private const double DragThreshold = 4.0;
+
     private MainViewModel? _viewModel;
     private bool _suppressScrollClassification;
     private bool _scrollToEndQueued;
+
+    /// <summary>按下左键时的位置，用来区分"点一下选中一行"和"拖动选择多行"。</summary>
+    private Point _mouseDownPosition;
 
     public LogView()
     {
@@ -38,6 +46,15 @@ public partial class LogView : UserControl
         // ScrollChanged 会从 ListBox 模板内部的 ScrollViewer 冒泡上来
         LogList.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(OnScrollChanged));
     }
+
+    /// <summary>
+    /// 键盘焦点是否在日志列表里。终端模式要据此让出 Ctrl+C：
+    /// 用户点了日志区再按 Ctrl+C，意思显然是"复制选中的行"，而不是往串口发 0x03。
+    /// </summary>
+    public bool IsLogListFocused => LogList.IsKeyboardFocusWithin;
+
+    /// <summary>选中了多少行（供外部判断，例如自动化脚本）。</summary>
+    public int SelectedLineCount => LogList.SelectedItems.Count;
 
     /// <summary>聚焦搜索框（Ctrl+F 调用）。</summary>
     public void FocusSearch()
@@ -143,6 +160,117 @@ public partial class LogView : UserControl
                 e.Handled = true;
                 break;
         }
+    }
+
+    // ---------- 选中与复制 ----------
+
+    /// <summary>
+    /// 拖动选择时停止跟随最新数据：否则新行一到就把视野拉到底，刚选中的行立刻被冲走。
+    /// 只认"按下之后真的移动过"（超过 <see cref="DragThreshold"/>），
+    /// 单纯点一下选中一行不会顺手把自动滚动关掉。
+    /// </summary>
+    private void OnLogListPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        => _mouseDownPosition = e.GetPosition(LogList);
+
+    /// <summary>
+    /// 右键点在没被选中的行上时，先选中这一行——否则"复制"复制的还是上一次选中的内容。
+    /// （WPF 的 ListBox 默认不会因为右键而改变选中项，这里补上这个习惯行为。）
+    /// </summary>
+    private void OnLogListPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (ItemsControl.ContainerFromElement(LogList, source) is not ListBoxItem item || item.IsSelected)
+        {
+            return;
+        }
+
+        LogList.SelectedItems.Clear();
+        item.IsSelected = true;
+        item.Focus();
+    }
+
+    private void OnLogListMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _viewModel is null || !_viewModel.AutoScroll)
+        {
+            return;
+        }
+
+        var current = e.GetPosition(LogList);
+        if (Math.Abs(current.X - _mouseDownPosition.X) < DragThreshold
+            && Math.Abs(current.Y - _mouseDownPosition.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        if (LogList.SelectedItems.Count > 0)
+        {
+            _viewModel.PauseAutoScroll();
+        }
+    }
+
+    private void OnCopyCanExecute(object sender, CanExecuteRoutedEventArgs e)
+        => e.CanExecute = LogList.SelectedItems.Count > 0;
+
+    private void OnCopyExecuted(object sender, ExecutedRoutedEventArgs e)
+    {
+        var text = BuildSelectedText();
+
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        var copied = TrySetClipboard(text);
+        _viewModel?.ReportCopyResult(LogList.SelectedItems.Count, copied);
+        e.Handled = true;
+    }
+
+    /// <summary>按屏幕上的样子拼出选中行的文本（关掉时间戳时就不带时间）。</summary>
+    private string BuildSelectedText()
+    {
+        var builder = new StringBuilder();
+        var withTimestamp = _viewModel?.ShowTimestamp ?? true;
+
+        foreach (var item in LogList.SelectedItems)
+        {
+            if (item is not DisplayLine line)
+            {
+                continue;
+            }
+
+            if (withTimestamp)
+            {
+                builder.Append(line.TimeText).Append(' ');
+            }
+
+            builder.Append(line.DirectionText).Append(' ').Append(line.Text).Append("\r\n");
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool TrySetClipboard(string text)
+    {
+        // 剪贴板被别的进程占用时会抛 COMException（CLIPBRD_E_CANT_OPEN），重试几次再认输
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(text, true);
+                return true;
+            }
+            catch (ExternalException)
+            {
+                Thread.Sleep(60);
+            }
+        }
+
+        return false;
     }
 
     private void OnScrollChanged(object sender, ScrollChangedEventArgs e)

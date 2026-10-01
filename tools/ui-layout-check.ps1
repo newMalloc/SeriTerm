@@ -258,7 +258,7 @@ try {
         $failures++
     } else {
         $logLeft = [math]::Round((Get-RectOf $logView).Left, 0)
-        foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:')) {
+        foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:', '保存', '清空', '查找收藏:')) {
             $element = Find-One -Root $root -Name $name
             $right = -1
             if ($element) { $right = [math]::Round((Get-RectOf $element).Right, 0) }

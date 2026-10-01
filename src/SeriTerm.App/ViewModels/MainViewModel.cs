@@ -16,6 +16,7 @@ using SeriTerm.Core.Framing;
 using SeriTerm.Core.Logging;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.Core.Presets;
+using SeriTerm.Core.Search;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 using SeriTerm.Core.Terminal;
@@ -837,9 +838,106 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         UpdateSearchStatus();
     }
 
-    partial void OnSearchTextChanged(string value) => Log.SetSearch(value, SearchCaseSensitive);
+    partial void OnSearchTextChanged(string value)
+    {
+        Log.SetSearch(value, SearchCaseSensitive);
+        OnPropertyChanged(nameof(CanAddSearchFavorite));
+    }
 
     partial void OnSearchCaseSensitiveChanged(bool value) => Log.SetSearch(SearchText, value);
+
+    // ---------- 查找收藏 ----------
+
+    /// <summary>已收藏的查找关键字：点一下填回搜索框，点标签上的 × 删除。</summary>
+    public ObservableCollection<string> SearchFavorites { get; } = [];
+
+    /// <summary>左栏要不要显示空态提示。</summary>
+    public bool HasSearchFavorites => SearchFavorites.Count > 0;
+
+    /// <summary>当前关键字能不能存成收藏（非空且还没收藏过）。</summary>
+    public bool CanAddSearchFavorite
+        => !string.IsNullOrWhiteSpace(SearchText) && !SearchFavoriteList.Contains(SearchFavorites, SearchText);
+
+    /// <summary>把搜索框里的关键字存进收藏（已存在或为空则什么也不做）。</summary>
+    [RelayCommand]
+    private void AddSearchFavorite()
+    {
+        var updated = SearchFavoriteList.Add(SearchFavorites, SearchText, out var added);
+
+        if (!added)
+        {
+            StatusDetail = "这个关键字已经在收藏里了。";
+            return;
+        }
+
+        ReplaceSearchFavorites(updated);
+        StatusDetail = $"已收藏查找关键字：{SearchText.Trim()}";
+    }
+
+    /// <summary>删除一条收藏（标签上的 × 调用）。</summary>
+    [RelayCommand]
+    private void RemoveSearchFavorite(string? text)
+    {
+        var updated = SearchFavoriteList.Remove(SearchFavorites, text, out var removed);
+
+        if (!removed)
+        {
+            return;
+        }
+
+        ReplaceSearchFavorites(updated);
+        StatusDetail = $"已删除查找收藏：{text?.Trim()}";
+    }
+
+    /// <summary>点收藏标签：打开搜索条、填入关键字并跳到第一处命中。</summary>
+    [RelayCommand]
+    private void ApplySearchFavorite(string? text)
+    {
+        var normalized = SearchFavoriteList.Normalize(text);
+
+        if (normalized is null)
+        {
+            return;
+        }
+
+        SearchVisible = true;
+        SearchText = normalized;
+        StatusDetail = $"查找：{normalized}";
+
+        // 命中为 0 时 MoveToMatch 会直接返回，状态文本改由这里补一次
+        if (Log.MoveNextMatch() is { } line)
+        {
+            MoveToMatch(line);
+        }
+        else
+        {
+            UpdateSearchStatus();
+        }
+    }
+
+    /// <summary>复制选中日志行之后的反馈（走状态栏，不弹框）。</summary>
+    public void ReportCopyResult(int lineCount, bool success)
+        => StatusDetail = success
+            ? $"已复制 {lineCount} 行日志到剪贴板"
+            : "复制失败：剪贴板被其它程序占用，请稍后重试";
+
+    private void ReplaceSearchFavorites(IReadOnlyList<string> items)
+    {
+        SearchFavorites.Clear();
+        foreach (var item in items)
+        {
+            SearchFavorites.Add(item);
+        }
+
+        _settings.SearchFavorites = [.. SearchFavorites];
+        NotifyFavoritesChanged();
+    }
+
+    private void NotifyFavoritesChanged()
+    {
+        OnPropertyChanged(nameof(HasSearchFavorites));
+        OnPropertyChanged(nameof(CanAddSearchFavorite));
+    }
 
     private void UpdateSearchStatus()
         => SearchStatusText = !Log.HasSearch
@@ -1464,6 +1562,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.SaveRawLog = SaveRawLog;
         _settings.LogDirectory = LogDirectory;
         _settings.Presets = [.. Presets];
+        _settings.SearchFavorites = [.. SearchFavorites];
 
         if (TryBuildSettings(out var serial, out _))
         {
@@ -1518,6 +1617,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Presets.Add(preset);
         }
+
+        // 收藏顺手清一遍脏数据（手改过配置文件时可能有空白项或重复项）
+        SearchFavorites.Clear();
+        foreach (var favorite in SearchFavoriteList.Sanitize(settings.SearchFavorites))
+        {
+            SearchFavorites.Add(favorite);
+        }
+
+        _settings.SearchFavorites = [.. SearchFavorites];
+        NotifyFavoritesChanged();
     }
 
     private void UpdateThemeButtonText()

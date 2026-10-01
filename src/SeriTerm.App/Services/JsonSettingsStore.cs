@@ -73,6 +73,9 @@ public sealed class AppSettings
     /// <summary>配置预设（★ 收藏，M8）。</summary>
     public List<SerialPreset> Presets { get; set; } = [];
 
+    /// <summary>查找关键字的收藏（左栏「查找收藏」），按添加顺序保存。</summary>
+    public List<string> SearchFavorites { get; set; } = [];
+
     /// <summary>显示时间戳列。</summary>
     public bool ShowTimestamp { get; set; } = true;
 
