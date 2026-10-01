@@ -216,6 +216,18 @@ SHA256 `536922B7…`），由 `tools/make-icon.ps1 -CropMode Subject` 生成 `se
 - ⚠️ 未实测：`release.yml` 只能在 GitHub Actions 上跑；框架依赖版的重命名没有实际运行过
   （真程序启动会去开 COM5、关窗时写使用者的 `settings.json`），它与自包含版是同一条 apphost + 单文件机制。
 
+## 发布说明（Release 正文 / tag 说明）
+
+Release 说明正文由 `release.yml` 从 `CHANGELOG.md` 里切出对应版本的那一节，再补上文件名、字节数、
+SHA256、系统要求与文档链接。切分逻辑用同一段 PowerShell 在本地验过：
+
+- `GITHUB_REF_NAME=v1.0.2` → 切出 `CHANGELOG.md` 第 9 行起的那一节（从 `## v1.0.2` 到下一个 `## v` 之前，
+  含"修复 / 测试"两段，末尾对齐到"自动化测试 296 → 297"）；
+- `GITHUB_REF_NAME=v9.9.9` → 落进"CHANGELOG.md 里没有这一节"的失败分支（工作流会在这里 throw，不发布）。
+
+已发布的 Release（v1.0.0 / v1.0.1）正文按同一格式补齐；**tag 对象本身不可改**——已推送的 tag 只有
+强推才能改写，所以那两个标签的说明保持原样，新标签起按 `CHANGELOG.md` 那节写。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。

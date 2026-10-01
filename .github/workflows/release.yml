@@ -34,24 +34,61 @@ jobs:
           if (-not $exe) { throw '发布产物里没有带版本号的 exe（SeriTerm-<版本>-<RID>.exe）' }
 
           # 标签与产物版本必须一致，否则下载下来的文件名会撒谎。不一致时改 Directory.Build.props 的 <Version>。
-          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
-          if (-not $exe.Name.StartsWith("SeriTerm-$tag-", [StringComparison]::Ordinal)) {
-            throw "标签 $env:GITHUB_REF_NAME 与产物版本对不上：产物是 $($exe.Name)。请先把 Directory.Build.props 的 <Version> 改成 $tag 再打标签。"
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag -replace '^v', ''
+          if (-not $exe.Name.StartsWith("SeriTerm-$version-", [StringComparison]::Ordinal)) {
+            throw "标签 $tag 与产物版本对不上：产物是 $($exe.Name)。请先把 Directory.Build.props 的 <Version> 改成 $version 再打标签。"
           }
+
+          # 发布说明正文直接取自 CHANGELOG.md 里本版本那一节：
+          # 版本变更属于"人写的文档"，不该靠工作流从提交记录里猜；缺这一节就失败，宁可不发。
+          $lines = Get-Content CHANGELOG.md
+          $start = (0..($lines.Count - 1) | Where-Object { $lines[$_] -match "^## v$([regex]::Escape($version))(\s|$)" } |
+            Select-Object -First 1)
+          if ($null -eq $start) { throw "CHANGELOG.md 里没有 $tag 这一节，请先补好再打标签。" }
+
+          $next = (0..($lines.Count - 1) | Where-Object { $_ -gt $start -and $lines[$_] -match '^## v' } |
+            Select-Object -First 1)
+          $end = if ($null -ne $next) { $next - 1 } else { $lines.Count - 1 }
+          $body = (($lines[$start..$end]) -join "`n").Trim()
+          if (-not $body) { throw "CHANGELOG.md 的 $tag 一节是空的。" }
 
           $size = $exe.Length
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
           $mb = [math]::Round($size / 1MB, 1)
-          Set-Content -Path release-notes.md -Encoding utf8NoBOM -Value @(
-            '单文件绿色版（win-x64、自包含）：目标机器无需安装 .NET 运行时，下载后直接双击运行。',
-            '',
-            "- 文件：$($exe.Name)（文件名里的 $tag 就是程序内显示的版本号）",
-            "- 大小：$size 字节（$mb MB）",
-            "- SHA256：$hash",
-            '',
-            '首次启动需要自解压到临时目录，会比常规安装版稍慢一点。',
-            '完整功能说明与已知边界见仓库 README。'
-          )
+
+          $notes = @"
+          $body
+
+          ---
+
+          ### 下载
+
+          - 文件：``$($exe.Name)``（文件名里的 $version 就是程序内显示的版本号）
+          - 大小：$size 字节（$mb MB）
+          - SHA256：``$hash``
+          - 单文件绿色版（win-x64、自包含）：目标机器无需安装 .NET 运行时，下载后直接双击运行。
+            首次启动需要自解压到临时目录，会比常规安装版稍慢一点。
+
+          ### 系统要求
+
+          - Windows 10 1809 或更高 / Windows 11（64 位）
+
+          ### 文档
+
+          - [README](https://github.com/$env:GITHUB_REPOSITORY#readme)：功能说明与已知边界
+          - [开发规格与里程碑](https://github.com/$env:GITHUB_REPOSITORY/blob/main/docs/development-plan.md)：每条设计取舍的原因
+          - [验证记录](https://github.com/$env:GITHUB_REPOSITORY/blob/main/docs/verification.md)：所有数字的实测证据
+          - [更新日志](https://github.com/$env:GITHUB_REPOSITORY/blob/main/CHANGELOG.md)
+
+          ### 许可
+
+          MIT License。运行时依赖 CommunityToolkit.Mvvm、Microsoft.Extensions.*、System.IO.Ports、
+          System.Management，均为 MIT 许可。
+          "@
+
+          Set-Content -Path release-notes.md -Encoding utf8NoBOM -Value $notes
+          Get-Content release-notes.md | Select-Object -First 12
 
       - name: 创建 Release 并上传产物
         shell: pwsh

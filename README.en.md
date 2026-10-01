@@ -141,7 +141,8 @@ dotnet test SeriTerm.sln
 
 ```
 SeriTerm.sln
-Directory.Build.props            # Solution-wide build conventions
+Directory.Build.props            # Solution-wide build conventions (including the <Version>)
+CHANGELOG.md                     # Release notes, one section per version; used verbatim as the release body
 .github/workflows/ci.yml         # Continuous integration: build + test
 .github/workflows/release.yml    # Tag-triggered portable release
 docs/development-plan.md         # Development spec: scope, modules, milestones, design decisions, implementation log
@@ -221,10 +222,15 @@ pwsh -File tools/publish.ps1 -FrameworkDependent
 ```
 
 The output lands in `artifacts/publish/` as a single file of about 64 MB (self-contained plus compression).
+Its file name carries the version (`SeriTerm-1.0.2-win-x64.exe`, read from the exe's own version resource).
 
 Official releases are produced automatically by [`.github/workflows/release.yml`](.github/workflows/release.yml):
 pushing a `v*` tag runs the publish script above, computes the SHA256, and attaches the exe to the matching
-[Release](https://github.com/newMalloc/SeriTerm/releases).
+[Release](https://github.com/newMalloc/SeriTerm/releases). **Write the section for that version in
+[`CHANGELOG.md`](CHANGELOG.md) first** — the release body is taken from it verbatim (the workflow only appends the
+file size, SHA256, requirements and doc links); if the section is missing the workflow fails instead of publishing.
+The tag message follows the same section, and the workflow refuses to publish when the tag version and the built
+version disagree (bump `<Version>` in `Directory.Build.props` first).
 
 > ⚠️ Do not enable `PublishTrimmed`: WPF does not support trimming.
 > Compression (`EnableCompressionInSingleFile`) makes the first launch slightly slower in exchange for half the size.

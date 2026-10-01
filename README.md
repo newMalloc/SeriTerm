@@ -120,8 +120,10 @@ dotnet test SeriTerm.sln
 
 ```
 SeriTerm.sln
-Directory.Build.props            # 全解决方案编译约定
+Directory.Build.props            # 全解决方案编译约定（含版本号 <Version>）
+CHANGELOG.md                     # 更新日志：每个版本一节，Release 说明正文直接取自它
 .github/workflows/ci.yml         # 持续集成：构建 + 测试
+.github/workflows/release.yml    # 打 v* 标签时发布单文件绿色版
 docs/development-plan.md         # 开发规格：范围、模块、里程碑、设计决策与实现记录
 docs/verification.md             # 验证记录：自动化测试与回环验证的实测数字
 tools/                           # 开发与验证脚本（发布、图标、截图、探针、UI 冒烟）
@@ -189,10 +191,13 @@ pwsh -File tools/publish.ps1
 pwsh -File tools/publish.ps1 -FrameworkDependent
 ```
 
-产物在 `artifacts/publish/`，单文件约 64 MB（自包含 + 压缩）。
+产物在 `artifacts/publish/`，文件名带版本号（如 `SeriTerm-1.0.2-win-x64.exe`，版本读自 exe 自身的版本资源），单文件约 64 MB（自包含 + 压缩）。
 
 正式发布的版本由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 自动产出：推一个 `v*` 标签，
 工作流会执行上面的发布脚本、算出 SHA256，并把 exe 挂到同名 [Release](https://github.com/newMalloc/SeriTerm/releases) 上。
+**发版前先在 [`CHANGELOG.md`](CHANGELOG.md) 里补好该版本一节**——Release 的说明正文直接取自它
+（工作流只补上文件大小 / SHA256 / 系统要求 / 文档链接），取不到就报错、不发。标签说明同样按这一节来写。
+标签与产物版本不一致时工作流会直接失败，提示先改 `Directory.Build.props` 的 `<Version>`。
 
 > ⚠️ 不要开启 `PublishTrimmed`：WPF 不支持裁剪。
 > 压缩发布（`EnableCompressionInSingleFile`）会让首次启动慢一点点，换来体积减半。
