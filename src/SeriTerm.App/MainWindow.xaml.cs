@@ -349,7 +349,7 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private static void ApplyWorkAreaLimits(IntPtr hwnd, IntPtr lParam)
+    private void ApplyWorkAreaLimits(IntPtr hwnd, IntPtr lParam)
     {
         var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
         if (monitor == IntPtr.Zero)
@@ -369,6 +369,23 @@ public partial class MainWindow : Window
         limits.MaxSize.X = info.Work.Right - info.Work.Left;
         limits.MaxSize.Y = info.Work.Bottom - info.Work.Top;
         limits.MaxTrackSize = limits.MaxSize;
+
+        // 最小尺寸要在这里补回来：WPF 落实 MinWidth/MinHeight 靠的就是这条消息，
+        // 而本窗口自己处理它并标记"已处理"，WPF 那一步就被整条跳过了
+        // （发 WM_GETMINMAXINFO 回读 ptMinTrackSize 是 0×0）。
+        // 少了它，窗口能被拖到比内容还窄，而布局依旧按 MinWidth 排，
+        // 右边那一截就落到窗口外被裁掉——实测窗口 852.7 DIP 时右侧 67 DIP 全被切掉
+        // （标题栏按钮、查找浮层、发送按钮都缺一块）。
+        var dpi = GetDpiForWindow(hwnd);
+        var scale = dpi > 0 ? dpi / 96.0 : 1.0;
+
+        limits.MinTrackSize.X = (int)Math.Min(
+            limits.MaxTrackSize.X,
+            Math.Ceiling((double.IsNaN(MinWidth) ? 0 : MinWidth) * scale));
+        limits.MinTrackSize.Y = (int)Math.Min(
+            limits.MaxTrackSize.Y,
+            Math.Ceiling((double.IsNaN(MinHeight) ? 0 : MinHeight) * scale));
+
         Marshal.StructureToPtr(limits, lParam, false);
     }
 
@@ -496,6 +513,10 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
+
+    /// <summary>窗口所在显示器的 DPI（Windows 10 1607+，本程序最低支持 1809）。</summary>
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativePoint
