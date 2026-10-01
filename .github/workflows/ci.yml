@@ -38,7 +38,7 @@ jobs:
       - name: 构建（Release）
         run: dotnet build SeriTerm.sln -c Release --no-restore --nologo
 
-      # 回环测试需要 USB-TTL 的 TX/RX 短接。runner 上不存在 COM5，
+      # 回环测试需要 USB-TTL 的 TX/RX 短接。runner 上没有任何串口，
       # 这组测试会自行跳过（skipped），不会让构建变红。
       - name: 测试（Release）
         run: dotnet test SeriTerm.sln -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx" --results-directory artifacts/test-results
