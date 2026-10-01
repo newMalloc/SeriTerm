@@ -11,7 +11,7 @@
 |---|---|
 | 系统 | Windows 10（build 19045） |
 | 显示 | 单显示器，系统 DPI 125%，工作区 2560×1540 |
-| 回环硬件 | USB-TTL，端口 TX 与 RX 短接，脚本固定使用 `COM5` |
+| 回环硬件 | USB-TTL，端口 TX 与 RX 短接，脚本默认使用 `COM5`（可用环境变量 `SERITERM_LOOPBACK_PORT` 覆盖） |
 | UI 自动化 | Windows PowerShell 5.1 + UIAutomationClient（`tools/` 下脚本） |
 
 UI 自动化脚本一律使用**真实鼠标拖动 / 真实虚拟键注入 + UIA 读回断言**，不做截图比对；因此下面的数字是

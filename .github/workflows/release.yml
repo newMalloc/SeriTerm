@@ -1,0 +1,50 @@
+name: Release
+
+# 打 v* 标签时发布单文件绿色版，并把 exe 挂到同名 GitHub Release。
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: 发布单文件绿色版（win-x64）
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK 8.0
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: 发布（自包含单文件）
+        shell: pwsh
+        run: ./tools/publish.ps1 -OutputDir artifacts/publish
+
+      - name: 生成发布说明
+        shell: pwsh
+        run: |
+          $exe = 'artifacts/publish/SeriTerm.exe'
+          $size = (Get-Item $exe).Length
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          Set-Content -Path release-notes.md -Encoding utf8NoBOM -Value @(
+            '单文件绿色版（win-x64、自包含）：目标机器无需安装 .NET 运行时，下载后直接双击运行。',
+            '',
+            '- 文件：SeriTerm.exe',
+            "- 大小：$size 字节（$([math]::Round($size / 1MB, 1)) MB）",
+            "- SHA256：$hash",
+            '',
+            '首次启动需要自解压到临时目录，会比常规安装版稍慢一点。',
+            '完整功能说明与已知边界见仓库 README。'
+          )
+
+      - name: 创建 Release 并上传产物
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME artifacts/publish/SeriTerm.exe --title "SeriTerm $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

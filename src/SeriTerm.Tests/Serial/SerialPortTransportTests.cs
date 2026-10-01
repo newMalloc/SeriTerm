@@ -65,12 +65,23 @@ public class SerialPortTransportTests
 }
 
 /// <summary>
-/// COM5 回环集成测试：需要 USB-TTL 的 TX 与 RX 短接。
+/// 回环集成测试：需要 USB-TTL 的 TX 与 RX 短接。
 /// 端口不存在时整类测试会被标记为 skipped（见 <see cref="LoopbackFactAttribute"/>）。
 /// </summary>
 public class SerialPortLoopbackTests
 {
-    internal const string LoopbackPort = "COM5";
+    /// <summary>
+    /// 回环测试使用的端口。默认 <c>COM5</c>，可用环境变量 <c>SERITERM_LOOPBACK_PORT</c> 覆盖，
+    /// 这样换一台机器（或换一个 USB-TTL）不必改源码。
+    /// </summary>
+    internal static readonly string LoopbackPort = ResolveLoopbackPort();
+
+    private static string ResolveLoopbackPort()
+    {
+        var configured = Environment.GetEnvironmentVariable("SERITERM_LOOPBACK_PORT");
+
+        return string.IsNullOrWhiteSpace(configured) ? "COM5" : configured.Trim();
+    }
 
     private const int BaudRate = 115200;
 

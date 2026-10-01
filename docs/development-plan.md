@@ -3,7 +3,7 @@
 > 复刻目标：lingguang「串口调试助手」(Serial Debug Assistant) 的**核心串口能力**。
 > 已确认边界：**WPF + .NET 8、仅 Windows、单文件绿色版、不做脚本**。
 > 本版范围 = 串口核心（参数/开关/收发/HEX/编码/自动断帧/定时发送）+ 终端模式 + 自动重连 + 日志落盘 + **日志视图交互（Ctrl+F 实时搜索、自动滚动智能开关）**。
-> 其他已确认项：界面**中文**；**深/浅主题运行中可切换**；测试环境 **COM5（TX–RX 已短接）回环**；全程 **git** 版本控制。
+> 其他已确认项：界面**中文**；**深/浅主题运行中可切换**；验证环境 **USB-TTL 回环（TX–RX 短接）**；全程 **git** 版本控制。
 
 ---
 
@@ -39,7 +39,7 @@ JavaScript 脚本引擎、波形绘制、TCP/UDP 网络调试、MQTT、扩展命
 
 | 项 | 选型 | 说明 |
 |---|---|---|
-| 目标框架 | `net8.0-windows` | 本机已装 SDK 9.0.304 + WindowsDesktop ref pack 8.0.19，可直接编译 |
+| 目标框架 | `net8.0-windows` | 开发机已装 SDK 9.0.304 + WindowsDesktop ref pack 8.0.19，可直接编译 |
 | UI | WPF（`UseWPF=true`） | 与原工具同技术栈，暗色主题/虚拟化列表成熟 |
 | MVVM | `CommunityToolkit.Mvvm` 8.x | 源生成器 `[ObservableProperty]` / `[RelayCommand]`，无运行时反射 |
 | 串口 | `System.IO.Ports` 9.0.x | .NET Core 后不在 BCL 内，需 NuGet |
@@ -60,8 +60,8 @@ JavaScript 脚本引擎、波形绘制、TCP/UDP 网络调试、MQTT、扩展命
 
 ### TFM 支持期提醒
 
-`.NET 8` 的 LTS 支持期到 **2026-11-10**（本机当前日期 2026-09-30，约 6 周后结束）。
-**结论（v1 按此推进）**：先用 `net8.0-windows` 落地——本机已装 SDK 9.0.304 与 8.0.19 的 WindowsDesktop ref pack，可离线编译、立刻开工。是否升到 **`net10.0-windows`（LTS 到 2028）**推迟到 M8 打包前决定；升级动作 = 改 `Directory.Build.props` 里的 `TargetFramework`（App/Core 两处）+ 全量复测，WPF API 两版之间几乎无差异。
+`.NET 8` 的 LTS 支持期到 **2026-11-10**（当时的开发机日期 2026-09-30，约 6 周后结束）。
+**结论（v1 按此推进）**：先用 `net8.0-windows` 落地——开发机已装 SDK 9.0.304 与 8.0.19 的 WindowsDesktop ref pack，可离线编译、立刻开工。是否升到 **`net10.0-windows`（LTS 到 2028）**推迟到 M8 打包前决定；升级动作 = 改 `Directory.Build.props` 里的 `TargetFramework`（App/Core 两处）+ 全量复测，WPF API 两版之间几乎无差异。
 
 ---
 
@@ -406,7 +406,7 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 
 **集成/压测（需要环境）**
 - 虚拟串口对：[com0com](https://sourceforge.net/projects/com0com/) 建 COM10↔COM11，一端发一端收，校验字节数一致。
-- **本机 COM5（TX–RX 已短接）回环**：`SeriTerm.Tests` 的回环集成测试直接打开 COM5、写入 N 字节、读回逐字节比对；UI 侧自发自收也走 COM5。做自动重连验证时由你把 USB-TTL 拔掉再插回。
+- **开发机 COM5（TX–RX 已短接）回环**：`SeriTerm.Tests` 的回环集成测试直接打开 COM5、写入 N 字节、读回逐字节比对；UI 侧自发自收也走 COM5。做自动重连验证时由你把 USB-TTL 拔掉再插回。
 - 压测指标：1,000,000 bps 连续 10 分钟 → 丢包 0、滚动帧率 > 30 fps、内存平稳、日志文件大小吻合。
 
 ---
@@ -417,7 +417,7 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 
 | # | 事项 | 结论 |
 |---|---|---|
-| 1 | 测试环境 | USB-TTL，**COM5 的 TX–RX 已短接**，用于回环验证；需要拔插验证自动重连时由你配合操作 |
+| 1 | 验证环境 | USB-TTL，**COM5 的 TX–RX 已短接**（端口号可用环境变量 `SERITERM_LOOPBACK_PORT` 覆盖，默认 `COM5`），用于回环验证；需要拔插验证自动重连时由人配合操作 |
 | 2 | 界面语言 | **中文**（默认，与截图一致），不要求中英双语 |
 | 3 | 主题 | **深色 + 浅色，运行中可切换**，选择持久化 |
 | 4 | 日志视图 | 必须支持 **Ctrl+F 实时搜索** 与 **自动滚动智能开关**（详见 M9） |
@@ -438,7 +438,7 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
   - `feat(logview): Ctrl+F 实时搜索与自动滚动智能开关`
   - `test(framing): 补充空闲断帧边界用例`
 - `.gitignore` 覆盖 `bin/`、`obj/`、`.vs/`、`*.user`、`artifacts/`、`publish/`。
-- **不提交**：发布产物、日志样本、含设备敏感信息的抓包、本机端口配置（配置放 `%AppData%\SeriTerm\`）。
+- **不提交**：发布产物、日志样本、含设备敏感信息的抓包、开发机的端口配置（配置放 `%AppData%\SeriTerm\`）。
 - 每个里程碑提交前必须：`dotnet build` 通过 + 单测通过 + 手工验收项走一遍。
 
 ---
@@ -632,7 +632,7 @@ CAPTION|d-framechanged |1-44:#FFFFFF ← 强制重算非客户区也没用
 
 ### 11.20 第三方窗口拿不到 DWM 背景模糊：改成自己模糊壁纸
 
-目标是"背景模糊透出桌面"。Windows 11 有 Mica（本机是 Win10 19045，没有），
+目标是"背景模糊透出桌面"。Windows 11 有 Mica（开发机是 Win10 19045，没有），
 于是先按老办法试 `SetWindowCompositionAttribute(ACCENT_ENABLE_ACRYLICBLURBEHIND)`。实测：
 
 ```

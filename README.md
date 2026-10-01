@@ -13,6 +13,16 @@ Windows 串口调试助手（C# / WPF / .NET 8）。面向嵌入式、单片机�
 
 文档：[开发规格与里程碑](docs/development-plan.md) · [验证记录（实测证据）](docs/verification.md)
 
+## 界面
+
+| 浅色主题 | 深色主题 |
+|---|---|
+| ![浅色主题主界面](docs/images/main-light.png) | ![深色主题主界面](docs/images/main-dark.png) |
+
+查找与收藏浮层——叠在日志右上角，不占日志行高，命中的字符被逐字高亮：
+
+![查找与收藏浮层](docs/images/search-favorites.png)
+
 ## 功能特性
 
 ### 连接与参数
@@ -79,10 +89,15 @@ dotnet test SeriTerm.sln
 ```
 
 - 绝大多数测试是**纯逻辑单测**（断帧边界、编解码、搜索、发送组装、日志落盘与重放、重连退避、故障归类、配置预设等），不需要任何硬件；
-- 另有一组**回环集成测试**，需要把一个 USB-TTL 的 **TX 与 RX 短接**。它使用的端口号由 `SeriTerm.Tests/Serial/SerialPortTransportTests.cs`
-  里的 `SerialPortLoopbackTests.LoopbackPort` 常量决定（当前为 `COM5`），按自己的接线改这一处即可；
-- 目标端口不存在时，这组测试会被 `LoopbackFactAttribute` 标记为 **skipped** 而不是 failed，
-  所以在没有硬件的机器上 `dotnet test` 同样全绿；
+- 另有一组**回环集成测试**，需要把一个 USB-TTL 的 **TX 与 RX 短接**。默认使用 `COM5`，换端口不必改源码：
+
+  ```powershell
+  $env:SERITERM_LOOPBACK_PORT = 'COM3'
+  dotnet test SeriTerm.sln
+  ```
+
+- 目标端口不存在时（CI runner，或没插 USB-TTL 的机器），这组测试会被 `LoopbackFactAttribute` 标记为 **skipped** 而不是 failed，
+  所以 `dotnet test` 同样全绿；有回环硬件时是 **286 通过 / 0 失败**（280 单测 + 6 回环）；
 - 串口是独占资源，测试程序集已禁用并行执行。
 
 ### 持续集成
