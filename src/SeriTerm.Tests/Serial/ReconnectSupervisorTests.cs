@@ -170,6 +170,31 @@ public class ReconnectSupervisorTests
         Assert.False(supervisor.IsReconnecting);
     }
 
+    /// <summary>
+    /// 故障之后**不等它跑起来**就 StopAsync：StopAsync 会先把 <c>_cts</c> 置空、再 await 重连循环，
+    /// 而 BeginReconnect 里 Task.Run 的 lambda 若直接读字段 <c>_cts</c>，就可能读到置空后的值，
+    /// 于是句柄里的 <c>_cts.Token</c> 抛 NullReferenceException，并被 StopAsync 原样冒给调用方。
+    /// CI 上真的炸过一次（窗口极小，本地反复跑都不出现），所以这里用"不停就开始停"反复打这个窗口。
+    /// </summary>
+    [Fact]
+    public async Task 故障后立刻停止不应把异常抛给调用方()
+    {
+        for (var i = 0; i < 200; i++)
+        {
+            await using var transport = new FakeTransport();
+            await using var supervisor = new ReconnectSupervisor(transport, FastPolicy(), _ => true)
+            {
+                Enabled = true,
+            };
+
+            await transport.OpenAsync(Settings);
+            transport.RaiseFault("设备被拔出");
+
+            // 刻意不等待 IsReconnecting：要的就是"重连任务还没真正跑起来就停"这个时序
+            await supervisor.StopAsync();
+        }
+    }
+
     [Fact]
     public async Task 重连状态变化应上报给界面()
     {

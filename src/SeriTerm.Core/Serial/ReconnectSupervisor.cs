@@ -170,8 +170,14 @@ public sealed class ReconnectSupervisor : IAsyncDisposable
             return;
         }
 
-        _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => ReconnectLoopAsync(settings, _cts.Token));
+        // 先把 CTS 落进局部变量再交给后台任务：lambda 若直接读字段 _cts，
+        // 就有机会读到 StopAsync 清空之后的值（它先 _cts = null 再 await 这个任务），
+        // 于是 Task.Run 里的 _cts.Token 抛 NullReferenceException——故障任务被 StopAsync
+        // await 时又原样冒给调用方。CI 上实测到过（ReconnectSupervisorTests 手动停止后不应继续重连）。
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+
+        _loop = Task.Run(() => ReconnectLoopAsync(settings, cts.Token));
     }
 
     private async Task ReconnectLoopAsync(SerialSettings settings, CancellationToken cancellationToken)
