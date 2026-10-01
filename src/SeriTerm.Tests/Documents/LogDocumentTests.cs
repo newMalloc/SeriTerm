@@ -161,6 +161,25 @@ public class LogDocumentTests
     }
 
     [Fact]
+    public void 搜索_上下跳转应通知界面重画()
+    {
+        // 界面要按"哪一条是当前命中"重画行底色与字符高亮：上下跳转必须发事件，
+        // 只更新 DisplayLine 的属性通知不够（那只会刷数据绑定，画出来的方块不会自己更新）
+        var document = new LogDocument();
+        document.Append([Line(1, "hit 1"), Line(2, "hit 2"), Line(3, "hit 3")]);
+        document.SetSearch("hit", caseSensitive: false);
+
+        var raised = 0;
+        document.SearchChanged += (_, _) => raised++;
+
+        document.MoveNextMatch();
+        Assert.Equal(1, raised);
+
+        document.MovePreviousMatch();
+        Assert.Equal(2, raised);
+    }
+
+    [Fact]
     public void 搜索_当前命中标志应始终只有一个()
     {
         var document = new LogDocument();

@@ -1,4 +1,5 @@
 using SeriTerm.Core.Pipeline;
+using SeriTerm.Core.Search;
 
 namespace SeriTerm.Core.Documents;
 
@@ -195,7 +196,7 @@ public sealed class LogDocument
 
             if (_matches.Count > 0)
             {
-                SetCurrentMatch(0);
+                SetCurrentMatch(0, notify: false);
             }
         }
 
@@ -220,7 +221,7 @@ public sealed class LogDocument
 
             if (_currentMatchIndex < 0)
             {
-                SetCurrentMatch(_matches.Count - 1);
+                SetCurrentMatch(_matches.Count - 1, notify: false);
             }
         }
 
@@ -231,18 +232,26 @@ public sealed class LogDocument
     }
 
     private bool IsHit(DisplayLine line)
-        => !string.IsNullOrEmpty(_searchText)
-           && line.Text.Contains(
-               _searchText,
-               _caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        => SearchMatchFinder.IsHit(line.Text, _searchText, _caseSensitive);
 
-    private void SetCurrentMatch(int index)
+    /// <param name="notify">
+    /// 是否在这里发 <see cref="SearchChanged"/>。整表重扫（<see cref="RescanMatches"/>）与
+    /// 新行命中（<see cref="MatchNewLines"/>）后面本来就要发一次，传 false 免得一次搜索发两遍。
+    /// 上下跳转没有别的通知点，必须传 true：界面要靠它重画"当前命中"的行底色与字符高亮。
+    /// </param>
+    private void SetCurrentMatch(int index, bool notify = true)
     {
         var next = index >= 0 && index < _matches.Count ? _matches[index] : null;
 
         if (ReferenceEquals(_currentMatch, next))
         {
             _currentMatchIndex = index;
+
+            if (notify)
+            {
+                SearchChanged?.Invoke(this, EventArgs.Empty);
+            }
+
             return;
         }
 
@@ -257,6 +266,11 @@ public sealed class LogDocument
         if (_currentMatch is not null)
         {
             _currentMatch.IsCurrentMatch = true;
+        }
+
+        if (notify)
+        {
+            SearchChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

@@ -6,9 +6,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using SeriTerm.App.ViewModels;
 using SeriTerm.Core.Pipeline;
+using SeriTerm.Core.Search;
 
 namespace SeriTerm.App.Controls;
 
@@ -97,9 +99,13 @@ public partial class LogView : UserControl
 
         _viewModel = viewModel;
         viewModel.Log.Lines.CollectionChanged += OnLinesChanged;
+        viewModel.Log.SearchChanged += OnSearchChanged;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         viewModel.ScrollToLineRequested += OnScrollToLineRequested;
         viewModel.ScrollToEndRequested += OnScrollToEndRequested;
+
+        // 滚动时新生成 / 回收的行要补画命中高亮
+        LogList.ItemContainerGenerator.StatusChanged += OnContainersChanged;
     }
 
     private void Detach()
@@ -110,10 +116,22 @@ public partial class LogView : UserControl
         }
 
         _viewModel.Log.Lines.CollectionChanged -= OnLinesChanged;
+        _viewModel.Log.SearchChanged -= OnSearchChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.ScrollToLineRequested -= OnScrollToLineRequested;
         _viewModel.ScrollToEndRequested -= OnScrollToEndRequested;
+        LogList.ItemContainerGenerator.StatusChanged -= OnContainersChanged;
         _viewModel = null;
+    }
+
+    private void OnSearchChanged(object? sender, EventArgs e) => RefreshMatchHighlights();
+
+    private void OnContainersChanged(object? sender, EventArgs e)
+    {
+        if (LogList.ItemContainerGenerator.Status == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+        {
+            RefreshMatchHighlights();
+        }
     }
 
     private void OnLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -142,6 +160,16 @@ public partial class LogView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // 关键字、大小写、字号、换行方式变了：已生成的那些行要重画命中高亮
+        if (e.PropertyName is nameof(MainViewModel.SearchText)
+            or nameof(MainViewModel.SearchCaseSensitive)
+            or nameof(MainViewModel.LogFontSize)
+            or nameof(MainViewModel.LineWrap))
+        {
+            RefreshMatchHighlights();
+            return;
+        }
+
         if (e.PropertyName != nameof(MainViewModel.SearchVisible) || _viewModel?.SearchVisible != true)
         {
             return;
@@ -412,6 +440,152 @@ public partial class LogView : UserControl
         else if (ReferenceEquals(_textSelectionBox, box))
         {
             _textSelectionBox = null;
+        }
+    }
+
+    // ---------- 命中关键字的高亮 ----------
+
+    private void OnLineTextLoaded(object sender, RoutedEventArgs e) => UpdateMatchHighlight(sender as TextBox);
+
+    private void OnLineTextDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        => UpdateMatchHighlight(sender as TextBox);
+
+    private void OnLineTextSizeChanged(object sender, SizeChangedEventArgs e) => UpdateMatchHighlight(sender as TextBox);
+
+    /// <summary>
+    /// 把当前关键字在**这一行里出现的位置**画成高亮方块。
+    ///
+    /// 做法：内容列是一个 Grid，底层 Canvas 画方块、上层是底色透明的只读文本框，
+    /// 方块位置由 <see cref="TextBox.GetRectFromCharacterIndex(int, bool)"/> 量出来，
+    /// 所以自动换行时也会跟着文字走。文本本身的颜色一律不动（原来把当前命中整行刷成
+    /// 强调色 + 白字，反而看不出命中在哪一段）。
+    /// </summary>
+    private void UpdateMatchHighlight(TextBox? box)
+    {
+        if (box?.Parent is not Panel host)
+        {
+            return;
+        }
+
+        var layer = host.Children.OfType<Canvas>().FirstOrDefault();
+
+        if (layer is null)
+        {
+            return;
+        }
+
+        layer.Children.Clear();
+
+        var query = _viewModel?.SearchText;
+
+        if (box.DataContext is not DisplayLine line || string.IsNullOrEmpty(query) || string.IsNullOrEmpty(box.Text))
+        {
+            return;
+        }
+
+        var ranges = SearchMatchFinder.FindRanges(box.Text, query, _viewModel?.SearchCaseSensitive ?? false);
+
+        if (ranges.Count == 0)
+        {
+            return;
+        }
+
+        var brush = (Brush)FindResource(
+            line.IsCurrentMatch ? "CurrentMatchHighlightBrush" : "MatchHighlightBrush");
+
+        foreach (var (start, length) in ranges)
+        {
+            foreach (var rect in MeasureRanges(box, start, length))
+            {
+                var mark = new Rectangle
+                {
+                    Width = rect.Width,
+                    Height = rect.Height,
+                    Fill = brush,
+                    RadiusX = 2,
+                    RadiusY = 2,
+                };
+
+                Canvas.SetLeft(mark, rect.Left);
+                Canvas.SetTop(mark, rect.Top);
+                layer.Children.Add(mark);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 量出一段字符占的矩形。自动换行时一段命中可能横跨两三个视觉行，
+    /// 所以逐个字符量、同一视觉行上的合并成一个矩形（否则一次命中会画出上百个小方块）。
+    /// </summary>
+    private static List<Rect> MeasureRanges(TextBox box, int start, int length)
+    {
+        var rects = new List<Rect>();
+
+        for (var i = start; i < start + length && i < box.Text.Length; i++)
+        {
+            var leading = box.GetRectFromCharacterIndex(i);
+            var trailing = box.GetRectFromCharacterIndex(i, true);
+
+            if (leading.IsEmpty)
+            {
+                continue;
+            }
+
+            // 换行处"字符尾边"会落到下一行的行首，这种就只取这个字符自己的宽度
+            var right = trailing.IsEmpty || Math.Abs(trailing.Top - leading.Top) > 0.5
+                ? leading.Right
+                : trailing.Right;
+
+            var rect = new Rect(leading.Left, leading.Top, Math.Max(0.5, right - leading.Left), leading.Height);
+
+            if (rects.Count > 0)
+            {
+                var last = rects[^1];
+
+                if (Math.Abs(last.Top - rect.Top) < 0.5 && rect.Left >= last.Left)
+                {
+                    rects[^1] = new Rect(last.Left, last.Top, Math.Max(last.Right, rect.Right) - last.Left, last.Height);
+                    continue;
+                }
+            }
+
+            rects.Add(rect);
+        }
+
+        return rects;
+    }
+
+    /// <summary>搜索条件或字号/换行方式变了：把所有已经生成出来的行重画一遍。</summary>
+    private void RefreshMatchHighlights()
+    {
+        if (string.IsNullOrEmpty(_viewModel?.SearchText))
+        {
+            return;
+        }
+
+        foreach (var box in FindDescendants<TextBox>(LogList))
+        {
+            UpdateMatchHighlight(box);
+        }
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var nested in FindDescendants<T>(child))
+            {
+                yield return nested;
+            }
         }
     }
 

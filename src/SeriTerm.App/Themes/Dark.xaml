@@ -31,8 +31,12 @@
     <!-- 模糊背景（壁纸）之上的蒙版：决定壁纸透出多少、文字对比度是否够 -->
     <SolidColorBrush x:Key="BackdropTintBrush" Color="#AA1E1E1E" />
     <SolidColorBrush x:Key="SelectionBrush" Color="#264F78" />
-    <!-- 日志行被选中时的底色：刻意用中性灰，与"搜索命中"的深蓝区分开（行首还有一道强调色竖条） -->
-    <SolidColorBrush x:Key="RowSelectionBrush" Color="#303032" />
+    <!-- 日志区四种状态：普通命中行 = 极浅蓝底；选中行 = 更深蓝灰底 + 行首竖条；当前命中行 = 暗琥珀底；命中的字符 = 琥珀方块 -->
+    <SolidColorBrush x:Key="MatchRowBrush" Color="#20303D" />
+    <SolidColorBrush x:Key="RowSelectionBrush" Color="#39597A" />
+    <SolidColorBrush x:Key="CurrentMatchRowBrush" Color="#4A3F1C" />
+    <SolidColorBrush x:Key="MatchHighlightBrush" Color="#6E5A17" />
+    <SolidColorBrush x:Key="CurrentMatchHighlightBrush" Color="#B07C10" />
     <SolidColorBrush x:Key="OkBrush" Color="#4EC94E" />
     <SolidColorBrush x:Key="WarnBrush" Color="#E0A030" />
     <SolidColorBrush x:Key="ErrorBrush" Color="#E05A5A" />

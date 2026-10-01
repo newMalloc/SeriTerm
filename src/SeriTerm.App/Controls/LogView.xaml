@@ -24,7 +24,9 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="VerticalAlignment" Value="Center" />
+            <!-- Stretch：让文本框铺满内容列，它和后面那层 Canvas 才是同一套坐标，
+                 命中高亮的方块才能对准字符 -->
+            <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="Foreground" Value="{DynamicResource RxForegroundBrush}" />
@@ -39,9 +41,6 @@
                 <DataTrigger Binding="{Binding DataContext.LineWrap, RelativeSource={RelativeSource AncestorType=ListBox}}"
                              Value="True">
                     <Setter Property="TextWrapping" Value="Wrap" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
-                    <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -140,7 +139,7 @@
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="Selection" BorderThickness="2,0,0,0" BorderBrush="Transparent">
+                                    <Border x:Name="Selection" BorderThickness="3,0,0,0" BorderBrush="Transparent">
                                         <ContentPresenter />
                                     </Border>
                                     <ControlTemplate.Triggers>
@@ -180,21 +179,40 @@
                                            Margin="0,0,4,0"
                                            Foreground="{DynamicResource SubtleForegroundBrush}" />
 
-                                <!-- 内容列：只读文本框，鼠标可以选中任意一段字符再复制 -->
-                                <TextBox x:Name="LineText" Grid.Column="2"
-                                         Style="{StaticResource LogLineText}"
-                                         Text="{Binding Text, Mode=OneWay}"
-                                         SelectionChanged="OnLineTextSelectionChanged" />
+                                <!-- 内容列：只读文本框（鼠标可以选中任意一段字符再复制），
+                                     背后一层 Canvas 专门画"命中关键字"的高亮方块 -->
+                                <Grid Grid.Column="2">
+                                    <Canvas x:Name="MatchLayer" IsHitTestVisible="False" ClipToBounds="True" />
+
+                                    <TextBox x:Name="LineText"
+                                             Style="{StaticResource LogLineText}"
+                                             Text="{Binding Text, Mode=OneWay}"
+                                             SelectionChanged="OnLineTextSelectionChanged"
+                                             DataContextChanged="OnLineTextDataContextChanged"
+                                             SizeChanged="OnLineTextSizeChanged"
+                                             Loaded="OnLineTextLoaded" />
+                                </Grid>
                             </Grid>
                         </Border>
 
                         <DataTemplate.Triggers>
-                            <!-- 命中：整行底色；顺序很重要，当前命中必须排在后面才能覆盖普通命中 -->
+                            <!-- 命中：整行底色（刻意做得极浅，只是提示"这行里有命中"，
+                                 真正标出位置的是文本框背后那层字符高亮） -->
                             <DataTrigger Binding="{Binding IsMatch}" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource MatchRowBrush}" />
                             </DataTrigger>
+                            <!-- 当前命中改成"淡琥珀底"，文字仍用原来的颜色：
+                                 原来是把整行刷成强调色 + 白字，命中的字符反而看不清在哪 -->
                             <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CurrentMatchRowBrush}" />
+                            </DataTrigger>
+                            <!-- 选中必须排在最后：命中行的底色画在行内 Border 上，
+                                 会盖住行容器（ListBoxItem）的选中底色，不在这里覆盖就只剩行首那道竖条 -->
+                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                         Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource RowSelectionBrush}" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>
