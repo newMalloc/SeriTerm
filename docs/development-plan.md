@@ -775,6 +775,54 @@ SUMMARY|失败项=0
 两个样式，同类按钮不要再各自写 `Padding/FontSize`；主题色一律 `DynamicResource`，
 标题栏图标跟随 `Foreground`（`RelativeSource AncestorType=ButtonBase`）以便选中态变强调色。
 
+### 11.24 日志显示设置再收进左栏（M11 收尾）
+
+11.23 把日志操作整条搬到"日志工具条"（紧贴日志上沿），实测一轮后用户给出的意见很具体：
+**查找 / 暂停显示 / 自动换行 / 自动滚动 / 字号 这几个按钮还是应该放左侧**，
+右栏日志上方只该留"针对当前显示内容"的动作用。
+
+改法（只动 `MainWindow.xaml` 与 `Shared.xaml`）：
+
+1. 左栏新增**「日志显示」**一节，放在「接收设置」与「日志保存」之间：
+   - 标题行右侧放 `查找` / `暂停显示`（沿用 11.23 定下的"段级动作进标题行"约定，用 `SmallButton`）；
+   - 正文只留 `自动换行` / `自动滚动` 两个复选框（侧栏里所有布尔项都是复选框，样式才统一）
+     和 `字号:` 表单行，`FontSizeCombo` 与 `AutoScrollToggle` 的 `x:Name` 原样保留，冒烟脚本不受影响。
+2. 右栏那一行只剩 `保存` / `清空`，左侧补一个"接收日志"小标题让这一行不至于半空；
+   日志区因此多回一行高度。
+3. `Shared.xaml` 里给工具栏胶囊开关用的 `ToolbarToggle` 样式**已无引用，直接删掉**
+   （`ToolbarButton` 保留，现在只服务日志行的两个按钮）。
+
+**实测证据**（`tools/ui-layout-check.ps1` 新增"控件归属"断言，发布产物，失败项 0）：
+
+```
+REDUNDANT|死按钮与冗余文案=0
+REDUNDANT|自动滚动复选框=1|自动滚动按钮=0|AutoScrollToggle=True
+OWNER|查找|右边界=624 日志区左边界=787 在左栏=True
+OWNER|暂停显示|右边界=726 日志区左边界=787 在左栏=True
+OWNER|自动换行|右边界=726 日志区左边界=787 在左栏=True
+OWNER|自动滚动|右边界=726 日志区左边界=787 在左栏=True
+OWNER|字号:|右边界=435 日志区左边界=787 在左栏=True
+SUMMARY|失败项=0
+```
+
+"在左栏"不是靠截图目测，而是拿这 5 个控件的 `BoundingRectangle.Right` 与 `LogViewControl.Left` 比大小——
+以后谁再把这些控件挪回右栏，这条断言会立刻变红。四个既有冒烟基线（M4/M5/M7/M8）与单测 266 条同样一字未变。
+
+**两个自伤记录（都不是产品 bug，但都会浪费一轮排查）**：
+
+- **把"窗口刚创建"当成了最终界面**：改完第一次跑 `ui-layout-check`，`REDUNDANT|未搜索时的搜索状态文本=1`
+  报了一个失败项，而它在改动前后各跑一遍都是 0。单文件包**首次运行要先解包**，窗口比平时晚几秒出现；
+  脚本原来固定 `Start-Sleep -Seconds 6`，正好在窗口刚建好、绑定与首次布局还没跑完的瞬间开始断言——
+  那一刻搜索条的 `Visibility` 绑定还没生效（默认 `Visible`），于是占位文本被抓进了自动化树。
+  验证方式：写一次性探针连跑 3 次枚举树，搜索条都是 `Collapsed`（不存在）。
+  修法是"等真实信号"而不是睡固定秒数：轮询到 `MainWindowHandle` 非零 **且** 自动化树里出现
+  `LogViewControl`，再留 1.5 秒稳定期。这与 11.23 里 M7 那个"假等待"是同一类错误。
+- **脚本被改成了不带 BOM 的 UTF-8**：`powershell.exe`（5.1）对无 BOM 的 `.ps1` 按 ANSI 解码，
+  中文全部变成乱码，报的是 `Unexpected token`/`Missing closing '}'` 这类语法错，看着像脚本本身写坏了。
+  `tools/*.ps1` 必须保持 **UTF-8 with BOM**（`settings.json` 反过来必须不带 BOM），改完脚本用
+  `[System.IO.File]::ReadAllBytes` 检查前三个字节是不是 `EF BB BF`。
+
+
 
 
 

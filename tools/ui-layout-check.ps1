@@ -192,10 +192,24 @@ $originalSize = $null
 $handle = [IntPtr]::Zero
 $failures = 0
 try {
-    Start-Sleep -Seconds 6
-    $process.Refresh()
-    $handle = $process.MainWindowHandle
+    # 等窗口真正出现并建好可视树，而不是固定睡 6 秒。单文件包首次运行要先解包，
+    # 窗口可能 8~10 秒才出现；固定睡眠会把"窗口刚创建、绑定与首次布局还没跑完"的
+    # 中间态当成最终界面 —— 实测踩过一次：那一刻搜索条的 Visibility 绑定还没生效，
+    # 占位文本被误判成"状态栏重复显示搜索命中数"，白报一个失败项。
+    $deadline = (Get-Date).AddSeconds(90)
+    $handle = [IntPtr]::Zero
+    while ((Get-Date) -lt $deadline) {
+        $process.Refresh()
+        $handle = $process.MainWindowHandle
+        if ($handle -ne [IntPtr]::Zero) {
+            $ready = (Get-Root -Handle $handle).FindFirst($TS::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, 'LogViewControl')))
+            if ($null -ne $ready) { break }
+        }
+        Start-Sleep -Milliseconds 500
+    }
     if ($handle -eq [IntPtr]::Zero) { throw '主窗口尚未创建' }
+    Start-Sleep -Milliseconds 1500
     $root = Get-Root -Handle $handle
 
     $rect = New-Object LayoutCheck+RECT
@@ -204,9 +218,10 @@ try {
 
     # ---------- 1) 该在的控件都在 ----------
     Write-Output '== 控件存在性'
-    foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号', '保存', '清空',
+    foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:', '保存', '清空',
                         '终端模式', '十六进制发送', '行尾:', '定时:', '定时发送', '发送文件', '发送',
-                        '打开串口', '刷新', '保存预设', '删除预设', '选择目录', '打开目录', '端口设置', '接收设置', '日志保存',
+                        '打开串口', '刷新', '保存预设', '删除预设', '选择目录', '打开目录', '端口设置', '接收设置',
+                        '日志显示', '日志保存',
                         '模糊背景', '切换到深色')) {
         $found = ($null -ne (Find-One -Root $root -Name $name))
         Write-Output ("EXISTS|{0}={1}" -f $name, $found)
@@ -222,13 +237,36 @@ try {
     Write-Output "REDUNDANT|死按钮与冗余文案=$dead"
     if ($dead -ne 0) { $failures++ }
 
+    # 自动滚动只能有一处：以前侧栏和日志工具条各有一个开关，点了会互相打脸
     $autoscrollChecks = 0
     foreach ($c in (Find-All -Root $root -ControlType $CT::CheckBox)) {
         if ($c.Current.Name -eq '自动滚动') { $autoscrollChecks++ }
     }
+    $autoscrollButtons = 0
+    foreach ($b in (Find-All -Root $root -ControlType $CT::Button)) {
+        if ($b.Current.Name -eq '自动滚动') { $autoscrollButtons++ }
+    }
     $autoscrollToggle = Find-Id -Root $root -Id 'AutoScrollToggle'
-    Write-Output "REDUNDANT|侧栏自动滚动复选框=$autoscrollChecks|工具栏自动滚动开关=$($null -ne $autoscrollToggle)"
-    if ($autoscrollChecks -ne 0 -or -not $autoscrollToggle) { $failures++ }
+    Write-Output "REDUNDANT|自动滚动复选框=$autoscrollChecks|自动滚动按钮=$autoscrollButtons|AutoScrollToggle=$($null -ne $autoscrollToggle)"
+    if ($autoscrollChecks -ne 1 -or $autoscrollButtons -ne 0 -or -not $autoscrollToggle) { $failures++ }
+
+    # 显示类控件确实在左栏：右边界不超过日志区左边界（"挪到左侧"这件事的可复现证据）
+    Write-Output '== 控件归属：显示类在左栏'
+    $logView = Find-Id -Root $root -Id 'LogViewControl'
+    if ($null -eq $logView) {
+        Write-Output 'OWNER|找不到 LogViewControl'
+        $failures++
+    } else {
+        $logLeft = [math]::Round((Get-RectOf $logView).Left, 0)
+        foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:')) {
+            $element = Find-One -Root $root -Name $name
+            $right = -1
+            if ($element) { $right = [math]::Round((Get-RectOf $element).Right, 0) }
+            $inLeft = $right -ge 0 -and $right -le $logLeft
+            Write-Output ("OWNER|{0}|右边界={1} 日志区左边界={2} 在左栏={3}" -f $name, $right, $logLeft, $inLeft)
+            if (-not $inLeft) { $failures++ }
+        }
+    }
 
     # 状态栏不再重复显示搜索命中数：搜索未打开时应当一个都找不到
     $searchStatus = 0

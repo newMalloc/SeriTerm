@@ -83,51 +83,11 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <!-- 顶部工具栏按钮 -->
+    <!-- 日志工具条按钮（保存 / 清空），也是唯一还留在右栏日志上方的一行按钮 -->
     <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Margin" Value="0,0,4,0" />
         <Setter Property="MinWidth" Value="34" />
         <Setter Property="Padding" Value="8,4" />
-    </Style>
-
-    <!-- 工具栏开关（自动换行 / 自动滚动） -->
-    <Style x:Key="ToolbarToggle" TargetType="ToggleButton">
-        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="8,4" />
-        <Setter Property="MinHeight" Value="26" />
-        <Setter Property="Margin" Value="0,0,4,0" />
-        <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Bd"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
-                        </Trigger>
-                        <!-- 放在最后：选中状态要压过悬停态 -->
-                        <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- ============ 图标几何 ============ -->

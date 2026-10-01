@@ -447,6 +447,46 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 日志显示 -->
+                    <Border Style="{StaticResource SectionPanel}">
+                        <StackPanel>
+                            <!-- 查找与暂停是对"日志显示"的动作，跟着这一段走；
+                                 放在标题行右侧，正文里只留下复选框和下拉框，不再堆按钮。 -->
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="日志显示" Style="{StaticResource SectionHeader}" Margin="0" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Style="{StaticResource SmallButton}" Content="查找"
+                                            Command="{Binding OpenSearchCommand}"
+                                            ToolTip="实时搜索日志（Ctrl+F）" />
+                                    <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0"
+                                            Content="{Binding PauseButtonText}"
+                                            Command="{Binding TogglePauseCommand}"
+                                            ToolTip="暂停只是停止刷新显示，串口数据仍在接收" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 这两个开关用复选框而不是工具条上的胶囊按钮：
+                                 侧栏里所有布尔选项都是复选框，样式才统一。 -->
+                            <CheckBox Content="自动换行" IsChecked="{Binding LineWrap}" Margin="0,0,0,4"
+                                      ToolTip="日志内容自动换行" />
+                            <CheckBox x:Name="AutoScrollToggle" Content="自动滚动"
+                                      IsChecked="{Binding AutoScroll}" Margin="0,0,0,6"
+                                      ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="字号:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="FontSizeCombo" Grid.Column="1"
+                                          ItemsSource="{Binding FontSizeOptions}"
+                                          SelectedItem="{Binding LogFontSize}"
+                                          ToolTip="日志区字号（只影响显示，不影响落盘内容）" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <!-- 日志保存 -->
                     <Border Style="{StaticResource SectionPanel}">
                         <StackPanel>
@@ -495,41 +535,18 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 日志工具条：都是"对日志本身"的操作，紧贴日志区 -->
+                <!-- 日志工具条：只剩"保存 / 清空"这两个作用在当前显示内容上的动作。
+                     查找、暂停显示、自动换行、自动滚动、字号都是显示设置，统一收进左栏
+                     「日志显示」一节，日志上方不再摆一排开关，日志区也拿回了那一行高度。 -->
                 <Border Grid.Row="0"
                         Background="{DynamicResource PanelBackgroundBrush}"
                         BorderBrush="{DynamicResource PanelBorderBrush}"
                         BorderThickness="0,0,0,1"
-                        Padding="8,5">
+                        Padding="10,4">
                     <DockPanel LastChildFill="False">
-                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                            <Button Style="{StaticResource ToolbarButton}" Content="查找"
-                                    Command="{Binding OpenSearchCommand}"
-                                    ToolTip="实时搜索日志（Ctrl+F）" />
-                            <Button Style="{StaticResource ToolbarButton}"
-                                    Command="{Binding TogglePauseCommand}"
-                                    Content="{Binding PauseButtonText}"
-                                    ToolTip="暂停只是停止刷新显示，串口数据仍在接收" />
-
-                            <Border Width="1" Height="16" Margin="4,0,10,0" VerticalAlignment="Center"
-                                    Background="{DynamicResource PanelBorderBrush}" />
-
-                            <ToggleButton Style="{StaticResource ToolbarToggle}" Content="自动换行"
-                                          IsChecked="{Binding LineWrap}" ToolTip="日志内容自动换行" />
-                            <ToggleButton x:Name="AutoScrollToggle" Style="{StaticResource ToolbarToggle}"
-                                          Content="自动滚动"
-                                          IsChecked="{Binding AutoScroll}"
-                                          ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
-
-                            <StackPanel Orientation="Horizontal" Margin="4,0,0,0">
-                                <TextBlock Text="字号" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="FontSizeCombo" Width="62"
-                                          ItemsSource="{Binding FontSizeOptions}"
-                                          SelectedItem="{Binding LogFontSize}"
-                                          ToolTip="日志区字号" />
-                            </StackPanel>
-                        </StackPanel>
-
+                        <TextBlock DockPanel.Dock="Left" Text="接收日志"
+                                   Foreground="{DynamicResource SubtleForegroundBrush}"
+                                   FontSize="11.5" />
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
                             <Button Style="{StaticResource ToolbarButton}" Content="保存"
                                     Command="{Binding SaveLogCommand}"
