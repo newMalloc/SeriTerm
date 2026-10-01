@@ -22,6 +22,12 @@ public interface IThemeService
     /// <summary>当前实际生效的是否为深色（<see cref="ThemeMode.System"/> 会被解析）。</summary>
     bool IsDarkEffective { get; }
 
+    /// <summary>
+    /// 当前生效的主题字典。背景模糊需要从它里面取"原始不透明颜色"来生成半透明表面，
+    /// 不能走 Application.Resources（那里可能已经被半透明覆盖字典盖住了）。
+    /// </summary>
+    ResourceDictionary? ActiveTheme { get; }
+
     event EventHandler<ThemeMode>? ThemeChanged;
 
     void Apply(ThemeMode mode);
@@ -40,6 +46,8 @@ public sealed class ThemeService : IThemeService
 
     public bool IsDarkEffective { get; private set; } = true;
 
+    public ResourceDictionary? ActiveTheme { get; private set; }
+
     public event EventHandler<ThemeMode>? ThemeChanged;
 
     public void Apply(ThemeMode mode)
@@ -51,10 +59,10 @@ public sealed class ThemeService : IThemeService
             _ => !IsSystemUsingLightTheme(),
         };
 
-        SwapThemeDictionary(dark ? DarkFileName : LightFileName);
-
         Current = mode;
         IsDarkEffective = dark;
+        ActiveTheme = SwapThemeDictionary(dark ? DarkFileName : LightFileName) ?? ActiveTheme;
+
         ThemeChanged?.Invoke(this, mode);
     }
 
@@ -72,12 +80,12 @@ public sealed class ThemeService : IThemeService
         }
     }
 
-    private static void SwapThemeDictionary(string fileName)
+    private static ResourceDictionary? SwapThemeDictionary(string fileName)
     {
         var app = Application.Current;
         if (app is null)
         {
-            return;
+            return null;
         }
 
         var dictionaries = app.Resources.MergedDictionaries;
@@ -98,10 +106,11 @@ public sealed class ThemeService : IThemeService
                 || source.EndsWith(LightFileName, StringComparison.OrdinalIgnoreCase))
             {
                 dictionaries[i] = replacement;
-                return;
+                return replacement;
             }
         }
 
         dictionaries.Add(replacement);
+        return replacement;
     }
 }

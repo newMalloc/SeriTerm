@@ -81,6 +81,9 @@ public sealed class AppSettings
 
     /// <summary>日志区字号。</summary>
     public double LogFontSize { get; set; } = 13;
+
+    /// <summary>窗口背景亚克力模糊（透出被模糊的桌面壁纸）。</summary>
+    public bool BlurBackground { get; set; } = true;
 }
 
 public interface ISettingsStore

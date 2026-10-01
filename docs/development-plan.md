@@ -609,6 +609,104 @@ partial void OnAutoReconnectChanged(bool v) => _reconnect.Enabled = v;  // 值�
 - 设备不在时用**固定 0.5 秒轮询**而不是退避：原来每次都要等完退避（上限 10 秒）才检查端口，
   插回后最坏要等 10 秒才恢复。现在插回后约 1 秒重连。
 
+### 11.19 Windows 10 的标题栏不吃 `DWMWA_USE_IMMERSIVE_DARK_MODE`
+
+症状：运行中点"切换到浅色/深色"，客户区全变了，**最上面那条标题栏还是白的**。
+
+实测（Windows 10 19045）：
+
+```
+GET|attr20 hr=0x00000000 value=0
+SET|attr20 hr=0x00000000            ← 返回 S_OK
+GET2|attr20 hr=0x00000000 value=1   ← 读回来也是 1
+CAPTION|a-start   |1-44:#FFFFFF
+CAPTION|b-attr20  |1-44:#FFFFFF     ← 像素一个都没变
+CAPTION|d-framechanged |1-44:#FFFFFF ← 强制重算非客户区也没用
+```
+
+也就是说这个属性在 Win10 上**会被接受、能读回、但 Win32 窗口的标题栏完全不理会**
+（UWP/WinUI 的标题栏才会跟随；这也解释了为什么"微软商店里的那个串口助手"看起来能跟随主题）。
+结论：想让顶部跟随主题，只能**自绘标题栏**：`WindowStyle=None` + `WindowChrome`，
+标题栏用 `DynamicResource` 取色，窗口按钮自己画。`TitleBarTheme` 的调用保留（Win11 的边框/系统菜单仍可用），
+但不能再指望它。
+
+### 11.20 第三方窗口拿不到 DWM 背景模糊：改成自己模糊壁纸
+
+目标是"背景模糊透出桌面"。Windows 11 有 Mica（本机是 Win10 19045，没有），
+于是先按老办法试 `SetWindowCompositionAttribute(ACCENT_ENABLE_ACRYLICBLURBEHIND)`。实测：
+
+```
+APPLY|s4-f2-w99 |ret=1   ← 成功
+SAMPLE|s4-f2-w99|#DCDCDC #DCDCDC … ← 全屏同一颜色，没有任何模糊
+（AccentState 1/2/3/4/5/6 × AccentFlags 0/2 × 深浅两种底色，
+  外加 DwmExtendFrameIntoClientArea(-1) 把玻璃区扩到整个客户区：九种组合全是这样）
+```
+
+而同一时刻**系统任务栏的亚克力是正常的**（任务栏区域能看出被压暗的壁纸色块），
+即 DWM 自身支持模糊，只是拒绝为第三方窗口提供这套旧接口（远程/虚拟显示会话里尤其如此）。
+可验证的旁证：把表面画刷换成半透明后，像素值精确等于"半透明画刷叠在纯黑上"（`#DCDCDC` = `#F4F4F4@0xA8`
+再叠 `#FFFFFF@0xA0`），说明窗口背后什么都没有。
+
+于是改成 **WPF 内自己模糊壁纸**（`DesktopBackdrop`）：读 `HKCU\Control Panel\Desktop\WallPaper`
+（取不到就用 `%AppData%\Microsoft\Windows\Themes\TranscodedWallpaper`，覆盖幻灯片/聚焦），
+降采样到 320 px 宽后做 3 次可分离盒式模糊（滑动窗口累加，几十毫秒），
+得到一张很小的图交给 GPU 拉伸铺满窗口。好处：不依赖 DWM、任何会话都能用、静态图不占每帧开销。
+
+配套两点：
+- 半透明表面**只在模糊真的生效时**才启用（`SurfaceTranslucency` 往 `Application.Resources` 末尾
+  合并一个覆盖字典，WPF 的合并字典是后加入者优先，所有引用处本来就是 `DynamicResource`）。
+  取原始颜色必须从**当前主题字典**取，不能从 `Application.Resources` 查——那样会读到自己的半透明覆盖，
+  刷新几次 alpha 就越乘越深；
+- 深/浅主题各有一层蒙版（`BackdropTintBrush`）：壁纸通常是亮的，深色主题不加蒙版会让浅色文字糊掉。
+
+### 11.21 自绘标题栏的三个坑
+
+1. **最大化会盖住任务栏**。`WindowStyle=None` + `GlassFrameThickness=0` 时客户区就是整个窗口，
+   而 WPF 按"无边框全屏"处理最大化，实测窗口矩形 `-10,-10,2570,1610` 而工作区是 `0,0,2560,1540`
+   （多出来的正是 `ResizeBorderThickness`）。修法是在窗口消息钩子里处理 `WM_GETMINMAXINFO`，
+   用 `GetMonitorInfo` 的 **rcWork** 设 `ptMaxPosition/ptMaxSize/ptMaxTrackSize`。修好后两者完全一致。
+2. **`DockPanel` 的最后一个子元素默认是"填充"而不是"停靠"**。标题栏里左侧标题 + 右侧按钮组，
+   按钮组写在最后 → 被当成填充元素并从左往右排，结果三个窗口按钮跑到标题文字后面
+   （UIA 实测 `rect=574..772`，而窗口右边缘是 2240）。加 `LastChildFill="False"` 后回到 `2040..2238`。
+   这个坑很隐蔽：截图里"标题后面跟着三个按钮"看着也不算太怪，是 UIA 矩形把它揪出来的。
+3. **背景对齐不能用 `Window.Left` / `ActualWidth`**。最大化过程中这两个值会有一段时间是旧值，
+   算出来的 `ImageBrush.Viewbox` 会超出图像范围，右侧露出一条 318 px 宽、没有背景的竖带
+   （像素正好等于"日志底色叠在纯色窗口背景上"）。改成用 `GetWindowRect`（物理像素，按当前 DPI 换算回 DIP）
+   并 clamp 到 `[0,1]`，同时在 `LocationChanged/SizeChanged/StateChanged` 里合并成一次 Background 优先级更新。
+
+顺带记录一条排查手段：`WM_NCHITTEST` 的 `lParam` 是**屏幕坐标**，一开始按客户区坐标发，
+得到的全是没有意义的 `HTCLIENT`；换成屏幕坐标后一次就对上了。
+
+### 11.22 退出路径：每次关窗都弹崩溃框、进程还退不掉
+
+现象（修复前，**每个版本都存在**）：点关闭 → 弹「SeriTerm 发生严重错误」→ 进程不退；点掉弹窗后进程以
+`0xE0434352`（CLR 未处理异常）结束。事件日志里能看到真正的第一条：
+
+```
+System.InvalidOperationException: 'SeriTerm.App.ViewModels.MainViewModel' type only implements
+IAsyncDisposable. Use DisposeAsync to dispose the container.
+   at Microsoft.Extensions.DependencyInjection.ServiceProvider.Dispose()
+   at SeriTerm.App.App.OnExit(...) App.xaml.cs:line 84
+```
+
+两个缺陷叠在一起：
+
+1. `App.OnExit` 里调 `_services.Dispose()`，而容器里有只实现 `IAsyncDisposable` 的单例
+   （`MainViewModel`），DI **同步**释放会直接抛异常。改成 `_services.DisposeAsync().AsTask().Wait(...)`，
+   顺带把 `MainViewModel` 的手工释放也交给容器（它本来就会 flush 日志、关串口）；
+2. `OnDispatcherUnhandledException` 里再 `_services.GetService<IUserNotifier>()`，
+   而此时容器已经/正在释放 → 抛 `ObjectDisposedException` → "本来能被处理的界面异常"升级成
+   **AppDomain 未处理异常 + 模态框 + 进程退不掉**。修法：启动时就把 `IUserNotifier` 解析成字段，
+   并且整个处理器包在 try/catch 里——异常处理里再抛异常，等于把诊断信息也一起埋了。
+
+顺带加了一个只在出错时写的 `%AppData%\SeriTerm\ui-errors.log`：发布版是单文件 exe、没有控制台、
+日志提供程序只有 Debug（Release 下看不到），上面第 1 条就是靠它才拿到的。
+另外注意：`Dispatcher.BeginInvoke` 排队的回调在关窗过程中**仍会执行**，
+所以回调里必须先判断 `IsLoaded && !Dispatcher.HasShutdownStarted` 再碰窗口/HWND。
+
+现在的实测结果：点关闭 **1 秒内退出、退出码 0、`settings.json` 已落盘**。
+
+
 
 
 

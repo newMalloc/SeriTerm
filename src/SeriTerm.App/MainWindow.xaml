@@ -8,6 +8,8 @@
         Icon="Assets/seriterm.ico"
         Height="800" Width="1280" MinHeight="520" MinWidth="920"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         Background="{DynamicResource WindowBackgroundBrush}"
         Foreground="{DynamicResource ForegroundBrush}"
         FontFamily="Microsoft YaHei UI, Segoe UI"
@@ -15,7 +17,87 @@
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
 
+    <!--
+        自绘标题栏。Windows 10 上 DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)
+        会被接受（返回 S_OK、读回也是 1）但对 Win32 窗口的标题栏毫无视觉效果，
+        所以系统标题栏永远是一块白条，切主题时只有客户区变色。这里改用 WindowChrome
+        自己画标题栏：颜色走 DynamicResource，切主题即时生效，也才能让标题栏参与背景模糊。
+        CaptionHeight 必须与下面标题栏的高度一致，否则拖动/双击最大化会失灵。
+    -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="34"
+                      ResizeBorderThickness="6"
+                      CornerRadius="0"
+                      GlassFrameThickness="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Border BorderBrush="{DynamicResource WindowBorderBrush}" BorderThickness="1">
+    <Grid>
+        <!--
+            背景模糊层：一块被大幅降采样+模糊过的桌面壁纸，按"屏幕坐标"对齐窗口，
+            所以窗口移动时背景跟着桌面走，看起来像真的透出桌面（详见 DesktopBackdrop）。
+            关掉"模糊背景"时这两层整体折叠，窗口回到不透明的纯色背景。
+        -->
+        <Rectangle x:Name="BackdropLayer" Visibility="Collapsed"
+                   RenderOptions.BitmapScalingMode="HighQuality">
+            <Rectangle.Fill>
+                <ImageBrush x:Name="BackdropBrush" Stretch="Fill"
+                            ViewboxUnits="RelativeToBoundingBox"
+                            ViewportUnits="RelativeToBoundingBox"
+                            Viewport="0,0,1,1" />
+            </Rectangle.Fill>
+        </Rectangle>
+        <Rectangle x:Name="BackdropTint" Visibility="Collapsed"
+                   Fill="{DynamicResource BackdropTintBrush}" />
+
     <DockPanel>
+
+        <!-- ================= 自绘标题栏 ================= -->
+        <Border DockPanel.Dock="Top" Height="34"
+                Background="{DynamicResource TitleBarBackgroundBrush}">
+            <!-- LastChildFill=False：否则最后那个"靠右"的按钮组会被当成填充元素，
+                 结果三个窗口按钮跑到标题文字后面，而不是贴在右上角。 -->
+            <DockPanel LastChildFill="False">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left"
+                            Margin="10,0,0,0" VerticalAlignment="Center">
+                    <Image Source="Assets/seriterm.ico" Width="16" Height="16"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="SeriTerm 串口调试助手" Margin="8,0,0,0" FontSize="12.5" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <Button Style="{StaticResource CaptionButton}" Click="OnMinimizeClick"
+                            AutomationProperties.Name="最小化" ToolTip="最小化">
+                        <Path Data="M 0,0 H 10" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                    <Button Style="{StaticResource CaptionButton}" Click="OnMaximizeRestoreClick"
+                            AutomationProperties.Name="最大化" ToolTip="最大化 / 还原">
+                        <Path StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Data" Value="M 0.5,0.5 H 9.5 V 9.5 H 0.5 Z" />
+                                    <Style.Triggers>
+                                        <DataTrigger Value="Maximized"
+                                                     Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <Setter Property="Data"
+                                                    Value="M 2.5,0.5 H 9.5 V 7.5 M 0.5,2.5 H 7.5 V 9.5 H 0.5 Z" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+                    <Button Style="{StaticResource CaptionCloseButton}" Click="OnCloseClick"
+                            AutomationProperties.Name="关闭" ToolTip="关闭">
+                        <Path Data="M 0.5,0.5 L 9.5,9.5 M 9.5,0.5 L 0.5,9.5" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
 
         <!-- ================= 顶部工具栏 ================= -->
         <Border DockPanel.Dock="Top"
@@ -41,6 +123,11 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <ToggleButton x:Name="BlurBackdropToggle" Style="{StaticResource ToolbarToggle}"
+                                  Content="模糊背景"
+                                  IsChecked="{Binding BlurBackground}"
+                                  IsEnabled="{Binding BackdropAvailable}"
+                                  ToolTip="窗口背景用亚克力模糊透出桌面壁纸（需要系统“透明效果”开启）；关闭后为纯色背景" />
                     <Button Style="{StaticResource ToolbarButton}"
                             Command="{Binding ToggleThemeCommand}"
                             Content="{Binding ThemeButtonText}"
@@ -450,4 +537,6 @@
             <controls:LogView x:Name="LogViewControl" Grid.Column="2" />
         </Grid>
     </DockPanel>
+    </Grid>
+    </Border>
 </Window>

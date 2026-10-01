@@ -323,6 +323,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _autoOpenOnStartup;
 
+    /// <summary>
+    /// 窗口背景是否用亚克力模糊透出桌面。默认开，但系统不支持/关了"透明效果"时
+    /// <see cref="BackdropAvailable"/> 为 false，界面上这个开关会直接禁用。
+    /// </summary>
+    [ObservableProperty]
+    private bool _blurBackground = true;
+
+    /// <summary>当前系统能不能做背景模糊（能读到桌面壁纸才行）。</summary>
+    public bool BackdropAvailable => DesktopBackdrop.IsAvailable;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasReconnectStatus))]
     private string _reconnectStatusText = string.Empty;
@@ -1441,6 +1451,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         _settings.AutoReconnect = AutoReconnect;
         _settings.AutoOpenOnStartup = AutoOpenOnStartup;
+        _settings.BlurBackground = BlurBackground;
         _settings.TerminalLocalEcho = TerminalLocalEcho;
         _settings.TerminalBackspaceSendsDel = TerminalBackspaceSendsDel;
         _settings.SaveLogToFile = SaveLogToFile;
@@ -1491,6 +1502,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         AutoReconnect = settings.AutoReconnect;
         AutoOpenOnStartup = settings.AutoOpenOnStartup;
+        BlurBackground = settings.BlurBackground;
         TerminalLocalEcho = settings.TerminalLocalEcho;
         TerminalBackspaceSendsDel = settings.TerminalBackspaceSendsDel;
 

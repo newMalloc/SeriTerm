@@ -19,6 +19,17 @@
     <SolidColorBrush x:Key="TxForegroundBrush" Color="#C2610A" />
     <SolidColorBrush x:Key="RxForegroundBrush" Color="#1F1F1F" />
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#DCE6F0" />
+
+    <!-- 自绘标题栏（Windows 10 的系统标题栏不跟随主题，只能自己画） -->
+    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#C8C8C8" />
+    <SolidColorBrush x:Key="CaptionButtonHoverBrush" Color="#E1E1E1" />
+    <SolidColorBrush x:Key="CaptionButtonPressedBrush" Color="#D0D0D0" />
+    <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#E81123" />
+    <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="#F1707A" />
+
+    <!-- 模糊背景（壁纸）之上的蒙版：决定壁纸透出多少、文字对比度是否够 -->
+    <SolidColorBrush x:Key="BackdropTintBrush" Color="#99F4F4F4" />
     <SolidColorBrush x:Key="SelectionBrush" Color="#CCE4F7" />
     <SolidColorBrush x:Key="OkBrush" Color="#1E8E1E" />
     <SolidColorBrush x:Key="WarnBrush" Color="#B87300" />
