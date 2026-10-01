@@ -46,203 +46,289 @@
         </Style>
     </UserControl.Resources>
 
+    <!--
+        单行单列：日志铺满整块区域，查找框与收藏栏叠在右上角。
+        刻意不给搜索条留一行高度——查找是临时动作、收藏只是偶尔点一下，
+        让日志长期为此让出一整条（约 40px）不划算，所以改成浮层。
+    -->
     <Grid Background="{DynamicResource LogBackgroundBrush}">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+        <ListBox x:Name="LogList"
+                 ItemsSource="{Binding Log.Lines}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="0,2,0,2"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 VirtualizingPanel.ScrollUnit="Pixel"
+                 SelectionMode="Extended"
+                 PreviewMouseLeftButtonDown="OnLogListPreviewMouseLeftButtonDown"
+                 PreviewMouseLeftButtonUp="OnLogListPreviewMouseLeftButtonUp"
+                 PreviewMouseRightButtonDown="OnLogListPreviewMouseRightButtonDown"
+                 PreviewKeyDown="OnLogListPreviewKeyDown"
+                 PreviewMouseMove="OnLogListPreviewMouseMove"
+                 FontFamily="Consolas, Microsoft YaHei UI"
+                 FontSize="{Binding LogFontSize}">
 
-        <!-- ===== Ctrl+F 搜索条 ===== -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource PanelBackgroundBrush}"
-                BorderBrush="{DynamicResource PanelBorderBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="8,5"
-                Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}">
-            <!-- 用 WrapPanel：窄窗口下按钮折行，而不是被裁掉 -->
-            <WrapPanel>
-                <TextBlock Text="查找:" Style="{StaticResource FieldLabel}" />
+            <!-- 复制选中行：右键菜单与 Ctrl+C 走同一条命令（虚拟化列表不支持逐字选择，
+                 选中粒度是"行"；复制出来的是屏幕上看到的那一行文本） -->
+            <ListBox.CommandBindings>
+                <CommandBinding Command="Copy" CanExecute="OnCopyCanExecute" Executed="OnCopyExecuted" />
+            </ListBox.CommandBindings>
 
-                <TextBox x:Name="SearchBox"
-                         Width="240"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         KeyDown="OnSearchBoxKeyDown"
-                         ToolTip="Ctrl+F 打开 / Esc 关闭，回车查找下一个，Shift+回车查找上一个" />
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="复制"
+                              Command="Copy"
+                              InputGestureText="Ctrl+C"
+                              CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
 
-                <Button Style="{StaticResource ToolbarButton}" Content="收藏" Margin="6,0,4,0"
-                        Command="{Binding AddSearchFavoriteCommand}"
-                        IsEnabled="{Binding CanAddSearchFavorite}"
-                        ToolTip="把当前关键字存进左栏「查找收藏」，以后点一下就能填回来" />
+            <!-- 选中反馈：整行底色 + 行首一道强调色竖条。
+                 竖条宽度恒定，选中与否都不会让文字左右跳动；
+                 命中行自带蓝底，所以选中态在命中行上只靠竖条体现，两者互不遮挡。 -->
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="Selection" BorderThickness="3,0,0,0" BorderBrush="Transparent">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="Selection" Property="Background"
+                                                Value="{DynamicResource RowSelectionBrush}" />
+                                        <Setter TargetName="Selection" Property="BorderBrush"
+                                                Value="{DynamicResource AccentBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
 
-                <TextBlock Text="{Binding SearchStatusText}"
-                           Margin="10,0,10,0"
-                           Foreground="{DynamicResource SubtleForegroundBrush}" />
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border x:Name="Row" Padding="6,1" Background="Transparent">
+                        <!-- 用 Grid 而不是 StackPanel：内容列拿星号宽度，
+                             只读文本框才会在行宽内换行/裁剪，而不是把行撑宽 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="104" />
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                <Button Style="{StaticResource ToolbarButton}" Content="▲" MinWidth="28"
-                        Command="{Binding SearchPreviousCommand}" ToolTip="上一个（Shift+Enter）" />
-                <Button Style="{StaticResource ToolbarButton}" Content="▼" MinWidth="28"
-                        Command="{Binding SearchNextCommand}" ToolTip="下一个（Enter）" />
+                            <!-- 时间列 -->
+                            <TextBlock Grid.Column="0" Text="{Binding TimeText}"
+                                       Margin="0,0,6,0"
+                                       Foreground="{DynamicResource SubtleForegroundBrush}"
+                                       Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
 
-                <CheckBox Content="区分大小写" Margin="8,0,10,0"
-                          IsChecked="{Binding SearchCaseSensitive}" />
+                            <!-- 方向列 -->
+                            <TextBlock Grid.Column="1" Text="{Binding DirectionText}"
+                                       Margin="0,0,4,0"
+                                       Foreground="{DynamicResource SubtleForegroundBrush}" />
 
-                <Button Style="{StaticResource ToolbarButton}" Content="✕"
-                        Command="{Binding CloseSearchCommand}" ToolTip="关闭搜索（Esc）" />
-            </WrapPanel>
+                            <!-- 内容列：只读文本框（鼠标可以选中任意一段字符再复制），
+                                 背后一层 Canvas 专门画"命中关键字"的高亮方块 -->
+                            <Grid Grid.Column="2">
+                                <Canvas x:Name="MatchLayer" IsHitTestVisible="False" ClipToBounds="True" />
+
+                                <TextBox x:Name="LineText"
+                                         Style="{StaticResource LogLineText}"
+                                         Text="{Binding Text, Mode=OneWay}"
+                                         SelectionChanged="OnLineTextSelectionChanged"
+                                         DataContextChanged="OnLineTextDataContextChanged"
+                                         SizeChanged="OnLineTextSizeChanged"
+                                         Loaded="OnLineTextLoaded" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <DataTemplate.Triggers>
+                        <!-- 命中：整行底色（刻意做得极浅，只是提示"这行里有命中"，
+                             真正标出位置的是文本框背后那层字符高亮） -->
+                        <DataTrigger Binding="{Binding IsMatch}" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource MatchRowBrush}" />
+                        </DataTrigger>
+                        <!-- 当前命中改成"淡琥珀底"，文字仍用原来的颜色：
+                             原来是把整行刷成强调色 + 白字，命中的字符反而看不清在哪 -->
+                        <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
+                            <Setter TargetName="Row" Property="Background"
+                                    Value="{DynamicResource CurrentMatchRowBrush}" />
+                        </DataTrigger>
+                        <!-- 选中必须排在最后：命中行的底色画在行内 Border 上，
+                             会盖住行容器（ListBoxItem）的选中底色，不在这里覆盖就只剩行首那道竖条 -->
+                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                     Value="True">
+                            <Setter TargetName="Row" Property="Background"
+                                    Value="{DynamicResource RowSelectionBrush}" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- ===== 暂停自动滚动时的"新数据"提示条 ===== -->
+        <Button x:Name="NewDataBar"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,14"
+                Padding="14,6"
+                Background="{DynamicResource AccentBrush}"
+                BorderBrush="{DynamicResource AccentBrush}"
+                Foreground="{DynamicResource AccentForegroundBrush}"
+                Command="{Binding ScrollToLatestCommand}"
+                Content="{Binding NewDataBarText}"
+                ToolTip="点击回到最新位置并恢复自动滚动"
+                Visibility="{Binding HasPendingNewLines, Converter={StaticResource BoolToVisibility}}" />
+
+        <!-- ===== 暂停显示提示 ===== -->
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,10,0,0"
+                Padding="12,5"
+                CornerRadius="4"
+                Background="{DynamicResource WarnBrush}"
+                Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding PausedHintText}" Foreground="#101010" FontWeight="SemiBold" />
         </Border>
 
-        <!-- ===== 日志列表 ===== -->
-        <Grid Grid.Row="1">
-            <ListBox x:Name="LogList"
-                     ItemsSource="{Binding Log.Lines}"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     Padding="0,2,0,2"
-                     HorizontalContentAlignment="Stretch"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     VirtualizingPanel.IsVirtualizing="True"
-                     VirtualizingPanel.VirtualizationMode="Recycling"
-                     VirtualizingPanel.ScrollUnit="Pixel"
-                     SelectionMode="Extended"
-                     PreviewMouseLeftButtonDown="OnLogListPreviewMouseLeftButtonDown"
-                     PreviewMouseLeftButtonUp="OnLogListPreviewMouseLeftButtonUp"
-                     PreviewMouseRightButtonDown="OnLogListPreviewMouseRightButtonDown"
-                     PreviewKeyDown="OnLogListPreviewKeyDown"
-                     PreviewMouseMove="OnLogListPreviewMouseMove"
-                     FontFamily="Consolas, Microsoft YaHei UI"
-                     FontSize="{Binding LogFontSize}">
+        <!--
+            ===== 右上角浮层：查找框 + 收藏栏 =====
+            叠在日志上（不占行高），右边界留出滚动条的宽度，免得挡住拖动条。
+            两种内容按需出现：
+              · 搜索打开 → 上面一行是查找框与翻页；
+              · 有收藏   → 下面跟一份"每项一行"的收藏列表，搜索关掉后它就是唯一的入口；
+            两者都没有时整块浮层折叠，日志区完全不受影响。
+        -->
+        <Border x:Name="SearchOverlay"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,8,22,0"
+                MinWidth="330"
+                MaxWidth="470"
+                Background="{DynamicResource PanelBackgroundBrush}"
+                BorderBrush="{DynamicResource PanelBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="5"
+                Visibility="{Binding ShowSearchOverlay, Converter={StaticResource BoolToVisibility}}">
+            <!-- 浮层压在日志文字上，必须有阴影和实心底色才分得清层次
+                 （半透明会让底下的等宽字体透上来，反而看不清） -->
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270"
+                                  Opacity="0.3" Color="#000000" />
+            </Border.Effect>
 
-                <!-- 复制选中行：右键菜单与 Ctrl+C 走同一条命令（虚拟化列表不支持逐字选择，
-                     选中粒度是"行"；复制出来的是屏幕上看到的那一行文本） -->
-                <ListBox.CommandBindings>
-                    <CommandBinding Command="Copy" CanExecute="OnCopyCanExecute" Executed="OnCopyExecuted" />
-                </ListBox.CommandBindings>
+            <StackPanel>
+                <!-- 查找框 -->
+                <Grid Margin="9,7,9,7"
+                      Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <ListBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="复制"
-                                  Command="Copy"
-                                  InputGestureText="Ctrl+C"
-                                  CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                    </ContextMenu>
-                </ListBox.ContextMenu>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="查找:"
+                               Style="{StaticResource FieldLabel}" />
 
-                <!-- 选中反馈：整行底色 + 行首一道强调色竖条。
-                     竖条宽度恒定，选中与否都不会让文字左右跳动；
-                     命中行自带蓝底，所以选中态在命中行上只靠竖条体现，两者互不遮挡。 -->
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="0" />
-                        <Setter Property="Margin" Value="0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="Selection" BorderThickness="3,0,0,0" BorderBrush="Transparent">
-                                        <ContentPresenter />
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="Selection" Property="Background"
-                                                    Value="{DynamicResource RowSelectionBrush}" />
-                                            <Setter TargetName="Selection" Property="BorderBrush"
-                                                    Value="{DynamicResource AccentBrush}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
+                    <TextBox x:Name="SearchBox"
+                             Grid.Row="0" Grid.Column="1"
+                             MinWidth="150"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             KeyDown="OnSearchBoxKeyDown"
+                             ToolTip="Ctrl+F 打开 / Esc 关闭，回车查找下一个，Shift+回车查找上一个" />
 
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border x:Name="Row" Padding="6,1" Background="Transparent">
-                            <!-- 用 Grid 而不是 StackPanel：内容列拿星号宽度，
-                                 只读文本框才会在行宽内换行/裁剪，而不是把行撑宽 -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="104" />
-                                    <ColumnDefinition Width="30" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
+                    <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource ToolbarButton}"
+                            Content="收藏" Margin="6,0,4,0"
+                            Command="{Binding AddSearchFavoriteCommand}"
+                            IsEnabled="{Binding CanAddSearchFavorite}"
+                            ToolTip="把当前关键字存进下面的「查找收藏」，以后点一下就能填回来" />
 
-                                <!-- 时间列 -->
-                                <TextBlock Grid.Column="0" Text="{Binding TimeText}"
-                                           Margin="0,0,6,0"
-                                           Foreground="{DynamicResource SubtleForegroundBrush}"
-                                           Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
+                    <Button Grid.Row="0" Grid.Column="3" Style="{StaticResource ToolbarButton}"
+                            Content="✕" Margin="0"
+                            Command="{Binding CloseSearchCommand}" ToolTip="关闭搜索（Esc）" />
 
-                                <!-- 方向列 -->
-                                <TextBlock Grid.Column="1" Text="{Binding DirectionText}"
-                                           Margin="0,0,4,0"
-                                           Foreground="{DynamicResource SubtleForegroundBrush}" />
+                    <!-- 第二行：左边是命中数，右边是翻页与选项，窄窗口下命中数先被省略 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                               Text="{Binding SearchStatusText}"
+                               Margin="0,6,8,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource SubtleForegroundBrush}" />
 
-                                <!-- 内容列：只读文本框（鼠标可以选中任意一段字符再复制），
-                                     背后一层 Canvas 专门画"命中关键字"的高亮方块 -->
-                                <Grid Grid.Column="2">
-                                    <Canvas x:Name="MatchLayer" IsHitTestVisible="False" ClipToBounds="True" />
+                    <StackPanel Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                        <CheckBox Content="区分大小写" Margin="0,0,8,0"
+                                  IsChecked="{Binding SearchCaseSensitive}" />
+                        <Button Style="{StaticResource ToolbarButton}" Content="▲" MinWidth="28"
+                                Command="{Binding SearchPreviousCommand}" ToolTip="上一个（Shift+Enter）" />
+                        <Button Style="{StaticResource ToolbarButton}" Content="▼" MinWidth="28" Margin="0"
+                                Command="{Binding SearchNextCommand}" ToolTip="下一个（Enter）" />
+                    </StackPanel>
+                </Grid>
 
-                                    <TextBox x:Name="LineText"
-                                             Style="{StaticResource LogLineText}"
-                                             Text="{Binding Text, Mode=OneWay}"
-                                             SelectionChanged="OnLineTextSelectionChanged"
-                                             DataContextChanged="OnLineTextDataContextChanged"
-                                             SizeChanged="OnLineTextSizeChanged"
-                                             Loaded="OnLineTextLoaded" />
-                                </Grid>
-                            </Grid>
-                        </Border>
+                <!-- 收藏栏 -->
+                <StackPanel Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
+                    <!-- 分隔线只在上面还有查找框时才画，否则会和浮层自己的上边框重成一条 -->
+                    <Border BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0"
+                            Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}" />
 
-                        <DataTemplate.Triggers>
-                            <!-- 命中：整行底色（刻意做得极浅，只是提示"这行里有命中"，
-                                 真正标出位置的是文本框背后那层字符高亮） -->
-                            <DataTrigger Binding="{Binding IsMatch}" Value="True">
-                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource MatchRowBrush}" />
-                            </DataTrigger>
-                            <!-- 当前命中改成"淡琥珀底"，文字仍用原来的颜色：
-                                 原来是把整行刷成强调色 + 白字，命中的字符反而看不清在哪 -->
-                            <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
-                                <Setter TargetName="Row" Property="Background"
-                                        Value="{DynamicResource CurrentMatchRowBrush}" />
-                            </DataTrigger>
-                            <!-- 选中必须排在最后：命中行的底色画在行内 Border 上，
-                                 会盖住行容器（ListBoxItem）的选中底色，不在这里覆盖就只剩行首那道竖条 -->
-                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                         Value="True">
-                                <Setter TargetName="Row" Property="Background"
-                                        Value="{DynamicResource RowSelectionBrush}" />
-                            </DataTrigger>
-                        </DataTemplate.Triggers>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                    <TextBlock Text="查找收藏" Style="{StaticResource FieldLabel}" Margin="9,6,9,5" />
 
-            <!-- ===== 暂停自动滚动时的"新数据"提示条 ===== -->
-            <Button x:Name="NewDataBar"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Bottom"
-                    Margin="0,0,0,14"
-                    Padding="14,6"
-                    Background="{DynamicResource AccentBrush}"
-                    BorderBrush="{DynamicResource AccentBrush}"
-                    Foreground="{DynamicResource AccentForegroundBrush}"
-                    Command="{Binding ScrollToLatestCommand}"
-                    Content="{Binding NewDataBarText}"
-                    ToolTip="点击回到最新位置并恢复自动滚动"
-                    Visibility="{Binding HasPendingNewLines, Converter={StaticResource BoolToVisibility}}" />
-
-            <!-- ===== 暂停显示提示 ===== -->
-            <Border HorizontalAlignment="Center"
-                    VerticalAlignment="Top"
-                    Margin="0,10,0,0"
-                    Padding="12,5"
-                    CornerRadius="4"
-                    Background="{DynamicResource WarnBrush}"
-                    Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="{Binding PausedHintText}" Foreground="#101010" FontWeight="SemiBold" />
-            </Border>
-        </Grid>
+                    <!-- 一屏放不下就自己滚：浮层高度不能被收藏数量拖着长 -->
+                    <ScrollViewer MaxHeight="176" VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
+                        <ItemsControl ItemsSource="{Binding SearchFavorites}" Margin="6,0,6,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- 每项独占一行：整行可点（套用该关键字），行尾 × 只删这一条。
+                                         内层按钮用自己的 Command，点击不会连带触发外层
+                                         （ButtonBase 会把鼠标事件标记为已处理）。
+                                         AutomationProperties.Name 显式给出关键字：
+                                         内容里套了 Grid，靠 WPF 自己推断名字会推断不出来，
+                                         自动化脚本和读屏软件都会找不到这一行。 -->
+                                    <Button Style="{StaticResource FavoriteRowButton}"
+                                            ToolTip="{Binding}"
+                                            AutomationProperties.Name="{Binding}"
+                                            AutomationProperties.HelpText="点击把这条关键字填回查找框"
+                                            Command="{Binding DataContext.ApplySearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Style="{StaticResource ChipCloseButton}" Content="✕"
+                                                    ToolTip="从收藏里删除这一条"
+                                                    AutomationProperties.Name="删除收藏"
+                                                    Command="{Binding DataContext.RemoveSearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

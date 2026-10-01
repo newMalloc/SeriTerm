@@ -549,6 +549,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ---------- 搜索状态 ----------
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowSearchOverlay))]
     private bool _searchVisible;
 
     [ObservableProperty]
@@ -851,8 +852,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>已收藏的查找关键字：点一下填回搜索框，点标签上的 × 删除。</summary>
     public ObservableCollection<string> SearchFavorites { get; } = [];
 
-    /// <summary>左栏要不要显示空态提示。</summary>
+    /// <summary>有没有收藏（决定收藏栏这一段是否出现）。</summary>
     public bool HasSearchFavorites => SearchFavorites.Count > 0;
+
+    /// <summary>
+    /// 日志右上角那块浮层（查找框 + 收藏栏）要不要显示。
+    /// 搜索打开、或者还存着收藏，两者占一条即可——收藏是"随时点一下就填回关键字"的入口，
+    /// 只在搜索打开时才出现的话，就得先按「查找」才能用它。
+    /// </summary>
+    public bool ShowSearchOverlay => SearchVisible || HasSearchFavorites;
 
     /// <summary>当前关键字能不能存成收藏（非空且还没收藏过）。</summary>
     public bool CanAddSearchFavorite
@@ -924,20 +932,61 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ReplaceSearchFavorites(IReadOnlyList<string> items)
     {
-        SearchFavorites.Clear();
-        foreach (var item in items)
-        {
-            SearchFavorites.Add(item);
-        }
-
+        SyncSearchFavorites(items);
         _settings.SearchFavorites = [.. SearchFavorites];
         NotifyFavoritesChanged();
+    }
+
+    /// <summary>
+    /// 把收藏集合同步成 <paramref name="items"/>，只做增删移、不整体清空。
+    ///
+    /// 为什么不能图省事写 Clear() + 逐个 Add()：Clear() 会让集合发出 Reset，
+    /// ItemsControl 收到 Reset 会把所有行容器丢掉重建，而自动化的那一棵树不会跟着重建——
+    /// 实测加第二条收藏之后，第一条在 UIA 树里就只剩一个没有子元素的 DataItem，
+    /// 读屏软件和自动化脚本都找不到它。增量更新还顺带保住了收藏栏的滚动位置。
+    /// </summary>
+    private void SyncSearchFavorites(IReadOnlyList<string> items)
+    {
+        // 1) 删掉目标列表里已经没有的（从后往前走，索引不会失效）
+        for (var i = SearchFavorites.Count - 1; i >= 0; i--)
+        {
+            if (!items.Contains(SearchFavorites[i]))
+            {
+                SearchFavorites.RemoveAt(i);
+            }
+        }
+
+        // 2) 按目标顺序补齐或归位
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (i >= SearchFavorites.Count)
+            {
+                SearchFavorites.Add(items[i]);
+                continue;
+            }
+
+            if (string.Equals(SearchFavorites[i], items[i], StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var existing = SearchFavorites.IndexOf(items[i]);
+            if (existing > i)
+            {
+                SearchFavorites.Move(existing, i);
+            }
+            else
+            {
+                SearchFavorites.Insert(i, items[i]);
+            }
+        }
     }
 
     private void NotifyFavoritesChanged()
     {
         OnPropertyChanged(nameof(HasSearchFavorites));
         OnPropertyChanged(nameof(CanAddSearchFavorite));
+        OnPropertyChanged(nameof(ShowSearchOverlay));
     }
 
     private void UpdateSearchStatus()
@@ -1620,12 +1669,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         // 收藏顺手清一遍脏数据（手改过配置文件时可能有空白项或重复项）
-        SearchFavorites.Clear();
-        foreach (var favorite in SearchFavoriteList.Sanitize(settings.SearchFavorites))
-        {
-            SearchFavorites.Add(favorite);
-        }
-
+        SyncSearchFavorites(SearchFavoriteList.Sanitize(settings.SearchFavorites));
         _settings.SearchFavorites = [.. SearchFavorites];
         NotifyFavoritesChanged();
     }

@@ -1026,6 +1026,66 @@ if (string.IsNullOrEmpty(_viewModel?.SearchText)) { return; }   // "没关键字
 `tools/ui-layout-check.ps1` 的"控件归属"断言已把 `保存/清空/查找收藏:` 一并纳入左栏判据，
 下次谁再把这些控件挪回右栏，或谁手工跑一次校验，都会立刻发现。
 
+### 11.29 查找框与收藏栏改成叠在日志右上角的浮层（M13）
+
+使用者看完 11.25–11.28 之后给了新的版面要求：**「查找按钮保持在左栏，但是查找框、收藏栏改一下，
+改到右上方，不要占用日志的行高，而是叠加上去，收藏栏要是一个垂直列表的形式，每项占一行。」**
+
+**先问清楚再动手**：收藏栏叠上去之后"什么时候显示"有两条路——常驻（只要还有收藏就在），
+或只在搜索打开时出现。后者等于让"点一下收藏就把关键字填回去"这个用法必须多按一次「查找」，
+使用者选了**常驻**。于是浮层的显隐判据是 `ShowSearchOverlay => SearchVisible || HasSearchFavorites`，
+两者都没有时整块折叠，日志区回到全宽。
+
+**版面改法**
+
+- `LogView.xaml` 从"两行（搜索条 + 日志）"改成**单行单列**：日志铺满，查找框与收藏栏是叠在右上角的
+  一张卡片（`HorizontalAlignment=Right` / `VerticalAlignment=Top`，右边留 22 DIP 给滚动条）。
+  根 `Grid` 里浮层排在 `ListBox` 之后，所以画在日志之上。
+- 卡片内部按需长出两段：搜索打开时上面是查找框那一块（第一行 查找框 + 收藏 + ✕，第二行 命中数 + 区分大小写 + ▲▼），
+  有收藏时下面跟着「查找收藏」标题与列表。
+- 卡片用实心底色 + 阴影：半透明会让底下的等宽字体透上来，反而更看不清。
+- 左栏只留「查找」按钮（打开搜索的入口）与暂停显示，`日志显示` 一节里的收藏标签整段删掉。
+- 收藏栏改成**每项一行**的垂直列表。行样式 `FavoriteRowButton` 是自绘模板而不是继承默认按钮模板：
+  默认模板把 `ContentPresenter` 写死成 `HorizontalAlignment=Center`，内容撑不满行宽，
+  "整行可点"就只剩中间一小块。行尾 `×` 仍用原来的 `ChipCloseButton`，`ButtonBase` 会把鼠标事件标记为已处理，
+  点 `×` 不会连带套用一次关键字。
+- 收藏多于 6 条时列表自己在 176 px 内滚动，卡片高度不被收藏数量拖着长。
+
+**两个只有实测才会暴露的问题**
+
+1. **浮层是折叠的时候，`Focus()` 会静默失败**：`OnViewModelPropertyChanged` 里原来是直接 `SearchBox.Focus()`，
+   而搜索框所在的卡片此刻可能还是 `Collapsed`。改成统一走 `FocusSearchBoxDeferred()`——
+   `Dispatcher.BeginInvoke(DispatcherPriority.Input, ...)` 里先看 `IsVisible` 再聚焦。
+2. **收藏列表每次变动都"清空重加"会让 UIA 树失去第一行**：原来 `ReplaceSearchFavorites` 是
+   `SearchFavorites.Clear()` + 逐个 `Add()`，`Clear()` 让集合发出 **Reset**，
+   `ItemsControl` 收到 Reset 会把行容器全部丢掉重建，而自动化的那棵树不跟着重建。
+   实测：加进第二条收藏之后，第一条在 UIA 树里**只剩一个没有子元素的 DataItem**，Button 节点没了名字
+   （`BTN|Name='SeriTerm'` 在、`loopba` 不在；改成增量同步后两条都在）。顺带还保住了收藏栏的滚动位置。
+   修法是 `SyncSearchFavorites`：先删掉目标列表里没有的（从后往前走），再按目标顺序补齐或 `Move` 归位，
+   全程不产生 Reset。
+
+**实测（`tools/probe-search-overlay.ps1`，Debug 与发布产物结果一致）**
+
+```
+LOGTOP|未搜索时日志列表顶边=223
+LOGTOP|搜索打开后日志列表顶边=223|位移=0（期望 0）      ← 不占日志行高，这条是核心判据
+OVERLAY|浮层右边界距日志区右边=48 顶边界距日志区上边=24   ← 贴在右上角
+FAV|loopba: 距右=44 顶=404 底=440 行高=36
+FAV|SeriTerm: 距右=44 顶=443 底=479 行高=36
+FAV|两项左边界对齐且上下叠放=True                       ← 每项一行，不是横排标签
+FAV|关掉搜索后：搜索框在=False|两条收藏都在=True          ← 搜索关掉后收藏栏仍在原处
+FAV|点收藏行后：搜索框值='loopba'                       ← 点一下即填回并跳到第一处命中
+```
+
+> 探针第一版还量错过一次：`Find-FavoriteRow` 原本按"按钮名字里含关键字"来找，
+> 结果在 `AutomationProperties.Name` 生效前后表现不同。改成显式给收藏行与 `×` 写
+> `AutomationProperties.Name`（关键字 / `删除收藏`）再按精确名字查找——顺带让读屏软件也能念出这一行是什么。
+
+**验证**：单测 286 全绿（本轮没动 Core）；`probe-search-overlay.ps1` 在 Debug 与发布产物上各跑一遍；
+`probe-log-search.ps1` 与 `probe-log-drag.ps1` 回归通过（关掉搜索后高亮残留 0、整行连选与行内选字符不变）；
+浅色/深色各截一张人工过目。按使用者要求**没有**跑 `ui-layout-check` 等批量自检脚本，
+但已把它的"控件归属"判据同步过来（`查找收藏:` 从左栏判据里去掉，新增"打开查找后日志列表顶边位移必须为 0"）。
+
 
 
 

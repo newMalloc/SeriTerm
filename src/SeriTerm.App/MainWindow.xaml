@@ -450,14 +450,14 @@
                     <!-- 日志显示 -->
                     <Border Style="{StaticResource SectionPanel}">
                         <StackPanel>
-                            <!-- 查找与暂停是对"日志显示"的动作，跟着这一段走；
-                                 放在标题行右侧，正文里只留下复选框和下拉框，不再堆按钮。 -->
+                            <!-- 「查找」只是打开搜索的入口，按钮留在这里（和"暂停显示"一起属于显示类动作）；
+                                 查找框与收藏栏本身叠在日志右上角，见 LogView.xaml -->
                             <Grid Margin="0,0,0,7">
                                 <TextBlock Text="日志显示" Style="{StaticResource SectionHeader}" Margin="0" />
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Style="{StaticResource SmallButton}" Content="查找"
                                             Command="{Binding OpenSearchCommand}"
-                                            ToolTip="实时搜索日志（Ctrl+F）" />
+                                            ToolTip="实时搜索日志（Ctrl+F）；查找框与收藏栏会叠在日志右上角" />
                                     <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0"
                                             Content="{Binding PauseButtonText}"
                                             Command="{Binding TogglePauseCommand}"
@@ -499,52 +499,6 @@
                                         Command="{Binding ClearLogCommand}"
                                         ToolTip="清空显示内容（Ctrl+K）" />
                             </Grid>
-
-                            <!-- 查找收藏：搜索时点搜索条上的「收藏」存进来，这里是随时可点回去的入口 -->
-                            <TextBlock Text="查找收藏:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
-
-                            <TextBlock Text="搜索时点搜索条上的「收藏」，把常用关键字存到这里。"
-                                       Margin="0,0,0,4">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource HintText}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasSearchFavorites}" Value="False">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-
-                            <ItemsControl ItemsSource="{Binding SearchFavorites}" Margin="0,0,0,2"
-                                          Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <!-- 整块可点：套用该关键字；右侧 × 只删这一条。
-                                             内层按钮用自己的 Command，点击不会连带触发外层（Click 冒泡不执行外层的命令） -->
-                                        <Button Style="{StaticResource FavoriteChip}"
-                                                ToolTip="{Binding}"
-                                                Command="{Binding DataContext.ApplySearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding}" MaxWidth="96"
-                                                           TextTrimming="CharacterEllipsis" FontSize="11.5"
-                                                           VerticalAlignment="Center" />
-                                                <Button Style="{StaticResource ChipCloseButton}" Content="✕"
-                                                        ToolTip="从收藏里删除这一条"
-                                                        Command="{Binding DataContext.RemoveSearchFavoriteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                        CommandParameter="{Binding}" />
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
                         </StackPanel>
                     </Border>
 

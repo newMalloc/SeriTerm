@@ -83,7 +83,7 @@
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <!-- 日志工具条按钮（保存 / 清空），也是唯一还留在右栏日志上方的一行按钮 -->
+    <!-- 日志区上方的小按钮：日志右上角浮层里的 收藏 / ▲ / ▼ / ✕ -->
     <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Margin" Value="0,0,4,0" />
         <Setter Property="MinWidth" Value="34" />
@@ -211,16 +211,44 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- 查找收藏的标签：整块可点（套用该关键字），右侧还有一个 × 只删这一条 -->
-    <Style x:Key="FavoriteChip" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Padding" Value="7,1" />
-        <Setter Property="MinHeight" Value="22" />
+    <!--
+        查找收藏栏里的一行（日志右上角浮层里）。
+        刻意不用默认按钮模板：那个模板把 ContentPresenter 固定成 Center，
+        内容撑不满行宽，"整行可点"就只剩中间那一小块。
+        这里自绘一个：透明底，悬停才铺底色，看起来是一条列表项而不是一颗按钮。
+    -->
+    <Style x:Key="FavoriteRowButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="MinHeight" Value="24" />
         <Setter Property="FontSize" Value="11.5" />
-        <Setter Property="Margin" Value="0,0,4,4" />
-        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            CornerRadius="3"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlPressedBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
-    <!-- 收藏标签上的 ×：平时低调，悬停变红 -->
+    <!-- 收藏行尾的 ×：平时低调，悬停变红 -->
     <Style x:Key="ChipCloseButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />

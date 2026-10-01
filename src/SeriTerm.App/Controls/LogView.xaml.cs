@@ -78,15 +78,24 @@ public partial class LogView : UserControl
     public void FocusSearch()
     {
         _viewModel?.OpenSearchCommand.Execute(null);
+        FocusSearchBoxDeferred();
+    }
 
-        // 延后到输入优先级：等搜索条的 Visibility 绑定生效、控件真正可见后再聚焦，
-        // 否则对 Collapsed 元素调用 Focus() 会静默失败
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+    /// <summary>
+    /// 延后到输入优先级再聚焦：搜索框平时是折叠的（浮层只在需要时出现），
+    /// 对 Collapsed 元素调用 Focus() 会静默失败，必须等绑定生效、控件真正可见之后。
+    /// </summary>
+    private void FocusSearchBoxDeferred()
+        => Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
+            if (!SearchBox.IsVisible)
+            {
+                return;
+            }
+
             SearchBox.Focus();
             SearchBox.SelectAll();
         }));
-    }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
@@ -175,8 +184,8 @@ public partial class LogView : UserControl
             return;
         }
 
-        SearchBox.Focus();
-        SearchBox.SelectAll();
+        // 浮层刚变可见，同样要等绑定和布局走完再聚焦（见 FocusSearchBoxDeferred）
+        FocusSearchBoxDeferred();
     }
 
     private void OnSearchBoxKeyDown(object sender, KeyEventArgs e)

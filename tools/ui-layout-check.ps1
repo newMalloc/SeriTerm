@@ -258,7 +258,7 @@ try {
         $failures++
     } else {
         $logLeft = [math]::Round((Get-RectOf $logView).Left, 0)
-        foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:', '保存', '清空', '查找收藏:')) {
+        foreach ($name in @('查找', '暂停显示', '自动换行', '自动滚动', '字号:', '保存', '清空')) {
             $element = Find-One -Root $root -Name $name
             $right = -1
             if ($element) { $right = [math]::Round((Get-RectOf $element).Right, 0) }
@@ -275,6 +275,31 @@ try {
     }
     Write-Output "REDUNDANT|未搜索时的搜索状态文本=$searchStatus"
     if ($searchStatus -ne 0) { $failures++ }
+
+    # 查找框不再占日志的一行高度，而是叠在日志右上角：
+    # 判据是"打开查找后日志列表顶边不动"（以前搜索条占一行，日志区会被压下去约 40px）
+    Write-Output '== 查找浮层叠在日志右上角'
+    Invoke-Element (Find-One -Root $root -Name '查找' -ControlType $CT::Button)
+    Start-Sleep -Milliseconds 800
+    $searchBox = Find-Id -Root $root -Id 'SearchBox'
+    if ($null -eq $searchBox) {
+        Write-Output 'OVERLAY|打开查找后找不到 SearchBox'
+        $failures++
+    } else {
+        $viewRect = Get-RectOf $logView
+        $boxRect = Get-RectOf $searchBox
+        $inRightPane = $boxRect.Left -gt (($viewRect.Left + $viewRect.Right) / 2)
+        Write-Output ("OVERLAY|查找框在右半边={0} 距日志区右边={1:0} 距顶边={2:0}" -f $inRightPane,
+            ($viewRect.Right - $boxRect.Right), ($boxRect.Top - $viewRect.Top))
+        if (-not $inRightPane) { $failures++ }
+
+        $listRect = Get-RectOf (Find-Id -Root $root -Id 'LogList')
+        Write-Output ("OVERLAY|日志列表顶边={0:0} 日志区顶边={1:0} 位移={2:0}（期望 0）" -f $listRect.Top, $viewRect.Top, ($listRect.Top - $viewRect.Top))
+        if ([math]::Abs($listRect.Top - $viewRect.Top) -gt 1) { $failures++ }
+
+        Invoke-Element (Find-One -Root $root -Name '✕' -ControlType $CT::Button)
+        Start-Sleep -Milliseconds 600
+    }
 
     # ---------- 3) 字号下拉框真的改字号 ----------
     Write-Output '== 字号下拉框'
