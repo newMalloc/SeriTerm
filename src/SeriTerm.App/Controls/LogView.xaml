@@ -240,10 +240,9 @@
         <!--
             ===== 右上角浮层：查找框 + 收藏栏 =====
             叠在日志上（不占行高），右边界留出滚动条的宽度，免得挡住拖动条。
-            两种内容按需出现：
-              · 搜索打开 → 上面一行是查找框与翻页；
-              · 有收藏   → 下面跟一份"每项一行"的收藏列表，搜索关掉后它就是唯一的入口；
-            两者都没有时整块浮层折叠，日志区完全不受影响。
+            整块浮层的可见性只看查找开没开（ShowSearchOverlay == SearchVisible）：
+            收藏栏是查找框下面的一段，按 Esc 关掉查找就得一起收起来，
+            不能因为"还存着收藏"就继续浮在日志上挡字。
         -->
         <Border x:Name="SearchOverlay"
                 HorizontalAlignment="Right"
@@ -264,9 +263,8 @@
             </Border.Effect>
 
             <StackPanel>
-                <!-- 查找框 -->
-                <Grid Margin="9,7,9,7"
-                      Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}">
+                <!-- 查找框。整块浮层已经在"查找开着"时才可见，这里不必再判一次 SearchVisible -->
+                <Grid Margin="9,7,9,7">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -317,11 +315,10 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- 收藏栏 -->
+                <!-- 收藏栏：有收藏时才出现，且只在查找开着时（浮层本身可见）才有意义。
+                     上面永远有查找框，所以这条分隔线固定画出来。 -->
                 <StackPanel Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
-                    <!-- 分隔线只在上面还有查找框时才画，否则会和浮层自己的上边框重成一条 -->
-                    <Border BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0"
-                            Visibility="{Binding SearchVisible, Converter={StaticResource BoolToVisibility}}" />
+                    <Border BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0" />
 
                     <TextBlock Text="查找收藏" Style="{StaticResource FieldLabel}" Margin="9,6,9,5" />
 
