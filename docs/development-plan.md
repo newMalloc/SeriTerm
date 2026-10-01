@@ -1365,9 +1365,9 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
 **实测**
 
 ```
-自包含 ：artifacts\publish-v3\SeriTerm-1.0.0-win-x64.exe      67,125,068 字节（64.0 MB）
-框架依赖：artifacts\publish-v3-fd\SeriTerm-1.0.0-win-x64-fd.exe  1,693,029 字节（1.6 MB）
-重命名之后 exe 自身没变：ProductVersion 1.0.0+aeb20646…、ProductName SeriTerm 串口调试助手、
+自包含 ：artifacts\publish\SeriTerm-1.0.1-win-x64.exe      67,125,094 字节（64.0 MB）
+框架依赖：artifacts\publish-fd\SeriTerm-1.0.1-win-x64-fd.exe  1,693,029 字节（1.6 MB）
+重命名之后 exe 自身没变：ProductVersion 1.0.1+<提交号>、ProductName SeriTerm 串口调试助手、
                         32×32 图标仍可从 exe 里抽出
 改名不会把程序弄坏：把探针按同样参数发成单文件（72,442,529 字节），改名成 aboutprobe-9.9.9-win-x64.exe
                     后运行，84 行输出、RESULT|通过
@@ -1375,6 +1375,11 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
                 v1.0.1 按预期失败并给出"先改 <Version>"的提示
 tools/ 下的 UI 脚本一律用 -ExePath 传路径，没有任何一个写死 artifacts\publish\SeriTerm.exe，不用跟着改
 ```
+
+发布 `v1.0.1`：`Directory.Build.props` 的 `<Version>` 从 `1.0.0` 改成 `1.0.1`（原来的 `v1.0.0` Release
+已经存在，同一版本号发不了第二次），改完 `dotnet build` 0 警告 0 错误、`dotnet test` **296/296**，
+再推 `v1.0.1` 标签交给 `release.yml` 出 Release。`<Version>` 是版本号的唯一出处：
+程序集版本、exe 属性页、关于窗口、发布产物文件名全从它来。
 
 **没验到的**：release.yml 本身只能在 GitHub Actions 上跑，本地只验了它那两段 PowerShell 判断；
 框架依赖版的重命名**没有实际运行**过（要 .NET 桌面运行时，而且真程序一启动就会去开 COM5、
