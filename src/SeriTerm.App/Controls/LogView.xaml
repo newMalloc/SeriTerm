@@ -5,6 +5,48 @@
              xmlns:core="clr-namespace:SeriTerm.Core.Pipeline;assembly=SeriTerm.Core"
              x:Name="Root">
 
+    <UserControl.Resources>
+        <!--
+            日志行内容的只读文本框。
+            TextBlock 根本不支持选择，而"选中任意一段字符再复制"只有文本框能做；
+            所以内容列改用只读 TextBox：把边框、底色、最小高度、焦点框、右键菜单全部去掉，
+            外观和原来的 TextBlock 一致，多的只是能选字符。
+            （每行一个 TextBox 只在可见行上存在——列表是虚拟化的，开销与行高同一量级。）
+        -->
+        <Style x:Key="LogLineText" TargetType="TextBox"
+               BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="ContextMenu" Value="{x:Null}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="Foreground" Value="{DynamicResource RxForegroundBrush}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.Tx}">
+                    <Setter Property="Foreground" Value="{DynamicResource TxForegroundBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.System}">
+                    <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DataContext.LineWrap, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                             Value="True">
+                    <Setter Property="TextWrapping" Value="Wrap" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
     <Grid Background="{DynamicResource LogBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -65,8 +107,10 @@
                      VirtualizingPanel.ScrollUnit="Pixel"
                      SelectionMode="Extended"
                      PreviewMouseLeftButtonDown="OnLogListPreviewMouseLeftButtonDown"
+                     PreviewMouseLeftButtonUp="OnLogListPreviewMouseLeftButtonUp"
                      PreviewMouseRightButtonDown="OnLogListPreviewMouseRightButtonDown"
-                     MouseMove="OnLogListMouseMove"
+                     PreviewKeyDown="OnLogListPreviewKeyDown"
+                     PreviewMouseMove="OnLogListPreviewMouseMove"
                      FontFamily="Consolas, Microsoft YaHei UI"
                      FontSize="{Binding LogFontSize}">
 
@@ -116,45 +160,32 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Border x:Name="Row" Padding="6,1" Background="Transparent">
-                            <StackPanel Orientation="Horizontal">
+                            <!-- 用 Grid 而不是 StackPanel：内容列拿星号宽度，
+                                 只读文本框才会在行宽内换行/裁剪，而不是把行撑宽 -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="104" />
+                                    <ColumnDefinition Width="30" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
                                 <!-- 时间列 -->
-                                <TextBlock Text="{Binding TimeText}"
-                                           Width="104"
+                                <TextBlock Grid.Column="0" Text="{Binding TimeText}"
                                            Margin="0,0,6,0"
                                            Foreground="{DynamicResource SubtleForegroundBrush}"
                                            Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
 
                                 <!-- 方向列 -->
-                                <TextBlock Text="{Binding DirectionText}"
-                                           Width="30"
+                                <TextBlock Grid.Column="1" Text="{Binding DirectionText}"
                                            Margin="0,0,4,0"
                                            Foreground="{DynamicResource SubtleForegroundBrush}" />
 
-                                <!-- 内容列 -->
-                                <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                            <Setter Property="TextWrapping" Value="NoWrap" />
-                                            <Setter Property="Foreground" Value="{DynamicResource RxForegroundBrush}" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.Tx}">
-                                                    <Setter Property="Foreground" Value="{DynamicResource TxForegroundBrush}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.System}">
-                                                    <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding DataContext.LineWrap, RelativeSource={RelativeSource AncestorType=ListBox}}" Value="True">
-                                                    <Setter Property="TextWrapping" Value="Wrap" />
-                                                    <Setter Property="TextTrimming" Value="None" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding IsCurrentMatch}" Value="True">
-                                                    <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
+                                <!-- 内容列：只读文本框，鼠标可以选中任意一段字符再复制 -->
+                                <TextBox x:Name="LineText" Grid.Column="2"
+                                         Style="{StaticResource LogLineText}"
+                                         Text="{Binding Text, Mode=OneWay}"
+                                         SelectionChanged="OnLineTextSelectionChanged" />
+                            </Grid>
                         </Border>
 
                         <DataTemplate.Triggers>

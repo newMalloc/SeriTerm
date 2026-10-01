@@ -915,10 +915,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>复制选中日志行之后的反馈（走状态栏，不弹框）。</summary>
-    public void ReportCopyResult(int lineCount, bool success)
+    /// <summary>复制之后的反馈（走状态栏，不弹框）。</summary>
+    /// <param name="what">复制了什么，例如"3 行日志"或"选中的文本（12 字）"。</param>
+    public void ReportCopyResult(string what, bool success)
         => StatusDetail = success
-            ? $"已复制 {lineCount} 行日志到剪贴板"
+            ? $"已复制{what}到剪贴板"
             : "复制失败：剪贴板被其它程序占用，请稍后重试";
 
     private void ReplaceSearchFavorites(IReadOnlyList<string> items)

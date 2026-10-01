@@ -135,6 +135,45 @@ try {
     $clip = Get-Clipboard -Raw -ErrorAction SilentlyContinue
     if ($null -eq $clip) { $clip = '' }
     Write-Output ("COPY|字符数={0}|首行={1}" -f $clip.Length, ($clip -split "`r`n")[0])
+
+    # --- 4) 行内自由选择：在第 4 行文字上拖一小段，Ctrl+C 应当只复制那一段字符 ---
+    [System.Windows.Forms.Clipboard]::Clear()
+    $r4 = $items[4].Current.BoundingRectangle
+    $startX = $r4.Left + 300      # 跳过时间列/方向列，落在内容文本上
+    $endX = $r4.Left + 420
+    $midY = [int](($r4.Top + $r4.Bottom) / 2)
+    [void][DragProbe]::SetCursorPos([int]$startX, $midY)
+    Start-Sleep -Milliseconds 250
+    [DragProbe]::LeftDown()
+    Start-Sleep -Milliseconds 120
+    for ($step = 1; $step -le 8; $step++) {
+        [void][DragProbe]::SetCursorPos([int]($startX + (($endX - $startX) * $step / 8)), $midY)
+        Start-Sleep -Milliseconds 60
+    }
+    Start-Sleep -Milliseconds 200
+    [DragProbe]::LeftUp()
+    Start-Sleep -Milliseconds 600
+
+    # 行文本框是只读 Edit，读一下它当前选中的文本
+    $edits = $list.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)))
+    $picked = ''
+    foreach ($edit in $edits) {
+        $pattern = $null
+        if ($edit.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
+            $ranges = $pattern.GetSelection()
+            if ($ranges.Count -gt 0) {
+                $t = $ranges[0].GetText(-1)
+                if ($t) { $picked = $t; break }
+            }
+        }
+    }
+    Write-Output ("TEXTSEL|行内拖选得到的字符=[{0}]" -f $picked)
+
+    [System.Windows.Forms.SendKeys]::SendWait('^c')
+    Start-Sleep -Milliseconds 800
+    $clip2 = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $clip2) { $clip2 = '' }
+    Write-Output ("TEXTCOPY|剪贴板=[{0}]" -f $clip2)
 }
 finally {
     if (-not $process.HasExited) {

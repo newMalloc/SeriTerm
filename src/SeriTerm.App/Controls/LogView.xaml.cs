@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using SeriTerm.App.ViewModels;
 using SeriTerm.Core.Pipeline;
@@ -41,6 +42,15 @@ public partial class LogView : UserControl
 
     /// <summary>拖动过程中已经扩选到的行索引。</summary>
     private int _dragCurrentIndex = -1;
+
+    /// <summary>按下时所在的那一行文本框（跨行拖动时要把它自己的字符选择清掉）。</summary>
+    private TextBox? _dragSourceTextBox;
+
+    /// <summary>这次拖动是否已经切换成"选多行"。</summary>
+    private bool _dragRowMode;
+
+    /// <summary>最后一次选中了字符的行文本框，复制时优先用它。</summary>
+    private TextBox? _textSelectionBox;
 
     public LogView()
     {
@@ -173,19 +183,47 @@ public partial class LogView : UserControl
     /// <summary>
     /// 按下左键：记住起点，并记下"拖动连选"的锚点行。
     ///
-    /// WPF 的 ListBox **不会**因为按住拖动就自动连选（实测：从第 1 行拖到第 6 行，选中数仍是 1），
-    /// 所以拖动连选要自己实现，见 <see cref="OnLogListMouseMove"/>。
+    /// 两种选择粒度是共存的：
+    /// <list type="bullet">
+    /// <item>行内容是可以选字符的只读文本框 —— 在同一行里拖就是普通的"选中一段文字"；</item>
+    /// <item>拖到别的行上就切换成"选多行"（WPF 的 ListBox 不实现拖动连选，见 <see cref="OnLogListMouseMove"/>）。</item>
+    /// </list>
     /// 按住 Ctrl/Shift 时把活交回 WPF 自己的加减选逻辑，不抢。
     /// </summary>
     private void OnLogListPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _mouseDownPosition = e.GetPosition(LogList);
         _dragCurrentIndex = -1;
+        _dragRowMode = false;
+
+        var source = e.OriginalSource as DependencyObject;
+        _dragSourceTextBox = FindAncestor<TextBox>(source);
 
         var withModifier = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
-        _dragAnchorIndex = withModifier || e.OriginalSource is not DependencyObject source
-            ? -1
-            : IndexOfItemAt(source);
+        _dragAnchorIndex = withModifier ? -1 : IndexOfItemAt(source);
+
+        // 行内容现在是只读文本框，它会吃掉这次点击（文本框要放光标/开始选字符），
+        // 所以"点一下选中整行"得自己补；已经选中的行不动，免得把已有的多行选择清掉。
+        if (_dragAnchorIndex >= 0
+            && LogList.ItemContainerGenerator.ContainerFromIndex(_dragAnchorIndex) is ListBoxItem item
+            && !item.IsSelected)
+        {
+            LogList.SelectedItems.Clear();
+            item.IsSelected = true;
+        }
+    }
+
+    /// <summary>松开左键：把拖动期间借走的鼠标捕获还回去。</summary>
+    private void OnLogListPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _dragRowMode = false;
+        _dragAnchorIndex = -1;
+        _dragCurrentIndex = -1;
+
+        if (ReferenceEquals(Mouse.Captured, LogList))
+        {
+            Mouse.Capture(null);
+        }
     }
 
     /// <summary>
@@ -210,12 +248,38 @@ public partial class LogView : UserControl
     }
 
     /// <summary>
-    /// 拖动连选 + 顺手停掉自动滚动。
-    ///
-    /// 拖动时鼠标常常已经移到列表外面（上方/下方），此时拿不到行容器，
-    /// 就按"上/下各走一行"继续扩选并把它滚进视野，这样拖到边缘也能一路选下去。
+    /// Ctrl+C：焦点在行文本框里且真的选了字符时，复制那段字符（这就是"自由复制"）；
+    /// 否则复制选中的整行。放在 Preview 上是故意的：只读文本框在没有选中内容时
+    /// 对 Copy 的处理不可靠，自己接管才确定。
     /// </summary>
-    private void OnLogListMouseMove(object sender, MouseEventArgs e)
+    private void OnLogListPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.C || (Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            return;
+        }
+
+        if (HasTextSelection() || LogList.SelectedItems.Count == 0)
+        {
+            return;
+        }
+
+        CopySelection();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 拖动：同一行内交给文本框选字符，跨行则切换成"选多行"。
+    ///
+    /// 跨行时把行文本框自己选的那一段清掉、并把鼠标捕获转到列表上：
+    /// 前者避免同时出现两种高亮，后者让鼠标拖到列表外面还能继续扩选。
+    /// 拖动时鼠标常常已经移到列表外面（上方/下方），此时拿不到行容器，
+    /// 就按"上/下各走一行"继续扩选并把它滚进视野。
+    ///
+    /// 用 PreviewMouseMove（隧道路由）而不是 MouseMove：拖动期间鼠标被行文本框捕获，
+    /// 冒泡事件会被文本框自己消化掉，隧道路由才能稳定收到。
+    /// </summary>
+    private void OnLogListPreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed)
         {
@@ -246,7 +310,7 @@ public partial class LogView : UserControl
 
     private void ExtendSelectionTo(Point position)
     {
-        var index = IndexOfItemAt(Mouse.DirectlyOver as DependencyObject);
+        var index = IndexOfItemAtPoint(position);
 
         if (index < 0)
         {
@@ -261,6 +325,22 @@ public partial class LogView : UserControl
             var last = _dragCurrentIndex >= 0 ? _dragCurrentIndex : _dragAnchorIndex;
             index = Math.Clamp(last + step, 0, LogList.Items.Count - 1);
             LogList.ScrollIntoView(LogList.Items[index]);
+        }
+
+        if (index == _dragAnchorIndex && !_dragRowMode)
+        {
+            // 还在按下时那一行里：这是"选中一段文字"，交给文本框自己处理，别动整行选择
+            return;
+        }
+
+        if (!_dragRowMode)
+        {
+            // 跨到别的行了 => 这次拖动是"选多行"：让文本框把字符选择让出来，
+            // 鼠标捕获也转到列表上，拖到列表外面才能继续扩选
+            _dragRowMode = true;
+            _dragSourceTextBox?.Select(0, 0);
+            _dragSourceTextBox = null;
+            Mouse.Capture(LogList);
         }
 
         if (index == _dragCurrentIndex)
@@ -289,11 +369,78 @@ public partial class LogView : UserControl
             ? LogList.ItemContainerGenerator.IndexFromContainer(container)
             : -1;
 
+    /// <summary>
+    /// 按坐标找行索引。必须自己做命中测试（而不是看 <see cref="Mouse.DirectlyOver"/>）：
+    /// 拖动期间鼠标被行文本框捕获，直接命中结果永远指向捕获元素，跨行就检测不出来。
+    /// </summary>
+    private int IndexOfItemAtPoint(Point position)
+    {
+        var hit = VisualTreeHelper.HitTest(LogList, position);
+        return hit is null ? -1 : IndexOfItemAt(hit.VisualHit);
+    }
+
+    /// <summary>往可视树上方找最近的某个祖先元素（行内容 → 只读文本框）。</summary>
+    private static T? FindAncestor<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T match)
+            {
+                return match;
+            }
+
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
+
+    /// <summary>记住最后一次"选了字符"的那个行文本框，复制时优先用它。</summary>
+    private void OnLineTextSelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        if (box.SelectionLength > 0)
+        {
+            _textSelectionBox = box;
+        }
+        else if (ReferenceEquals(_textSelectionBox, box))
+        {
+            _textSelectionBox = null;
+        }
+    }
+
+    /// <summary>
+    /// 当前有没有"选中的字符"。文本框被虚拟化回收后会重新绑定到别的行，
+    /// 那时选中内容已被清空，这里的长度判断顺便把这种失效引用挡掉。
+    /// </summary>
+    private bool HasTextSelection() => _textSelectionBox is { SelectedText.Length: > 0 };
+
     private void OnCopyCanExecute(object sender, CanExecuteRoutedEventArgs e)
-        => e.CanExecute = LogList.SelectedItems.Count > 0;
+        => e.CanExecute = HasTextSelection() || LogList.SelectedItems.Count > 0;
 
     private void OnCopyExecuted(object sender, ExecutedRoutedEventArgs e)
     {
+        CopySelection();
+        e.Handled = true;
+    }
+
+    /// <summary>复制：优先复制文本框里选中的那段字符，没有就复制选中的整行。</summary>
+    private void CopySelection()
+    {
+        if (_textSelectionBox is { SelectedText.Length: > 0 } box)
+        {
+            var selected = box.SelectedText;
+            var copiedText = TrySetClipboard(selected);
+            _viewModel?.ReportCopyResult($"选中的文本（{selected.Length} 字）", copiedText);
+            return;
+        }
+
         var text = BuildSelectedText();
 
         if (text.Length == 0)
@@ -302,8 +449,7 @@ public partial class LogView : UserControl
         }
 
         var copied = TrySetClipboard(text);
-        _viewModel?.ReportCopyResult(LogList.SelectedItems.Count, copied);
-        e.Handled = true;
+        _viewModel?.ReportCopyResult($"{LogList.SelectedItems.Count} 行日志", copied);
     }
 
     /// <summary>按屏幕上的样子拼出选中行的文本（关掉时间戳时就不带时间）。</summary>
