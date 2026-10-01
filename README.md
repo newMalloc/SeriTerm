@@ -1,5 +1,8 @@
 # SeriTerm
 
+[![CI](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Windows 串口调试助手（C# / WPF / .NET 8），复刻 [lingguang「串口调试助手」](https://lgblog.github.io/Help/zh-Hans/) 的核心串口能力。
 
 > 开发规格与模块清单见 [docs/development-plan.md](docs/development-plan.md)。
@@ -27,7 +30,7 @@ Windows 串口调试助手（C# / WPF / .NET 8），复刻 [lingguang「串口�
 
 ### 已验证
 
-- **单元测试 266 个全绿**：断帧边界（空闲/分隔符/跨块/空帧/上限）、HEX 与字节模式解析、ANSI 过滤、终端按键编码、GB2312/UTF-8 跨块解码、显示行存储与淘汰、搜索与淘汰联动、发送组装、定时发送、文件分块发送、日志落盘与重放读取、重连退避与重连流程、**故障归类（拔线 vs 端口被占用）**、配置预设增删改。
+- **单元测试 280 个全绿**（另有 6 个 COM5 回环测试，合计 286）：断帧边界（空闲/分隔符/跨块/空帧/上限）、HEX 与字节模式解析、ANSI 过滤、终端按键编码、GB2312/UTF-8 跨块解码、显示行存储与淘汰、搜索与淘汰联动、发送组装、定时发送、文件分块发送、日志落盘与重放读取、重连退避与重连流程、**故障归类（拔线 vs 端口被占用）**、配置预设增删改。
 - **COM5 回环端到端**（UI 自动化真实点击，含**发布产物本身**）：
   - 打开串口 → 发送 → Rx/Tx 计数一致，日志按帧一行显示；
   - 自动滚动：初始 On → 向上滚动后自动 **Off** → 拉回底部自动 **On**，并出现"▸ N 条新数据"提示条；
@@ -157,6 +160,14 @@ dotnet test SeriTerm.sln
 - 回环测试需要把 USB-TTL 的 **TX 与 RX 短接**（本机为 `COM5`）。
 - 端口不存在时该组测试会被标记为 **skipped** 而不是 failed，不会污染结果。
 - 串口是独占硬件资源，测试程序集已禁用并行执行。
+
+### 持续集成
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在 `windows-latest` 上依次执行 `dotnet restore` → `dotnet build -c Release` → `dotnet test -c Release`，并把 trx 报告作为构建产物上传。
+
+- 因为 App 是 WPF（`net8.0-windows`），runner 必须是 Windows，`ubuntu-latest` 编译不过。
+- runner 上没有串口，6 个 COM5 回环测试会由 `LoopbackFactAttribute` 自动标记为 **skipped**（而不是 failed），所以公共 CI 的结果恒为绿；只有本机插好短接的 USB-TTL 时它们才真正执行。
+- 本机插着 USB-TTL 实测同一套命令：**286 通过、0 失败**（280 单元 + 6 回环）。
 
 ## 目录结构
 

@@ -1,0 +1,52 @@
+name: CI
+
+# 推送到 main、任意 PR、以及在 Actions 页面手动触发时运行。
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 构建与测试（.NET 8 / Windows）
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK 8.0
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: 缓存 NuGet 包
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: 还原依赖
+        run: dotnet restore SeriTerm.sln
+
+      - name: 构建（Release）
+        run: dotnet build SeriTerm.sln -c Release --no-restore --nologo
+
+      # 回环测试需要 USB-TTL 的 TX/RX 短接。runner 上不存在 COM5，
+      # 这组测试会自行跳过（skipped），不会让构建变红。
+      - name: 测试（Release）
+        run: dotnet test SeriTerm.sln -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx" --results-directory artifacts/test-results
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
