@@ -560,8 +560,14 @@
                         BorderThickness="0,1,0,0"
                         Padding="10,8">
                     <StackPanel>
-                        <!-- 选项行用 WrapPanel：窗口窄的时候自动折行，不会把按钮挤出画面 -->
-                        <WrapPanel ItemHeight="26" Margin="0,0,0,6">
+                        <!-- 选项行用 WrapPanel：窗口窄的时候自动折行，不会把按钮挤出画面。
+                             这里不要设 ItemHeight：它把每个子控件的排布高度锁成固定值。定时输入框
+                             内部是 ScrollViewer，行高（微软雅黑 13 号 ≈ 16.5 + 内边距 6 + 边框 2 ≈ 24.7 DIP）
+                             本来就比 26 大，被压到 26 后 ScrollViewer 的 Extent 18 > Viewport 11.33，
+                             于是单行 TextBox 在内部悄悄竖向滚动（滚动条是隐藏的）——表现为数字被切掉
+                             上半截、输入时上下滑动（实测 ScrollableHeight 6.67 DIP）。
+                             不设就让行高跟着本行最高的子控件走，实测 ScrollableHeight 变 0。 -->
+                        <WrapPanel Margin="0,0,0,6">
                             <CheckBox x:Name="TerminalModeCheck" Content="终端模式"
                                       IsChecked="{Binding TerminalMode}" Margin="0,0,14,0"
                                       ToolTip="键盘输入直接进串口：可打印字符立即发送，回车按行尾设置发送，退格与 Ctrl+C 透传；焦点在输入框时不生效" />
@@ -588,7 +594,7 @@
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
                                 <TextBlock Text="定时:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Width="54" Text="{Binding TimedSendIntervalText}"
+                                <TextBox x:Name="TimedIntervalBox" Width="54" Text="{Binding TimedSendIntervalText}"
                                          ToolTip="定时发送间隔（秒），最小 0.05" />
                                 <TextBlock Text="秒" Style="{StaticResource FieldLabel}" Margin="4,0,0,0" />
                             </StackPanel>
