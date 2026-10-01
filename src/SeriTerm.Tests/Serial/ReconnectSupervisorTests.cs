@@ -47,6 +47,26 @@ public class ReconnectSupervisorTests
         Assert.Equal(TransportState.Open, transport.State);
     }
 
+    /// <summary>
+    /// 打开期间改波特率之后，故障重连必须按**新**波特率重开：
+    /// 监督者取的是传输层的 CurrentSettings，所以 SetBaudRateAsync 必须把它一起更新。
+    /// </summary>
+    [Fact]
+    public async Task 打开状态下改波特率_自动重连应按新波特率重开()
+    {
+        await using var transport = new FakeTransport();
+        await using var supervisor = new ReconnectSupervisor(transport, FastPolicy(), _ => true) { Enabled = true };
+
+        await transport.OpenAsync(Settings);
+        await transport.SetBaudRateAsync(9600);
+        Assert.Equal(9600, transport.CurrentSettings!.BaudRate);
+
+        transport.RaiseFault("设备被拔出");
+
+        Assert.True(await WaitUntilAsync(() => transport.OpenCount >= 2), "没有触发重连");
+        Assert.Equal(9600, transport.CurrentSettings!.BaudRate);
+    }
+
     [Fact]
     public async Task 端口未回来时应持续等待不打开()
     {
@@ -250,6 +270,17 @@ internal sealed class FakeTransport : ISerialTransport
     {
         CurrentSettings = null;
         SetState(TransportState.Closed);
+        return Task.CompletedTask;
+    }
+
+    public Task SetBaudRateAsync(int baudRate, CancellationToken cancellationToken = default)
+    {
+        if (State != TransportState.Open || CurrentSettings is null)
+        {
+            throw new SerialLinkException("串口尚未打开，无法直接修改波特率。");
+        }
+
+        CurrentSettings = CurrentSettings with { BaudRate = baudRate };
         return Task.CompletedTask;
     }
 

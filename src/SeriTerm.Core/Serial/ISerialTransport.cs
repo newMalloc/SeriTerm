@@ -38,6 +38,13 @@ public interface ISerialTransport : IAsyncDisposable
     /// <summary>关闭串口。可重复调用；不会抛异常。</summary>
     Task CloseAsync();
 
+    /// <summary>
+    /// 串口已打开时直接改波特率，不必关闭再重开。
+    /// 改完后 <see cref="CurrentSettings"/> 里的波特率同步更新（自动重连按它重开）。
+    /// 串口未打开或驱动拒绝该值时抛出 <see cref="SerialLinkException"/>（消息为中文，可直接展示）。
+    /// </summary>
+    Task SetBaudRateAsync(int baudRate, CancellationToken cancellationToken = default);
+
     /// <summary>写入数据。链路故障时抛出 <see cref="SerialLinkException"/>。</summary>
     ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default);
 }

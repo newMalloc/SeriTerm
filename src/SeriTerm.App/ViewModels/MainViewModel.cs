@@ -83,6 +83,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>断帧间隔/分隔符输入防抖：避免每敲一个字符就重建断帧器并把挂起数据吐出来。</summary>
     private readonly DispatcherTimer _receiveOptionsDebounce;
 
+    /// <summary>
+    /// 波特率防抖：输入框每敲一个字符都会更新绑定，逐字符去改串口会先把链路打成乱码
+    /// （"115200" 的中间态是 1、11、115…）。停下 400 ms 再写一次。
+    /// </summary>
+    private readonly DispatcherTimer _baudRateDebounce;
+
     private CancellationTokenSource? _sendFileCts;
 
     private ReceiveOptions _appliedOptions;
@@ -155,6 +161,18 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _receiveOptionsDebounce.Stop();
             ApplyReceiveOptions();
+        };
+
+        // 波特率防抖要早于 ApplySettingsToUi 建好：配置里若是"启动即打开"，
+        // 后面任何一次 BaudRateText 赋值都不该碰到空定时器。
+        _baudRateDebounce = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(400),
+        };
+        _baudRateDebounce.Tick += async (_, _) =>
+        {
+            _baudRateDebounce.Stop();
+            await ApplyBaudRateToOpenPortAsync().ConfigureAwait(true);
         };
 
         // 注意顺序：_processor 必须先建好，因为 ApplySettingsToUi 改动接收设置时会触发
@@ -259,6 +277,25 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     private bool _rtsEnable;
+
+    /// <summary>
+    /// 波特率的"边打边生效"入口：串口打开时，停止输入 400 ms 后写进已打开的端口。
+    /// 未打开时什么都不做——那时波特率只是"下次打开要用的值"。
+    /// </summary>
+    partial void OnBaudRateTextChanged(string value)
+    {
+        if (_baudRateDebounce is null)
+        {
+            return;
+        }
+
+        _baudRateDebounce.Stop();
+
+        if (IsOpen)
+        {
+            _baudRateDebounce.Start();
+        }
+    }
 
     // ---------- 接收设置 ----------
 
@@ -518,7 +555,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             _applyingPreset = false;
         }
 
-        var suffix = IsOpen ? "（串口已打开，重新打开后生效）" : string.Empty;
+        // 波特率在打开状态下也是立即生效的（见 ApplyBaudRateToOpenPortAsync），
+        // 只有其余参数要关掉重开——提示词必须说清楚是哪一类，否则用户会以为改了个寂寞。
+        var suffix = IsOpen ? "（串口已打开：波特率立即生效，其余参数重新打开后生效）" : string.Empty;
         StatusDetail = $"已套用预设：{preset.Name}{suffix}";
         AddSystemLine($"已套用配置预设：{preset.Name}{suffix}");
     }
@@ -541,6 +580,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOpen))]
     [NotifyPropertyChangedFor(nameof(CanEditSettings))]
+    [NotifyPropertyChangedFor(nameof(CanEditBaudRate))]
     [NotifyPropertyChangedFor(nameof(OpenButtonText))]
     private TransportState _state = TransportState.Closed;
 
@@ -598,6 +638,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool IsOpen => State == TransportState.Open;
 
     public bool CanEditSettings => State is TransportState.Closed or TransportState.Faulted;
+
+    /// <summary>
+    /// 波特率任何时候都能改（唯一例外是正在打开的那一瞬间）。
+    /// 串口打开时改的是已打开的端口本身——收发表不用关、缓冲不清空，
+    /// 所以不像端口名/数据位那样必须"关掉重开"。见 <see cref="ApplyBaudRateToOpenPortAsync"/>。
+    /// </summary>
+    public bool CanEditBaudRate => State != TransportState.Opening;
 
     public string OpenButtonText => IsOpen ? "关闭串口" : "打开串口";
 
@@ -687,6 +734,60 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             StatusDetail = "打开失败。";
             _notifier.ShowError($"打开 {settings.PortName} 失败", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 串口打开时把输入框里的波特率写进已打开的端口，不必关闭重开。
+    ///
+    /// 失败只写状态栏与日志、**不弹模态框、也不回滚输入框**：
+    /// 触发它的是输入防抖，用户可能正打到一半（"115200" 的中间态本来就非法），
+    /// 这时弹窗或改他刚敲的内容都是添乱。真正不合法时按钮那边还有一道 <see cref="TryBuildSettings"/>。
+    /// </summary>
+    private async Task ApplyBaudRateToOpenPortAsync()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        var text = BaudRateText?.Trim();
+
+        // 输入框被清空（例如刚选「自定义输入…」）属于"正要输入"，不是错误，不打扰
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        if (!int.TryParse(text, out var baudRate) || baudRate <= 0)
+        {
+            StatusDetail = "波特率必须是大于 0 的整数，本次修改未生效。";
+            return;
+        }
+
+        if (_transport.CurrentSettings?.BaudRate == baudRate)
+        {
+            return;
+        }
+
+        try
+        {
+            await _transport.SetBaudRateAsync(baudRate).ConfigureAwait(true);
+            StatusDetail = $"{_transport.CurrentSettings?.PortName ?? "串口"} {baudRate},{DataBits}," +
+                $"{SerialSettings.ParityText(SelectedParity?.Value ?? Parity.None)}," +
+                $"{SerialSettings.StopBitsText(SelectedStopBits?.Value ?? StopBits.One)}（波特率已立即生效）";
+            AddSystemLine($"波特率已改为 {baudRate}，串口保持打开。");
+        }
+        catch (SerialLinkException ex)
+        {
+            StatusDetail = $"波特率修改失败：{ex.Message}";
+            AddSystemLine($"波特率改为 {baudRate} 失败：{ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            StatusDetail = "波特率修改失败。";
+            _logger.LogError(ex, "修改波特率时出现未预期的异常");
+            AddSystemLine($"波特率改为 {baudRate} 失败：{ex.Message}");
         }
     }
 
@@ -891,10 +992,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// 日志右上角那块浮层（查找框 + 收藏栏）要不要显示。
-    /// 搜索打开、或者还存着收藏，两者占一条即可——收藏是"随时点一下就填回关键字"的入口，
-    /// 只在搜索打开时才出现的话，就得先按「查找」才能用它。
+    /// 只看搜索开没开：收藏栏是查找框下面的一段，搜索一关它就该跟着收起来——
+    /// 以前它自己也能把浮层撑住，于是按 Esc 关掉查找后，收藏列表还留在日志上挡着文字。
+    /// 收藏本来也是"查找时点一下填回关键字"的东西，入口跟着查找框走才对。
     /// </summary>
-    public bool ShowSearchOverlay => SearchVisible || HasSearchFavorites;
+    public bool ShowSearchOverlay => SearchVisible;
 
     /// <summary>当前关键字能不能存成收藏（非空且还没收藏过）。</summary>
     public bool CanAddSearchFavorite
@@ -1985,6 +2087,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _uiTimer.Stop();
         _gapFlush.Stop();
         _receiveOptionsDebounce.Stop();
+        _baudRateDebounce.Stop();
         _sendFileCts?.Cancel();
         _sendFileCts?.Dispose();
 

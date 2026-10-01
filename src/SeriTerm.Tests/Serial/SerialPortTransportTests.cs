@@ -62,6 +62,27 @@ public class SerialPortTransportTests
 
         Assert.Equal(TransportState.Closed, transport.State);
     }
+
+    [Fact]
+    public async Task 未打开时修改波特率_应抛出中文异常且不改动设置()
+    {
+        await using var transport = new SerialPortTransport();
+
+        var ex = await Assert.ThrowsAsync<SerialLinkException>(() => transport.SetBaudRateAsync(9600));
+
+        Assert.Contains("尚未打开", ex.Message);
+        Assert.Null(transport.CurrentSettings);
+        Assert.Equal(TransportState.Closed, transport.State);
+    }
+
+    [Fact]
+    public async Task 波特率非正数_应抛出参数异常()
+    {
+        await using var transport = new SerialPortTransport();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => transport.SetBaudRateAsync(0));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => transport.SetBaudRateAsync(-115200));
+    }
 }
 
 /// <summary>
@@ -217,6 +238,57 @@ public class SerialPortLoopbackTests
         var payload = "reopen"u8.ToArray();
         var received = await SendAndCollectAsync(transport, payload, TimeSpan.FromSeconds(3));
         Assert.True(Contains(received, payload));
+    }
+
+    /// <summary>
+    /// 串口打开期间直接改波特率：不应断开、不应重开，改完链路仍然可用，且
+    /// <see cref="ISerialTransport.CurrentSettings"/> 跟着走（自动重连按它重开，否则会退回旧波特率）。
+    /// 这里改到 230400 再改回 115200，两个方向都要成功。
+    /// </summary>
+    [LoopbackFact]
+    public async Task 打开状态下改波特率_不应断开且链路仍可用()
+    {
+        await using var transport = new SerialPortTransport();
+        await OpenWithRetryAsync(transport, Settings());
+
+        var openCount = 0;
+        transport.StateChanged += (_, e) =>
+        {
+            if (e.NewState != TransportState.Open)
+            {
+                openCount++;
+            }
+        };
+
+        await transport.SetBaudRateAsync(230400);
+
+        Assert.Equal(TransportState.Open, transport.State);
+        Assert.Equal(230400, transport.CurrentSettings!.BaudRate);
+        Assert.Equal(0, openCount);
+
+        var fast = "baud-230400"u8.ToArray();
+        Assert.True(Contains(await SendAndCollectAsync(transport, fast, TimeSpan.FromSeconds(3)), fast),
+            "改到 230400 之后回环不通。");
+
+        await transport.SetBaudRateAsync(BaudRate);
+        Assert.Equal(BaudRate, transport.CurrentSettings!.BaudRate);
+
+        var back = "baud-back"u8.ToArray();
+        Assert.True(Contains(await SendAndCollectAsync(transport, back, TimeSpan.FromSeconds(3)), back),
+            "改回 115200 之后回环不通。");
+    }
+
+    /// <summary>改成当前已经在用的值时应当是空操作：不碰驱动、不报错。</summary>
+    [LoopbackFact]
+    public async Task 改成相同波特率应为空操作()
+    {
+        await using var transport = new SerialPortTransport();
+        await OpenWithRetryAsync(transport, Settings());
+
+        await transport.SetBaudRateAsync(BaudRate);
+
+        Assert.Equal(TransportState.Open, transport.State);
+        Assert.Equal(BaudRate, transport.CurrentSettings!.BaudRate);
     }
 
     private static async Task<byte[]> SendAndCollectAsync(

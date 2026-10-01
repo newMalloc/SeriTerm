@@ -156,6 +156,91 @@ public sealed class SerialPortTransport : ISerialTransport
         }
     }
 
+    /// <summary>
+    /// 已打开时改波特率。走 <see cref="SerialPort.BaudRate"/> 的 setter（底层 SetCommState），
+    /// Windows 允许在句柄打开期间改，收发缓冲不会被清掉、读取线程也不必停。
+    /// 整个动作在生命周期闸门内做，避免与"用户点关闭"、"自动重连重开"交叉。
+    /// </summary>
+    public async Task SetBaudRateAsync(int baudRate, CancellationToken cancellationToken = default)
+    {
+        if (baudRate <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(baudRate), "波特率必须大于 0。");
+        }
+
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var port = _port;
+
+            if (port is null || !port.IsOpen)
+            {
+                throw new SerialLinkException("串口尚未打开，无法直接修改波特率。");
+            }
+
+            var previous = port.BaudRate;
+            var portName = CurrentSettings?.PortName ?? "串口";
+
+            if (previous == baudRate)
+            {
+                return;
+            }
+
+            try
+            {
+                port.BaudRate = baudRate;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "修改波特率失败：{Previous} → {Requested}", previous, baudRate);
+                throw new SerialLinkException(
+                    $"{portName} 的波特率仍为 {previous}，驱动不接受 {baudRate}：{ex.Message}",
+                    ex);
+            }
+
+            // 回读确认：有些驱动对不支持的波特率不报错、只是保持原值（SetCommState 静默失败）。
+            // 不确认的话，界面显示的波特率会和实际链路不一致，收到的是乱码还不知道为什么。
+            var applied = port.BaudRate;
+            if (applied != baudRate)
+            {
+                _logger?.LogWarning(
+                    "驱动未接受 {Requested} 波特率，回读为 {Applied}（原 {Previous}）",
+                    baudRate,
+                    applied,
+                    previous);
+
+                // 回读值才是链路真实状态，按它记账，别让 CurrentSettings 撒谎
+                UpdateCurrentBaudRate(applied);
+
+                throw new SerialLinkException($"{portName} 的驱动没有接受 {baudRate}，实际是 {applied}。");
+            }
+
+            UpdateCurrentBaudRate(applied);
+            _logger?.LogInformation(
+                "波特率已改为 {BaudRate}（端口保持打开，原 {Previous}）",
+                applied,
+                previous);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 把新的波特率记进 <see cref="CurrentSettings"/>。
+    /// 自动重连用的是 <see cref="CurrentSettings"/>，不更新的话拔线重连会退回旧波特率。
+    /// </summary>
+    private void UpdateCurrentBaudRate(int baudRate)
+    {
+        if (CurrentSettings is not null)
+        {
+            CurrentSettings = CurrentSettings with { BaudRate = baudRate };
+        }
+    }
+
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
         if (data.IsEmpty)

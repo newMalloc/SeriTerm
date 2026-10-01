@@ -293,12 +293,14 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="波特率:" Style="{StaticResource FieldLabel}" />
                                 <!-- 列表最后一项是"自定义输入…"：选中它由代码后置清空此框并把光标交给用户 -->
+                                <!-- 这个框在串口打开时也能改（CanEditBaudRate）：改的是已打开的端口本身，
+                                     停止输入 400 ms 后立即生效，不用关掉重开 -->
                                 <ComboBox x:Name="BaudRateCombo" Grid.Column="1" IsEditable="True"
                                           ItemsSource="{Binding BaudRateOptions}"
                                           Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}"
-                                          IsEnabled="{Binding CanEditSettings}"
+                                          IsEnabled="{Binding CanEditBaudRate}"
                                           SelectionChanged="OnBaudRateSelectionChanged"
-                                          ToolTip="下拉选常用波特率；选「自定义输入…」后可填任意正整数，例如 1000000" />
+                                          ToolTip="下拉选常用波特率；选「自定义输入…」后可填任意正整数，例如 1000000。串口已打开时改这里立即生效，不必重新打开" />
                                 <TextBlock Grid.Column="3" Text="预设:" Style="{StaticResource FieldLabel}" />
                                 <ComboBox x:Name="PresetCombo" Grid.Column="4"
                                           ItemsSource="{Binding Presets}"
