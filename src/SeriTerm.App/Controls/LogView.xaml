@@ -44,6 +44,31 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!--
+            时间列 / 方向列的只读文本框。
+            用文本框而不是 TextBlock，是为了让"自由选择"量字符坐标时三个列走同一套 API
+            （TextBlock 量不出某个字符落在哪，跨到时间列的那一段就没法画选中底色）。
+            刻意不挂 LogLineText 上的那两个触发器：这两列必须永远单行（跟随"自动换行"会被撑成两行），
+            颜色也固定是淡灰，不跟数据方向走。
+        -->
+        <Style x:Key="LogColumnText" TargetType="TextBox"
+               BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="ContextMenu" Value="{x:Null}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+        </Style>
     </UserControl.Resources>
 
     <!--
@@ -72,8 +97,8 @@
                  FontFamily="Consolas, Microsoft YaHei UI"
                  FontSize="{Binding LogFontSize}">
 
-            <!-- 复制选中行：右键菜单与 Ctrl+C 走同一条命令（虚拟化列表不支持逐字选择，
-                 选中粒度是"行"；复制出来的是屏幕上看到的那一行文本） -->
+            <!-- 复制：右键菜单与 Ctrl+C 走同一条命令。
+                 复制优先级是"自己拖出来的字符选择（可跨行）→ 行内文本框的原生选择 → 选中的整行"。 -->
             <ListBox.CommandBindings>
                 <CommandBinding Command="Copy" CanExecute="OnCopyCanExecute" Executed="OnCopyExecuted" />
             </ListBox.CommandBindings>
@@ -127,16 +152,25 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
 
-                            <!-- 时间列 -->
-                            <TextBlock Grid.Column="0" Text="{Binding TimeText}"
-                                       Margin="0,0,6,0"
-                                       Foreground="{DynamicResource SubtleForegroundBrush}"
-                                       Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
+                            <!-- 自由选择的底色层：第一个子元素 = 最底层，所以它垫在三列文字之下。
+                                 方块由各列文本框自己量出来（列内按字符、跨列跨行都对得准），
+                                 拖出可视区时容器被虚拟化回收也没关系：重新生成时会按当前选择重画一遍。 -->
+                            <Canvas x:Name="SelectionLayer" Grid.Column="0" Grid.ColumnSpan="3"
+                                    IsHitTestVisible="False" ClipToBounds="True" />
+
+                            <!-- 时间列（TextBox.Text 默认是 TwoWay 绑定，而 TimeText 是只读属性，
+                                 不写 Mode=OneWay 会在生成行容器时直接抛异常，界面一行都出不来） -->
+                            <TextBox x:Name="TimeColumn" Grid.Column="0"
+                                     Style="{StaticResource LogColumnText}"
+                                     Text="{Binding TimeText, Mode=OneWay}"
+                                     Margin="0,0,6,0"
+                                     Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
 
                             <!-- 方向列 -->
-                            <TextBlock Grid.Column="1" Text="{Binding DirectionText}"
-                                       Margin="0,0,4,0"
-                                       Foreground="{DynamicResource SubtleForegroundBrush}" />
+                            <TextBox x:Name="DirectionColumn" Grid.Column="1"
+                                     Style="{StaticResource LogColumnText}"
+                                     Text="{Binding DirectionText, Mode=OneWay}"
+                                     Margin="0,0,4,0" />
 
                             <!-- 内容列：只读文本框（鼠标可以选中任意一段字符再复制），
                                  背后一层 Canvas 专门画"命中关键字"的高亮方块 -->

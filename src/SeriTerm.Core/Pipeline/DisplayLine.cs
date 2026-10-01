@@ -88,6 +88,17 @@ public sealed class DisplayLine : INotifyPropertyChanged
         _ => "--",
     };
 
+    /// <summary>
+    /// 这一行"在屏幕上看到的那串文字"：时间戳列 + 方向列 + 内容列，列之间用单个空格连接。
+    ///
+    /// 选择与复制都以它为准（关掉时间戳列时就不带时间），所以日志区里
+    /// "鼠标选中的范围 → 剪贴板文本"这条链路是一份定义，不会出现"看到的和复制的不一样"。
+    /// </summary>
+    public string ToDisplayText(bool withTimestamp)
+        => withTimestamp
+            ? $"{TimeText} {DirectionText} {Text}"
+            : $"{DirectionText} {Text}";
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void SetField(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
