@@ -154,10 +154,13 @@ $processId = $process.Id
 
 try {
     Write-Output '== 等待界面就绪（并等待自动打开串口）'
-    $null = Wait-ForControl -ProcessId $processId -Text '打开' -TimeoutSeconds 30
+    # 这里等"预设"下拉框而不是按钮文案：开着"启动时自动打开串口"时，
+    # 按钮可能在界面能被查到之前就已经从"打开串口"变成"关闭串口"了，
+    # 等一个必然存在的控件才不会有竞态。
+    $null = Wait-ForControl -ProcessId $processId -AutomationId 'PresetCombo' -TimeoutSeconds 30
 
-    # 已打开时按钮会变成"关闭"；等它出现即说明 AutoOpenOnStartup 生效
-    $null = Wait-ForControl -ProcessId $processId -Text '关闭' -TimeoutSeconds 20
+    # 已打开时按钮会变成"关闭串口"；等它出现即说明 AutoOpenOnStartup 生效
+    $null = Wait-ForControl -ProcessId $processId -Text '关闭串口' -TimeoutSeconds 20
 
     $texts = Get-StatusTexts -ProcessId $processId
     $autoOpened = @($texts | Where-Object { $_ -eq '已打开' }).Count -gt 0

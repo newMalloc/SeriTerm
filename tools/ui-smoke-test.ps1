@@ -126,7 +126,7 @@ try {
     if ($null -eq $window) { throw '找不到应用主窗口' }
 
     Write-Output "== 打开串口 $Port"
-    Invoke-Element (Find-ByName $window '打开') '打开'
+    Invoke-Element (Find-ByName $window '打开串口') '打开'
     Start-Sleep -Seconds 2
 
     Write-Output "== 点击发送 $SendClicks 次"

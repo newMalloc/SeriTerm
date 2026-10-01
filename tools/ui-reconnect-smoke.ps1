@@ -203,10 +203,10 @@ $dialogClosed = $false
 
 try {
     Write-Output '== 等待界面就绪'
-    $null = Wait-ForControl -ProcessId $processId -Text '打开' -TimeoutSeconds 30
+    $null = Wait-ForControl -ProcessId $processId -Text '打开串口' -TimeoutSeconds 30
 
     Write-Output "== 打开串口 $Port @ $BaudRate"
-    Invoke-Element (Wait-ForControl -ProcessId $processId -Text '打开') '打开'
+    Invoke-Element (Wait-ForControl -ProcessId $processId -Text '打开串口') '打开'
 
     # 等"串口已打开"这行日志出现，确认真的打开了
     $deadline = (Get-Date).AddSeconds(15)

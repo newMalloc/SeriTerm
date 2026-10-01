@@ -193,6 +193,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public IReadOnlyList<string> EncodingOptions { get; }
 
+    /// <summary>
+    /// 日志字号可选值。原来是 A-/A+ 两个按钮，得先点一下才知道当前字号是多少，
+    /// 也不像字号控件；直接用下拉框，当前值一眼可见。
+    /// </summary>
+    public IReadOnlyList<double> FontSizeOptions { get; } = [9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24];
+
     // ---------- 串口参数 ----------
 
     [ObservableProperty]
@@ -274,11 +280,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private double _sendFileProgress;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSendFileStatus))]
     private string _sendFileStatusText = string.Empty;
 
     public string TimedSendButtonText => TimedSendEnabled ? "停止定时" : "定时发送";
 
     public string SendFileButtonText => IsSendingFile ? "取消发送" : "发送文件";
+
+    public bool HasSendFileStatus => !string.IsNullOrWhiteSpace(SendFileStatusText);
 
     // ---------- 日志落盘（M7） ----------
 
@@ -554,9 +563,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public bool CanEditSettings => State is TransportState.Closed or TransportState.Faulted;
 
-    public string OpenButtonText => IsOpen ? "关闭" : "打开";
+    public string OpenButtonText => IsOpen ? "关闭串口" : "打开串口";
 
     public string PauseButtonText => IsPaused ? "继续显示" : "暂停显示";
+
+    /// <summary>供自绘标题栏切换太阳/月亮图标。</summary>
+    public bool IsDarkTheme => _themeService.IsDarkEffective;
 
     public bool HasPendingNewLines => PendingNewLines > 0;
 
@@ -650,12 +662,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.Theme = next;
         UpdateThemeButtonText();
     }
-
-    [RelayCommand]
-    private void IncreaseFontSize() => LogFontSize = Math.Min(30, LogFontSize + 1);
-
-    [RelayCommand]
-    private void DecreaseFontSize() => LogFontSize = Math.Max(9, LogFontSize - 1);
 
     [RelayCommand]
     private void ToggleLineWrap() => LineWrap = !LineWrap;
@@ -1515,7 +1521,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private void UpdateThemeButtonText()
-        => ThemeButtonText = _themeService.IsDarkEffective ? "切换到浅色" : "切换到深色";
+    {
+        ThemeButtonText = _themeService.IsDarkEffective ? "切换到浅色" : "切换到深色";
+        OnPropertyChanged(nameof(IsDarkTheme));
+    }
 
     // ---------- 传输层事件 ----------
 

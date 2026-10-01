@@ -130,6 +130,21 @@
         </Setter>
     </Style>
 
+    <!-- ============ 图标几何 ============ -->
+    <!--
+        自绘标题栏里的两个图标。刻意用 Path 几何而不是字体符号：
+        Segoe MDL2 的字形编号记错了就会渲染成豆腐块，而几何是确定性的。
+        尺寸都按 14x14 画，中心 (7,7)。
+    -->
+    <!-- 月亮：大圆减去偏移的小圆（F0=EvenOdd），得到月牙 -->
+    <StreamGeometry x:Key="IconMoon">F0 M 1.3,7 A 5.2,5.2 0 1 0 11.7,7 A 5.2,5.2 0 1 0 1.3,7 Z M 4.8,5.2 A 4.6,4.6 0 1 0 14,5.2 A 4.6,4.6 0 1 0 4.8,5.2 Z</StreamGeometry>
+
+    <!-- 太阳的光芒（描边） -->
+    <StreamGeometry x:Key="IconSunRays">M 7,0.8 V 2.4 M 7,11.6 V 13.2 M 0.8,7 H 2.4 M 11.6,7 H 13.2 M 2.6,2.6 L 3.7,3.7 M 10.3,10.3 L 11.4,11.4 M 11.4,2.6 L 10.3,3.7 M 3.7,10.3 L 2.6,11.4</StreamGeometry>
+
+    <!-- 模糊背景：半实心圆（右半边填色），左边描边圆圈在 XAML 里叠 -->
+    <StreamGeometry x:Key="IconHalfDisc">M 7,1.5 A 5.5,5.5 0 0 1 7,12.5 Z</StreamGeometry>
+
     <!-- ============ 自绘标题栏按钮 ============ -->
     <!-- 注意 WindowChrome.IsHitTestVisibleInChrome：标题栏区域默认被当作"可拖动标题"，
          不加上这一条按钮就收不到点击。 -->
@@ -190,6 +205,52 @@
         </Setter>
     </Style>
 
+    <!-- 标题栏里的开关（模糊背景）。选中态用强调色画图标，不铺底色，
+         免得和右边的三个窗口按钮抢注意力。 -->
+    <Style x:Key="TitleBarToggle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionButtonHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 侧栏里的小按钮（保存/删除预设、刷新端口、选择/打开目录）。
+         统一成一种样式，免得每处各写一遍 Padding/FontSize。 -->
+    <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="8,1" />
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <!-- ============ 复选框 ============ -->
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
@@ -248,9 +309,10 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="4">
+                        <!-- 跟随 VerticalContentAlignment：多行输入框（发送区）要顶对齐，单行输入框要居中 -->
                         <ScrollViewer x:Name="PART_ContentHost"
                                       Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">

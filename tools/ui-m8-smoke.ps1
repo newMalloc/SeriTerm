@@ -169,7 +169,7 @@ $processId = $process.Id
 
 try {
     Write-Output '== 等待界面就绪'
-    $null = Wait-ForControl -ProcessId $processId -Text '打开' -TimeoutSeconds 30
+    $null = Wait-ForControl -ProcessId $processId -Text '打开串口' -TimeoutSeconds 30
 
     $presetCombo = Wait-ForControl -ProcessId $processId -AutomationId 'PresetCombo'
 

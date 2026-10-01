@@ -189,10 +189,10 @@ $processId = $process.Id
 
 try {
     Write-Output '== 等待界面就绪'
-    $null = Wait-ForControl -ProcessId $processId -Text '打开' -TimeoutSeconds 30
+    $null = Wait-ForControl -ProcessId $processId -Text '打开串口' -TimeoutSeconds 30
 
     Write-Output "== 打开串口 $Port"
-    Invoke-Element (Wait-ForControl -ProcessId $processId -Text '打开') '打开'
+    Invoke-Element (Wait-ForControl -ProcessId $processId -Text '打开串口') '打开'
     Start-Sleep -Seconds 2
 
     Write-Output '== 勾选终端模式'
