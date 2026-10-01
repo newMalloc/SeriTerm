@@ -7,10 +7,10 @@ namespace SeriTerm.App.Services;
 /// 「关于」窗口要展示的程序自身信息（版本、提交、运行时、许可、仓库地址）。
 ///
 /// 版本号不在这里写死：它取自程序集上的 <see cref="AssemblyInformationalVersionAttribute"/>，
-/// 也就是 <c>Directory.Build.props</c> 里那个 <c>&lt;Version&gt;</c>（当前 1.0.0）。
-/// 好处是只改一处、发版时不会出现"界面写着 1.0.0、文件属性里是别的版本"。
+/// 也就是 <c>Directory.Build.props</c> 里那个 <c>&lt;Version&gt;</c>（全仓库唯一一处）。
+/// 好处是只改一处、发版时不会出现"界面写着一个版本、文件属性里是另一个版本"。
 ///
-/// MSBuild 还会把当前提交拼在版本后面（<c>1.0.0+0c26600…</c>，见 obj 下的 AssemblyInfo.cs），
+/// MSBuild 还会把当前提交拼在版本后面（形如 <c>1.2.3+0c26600…</c>，见 obj 下的 AssemblyInfo.cs），
 /// 这里把两段拆开显示：版本号给人看，短提交号用来确认"手上这个 exe 到底是哪次构建"。
 /// </summary>
 internal static class AppInfo
@@ -36,7 +36,7 @@ internal static class AppInfo
 
     private static readonly Assembly Self = typeof(AppInfo).Assembly;
 
-    /// <summary>版本号，例如 <c>1.0.0</c>。</summary>
+    /// <summary>版本号，例如 <c>1.2.3</c>。</summary>
     public static string Version { get; } = ResolveVersion();
 
     /// <summary>完整提交号；信息版本里没有 <c>+</c> 段时为 null。</summary>
@@ -52,7 +52,7 @@ internal static class AppInfo
 
     private static string ResolveVersion()
     {
-        // 信息版本形如 "1.0.0+0c26600…"；"+" 之后是 SourceLink 注入的提交号
+        // 信息版本形如 "1.2.3+0c26600…"；"+" 之后是 SourceLink 注入的提交号
         var informational = Self
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
@@ -64,7 +64,7 @@ internal static class AppInfo
             return core;
         }
 
-        // 兜底：没有信息版本就用程序集版本（1.0.0.0 → 1.0.0；Build 为 -1 时只到次版本）
+        // 兜底：没有信息版本就用程序集版本（1.2.3.0 → 1.2.3；Build 为 -1 时只到次版本）
         var version = Self.GetName().Version;
 
         if (version is null)
