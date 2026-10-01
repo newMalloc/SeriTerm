@@ -1385,4 +1385,47 @@ tools/ 下的 UI 脚本一律用 -ExePath 传路径，没有任何一个写死 a
 框架依赖版的重命名**没有实际运行**过（要 .NET 桌面运行时，而且真程序一启动就会去开 COM5、
 关窗时写使用者的 `settings.json`，不适合拿真程序去试）——它与自包含版是同一条 apphost + 单文件机制。
 
+### 11.34 CI 抓到的竞态：故障后立刻停止重连会抛 NullReferenceException
+
+推 `v1.0.1` 时 CI 在 `3ca6335` 那一跑红了，失败的是回环测试之外的一条纯逻辑单测：
+
+```
+Failed SeriTerm.Tests.Serial.ReconnectSupervisorTests.手动停止后不应继续重连 [25 ms]
+  System.NullReferenceException : Object reference not set to an instance of an object.
+     at ReconnectSupervisor.<>c__DisplayClass35_0.<BeginReconnect>b__0() … ReconnectSupervisor.cs:line 174
+     at System.Threading.Tasks.Task`1.InnerInvoke()
+     at ReconnectSupervisor.StopAsync() … ReconnectSupervisor.cs:line 101
+```
+
+**根因**：`BeginReconnect` 里 `Task.Run` 的 lambda 捕获的是**字段** `_cts`：
+
+```csharp
+_cts = new CancellationTokenSource();
+_loop = Task.Run(() => ReconnectLoopAsync(settings, _cts.Token));   // 读的是字段，不是局部变量
+```
+
+而 `StopAsync` 的写法是"先清空、再等任务"：`_cts = null; await cts.CancelAsync(); await loop;`。
+lambda 若在 `_cts` 被置空之后才真正开始跑，`_cts.Token` 就是空引用；这个故障任务又被 `StopAsync`
+`await`，于是异常原样冒给调用方（`StopAsync` 只吞 `OperationCanceledException`）。
+
+**修法**：先把 CTS 落进局部变量，再交给后台任务——lambda 不再读任何可变字段：
+
+```csharp
+var cts = new CancellationTokenSource();
+_cts = cts;
+_loop = Task.Run(() => ReconnectLoopAsync(settings, cts.Token));
+```
+
+**为什么本地一直没发现**：这扇窗口只有"故障事件与 StopAsync 之间的几个指令"那么宽，本地反复跑
+几百次都不出现（`dotnet test` 一直 296/296 全绿），CI runner 的线程池时序撞上了。这也是这一轮
+第一次真正吃到 CI 的红：**本地全绿不等于没有竞态**，尤其是 `Task.Run` + 可变字段这种组合。
+
+**回归测试**：新增 `故障后立刻停止不应把异常抛给调用方`——发完故障**不等** `IsReconnecting`
+就直接 `StopAsync`，重复 200 次专门打这个时序窗口。修复后连跑 5 遍稳定通过，单测总数 296 → 297。
+（诚实说明：这条测试在**修复前**本地也未必会红，它的价值是把"必须先落局部变量"这个约束钉在测试里。）
+
+**验证**：本地 `dotnet test` **297/297**；CI（`8f3074e`）日志
+`Passed! - Failed: 0, Passed: 291, Skipped: 6, Total: 297`（runner 上没有串口，6 条回环整组 skipped）。
+
+
 

@@ -19,17 +19,25 @@ UI 自动化脚本一律使用**真实鼠标拖动 / 真实虚拟键注入 + UIA
 
 ## 自动化测试
 
-`dotnet test SeriTerm.sln`：**286 通过 / 0 失败**（280 个纯逻辑单测 + 6 个回环集成测试）。
+`dotnet test SeriTerm.sln`：**297 通过 / 0 失败**（291 个纯逻辑单测 + 6 个回环集成测试）。
 
 单测覆盖：断帧边界（空闲 / 分隔符 / 跨块 / 空帧 / 上限）、HEX 与字节模式解析、ANSI 过滤、终端按键编码、
 GB2312 / UTF-8 跨块解码、显示行存储与淘汰、搜索与淘汰联动、发送组装、定时发送、文件分块发送、
 日志落盘与重放读取、重连退避与重连流程、故障归类（拔线 vs 端口被占用）、配置预设增删改。
 
-没有串口的机器（例如 CI runner）上，6 个回环测试整组 **skipped**，结果仍为绿。CI 日志实测：
+没有串口的机器（例如 CI runner）上，6 个回环测试整组 **skipped**，结果仍为绿。CI 日志实测
+（`8f3074e` 那一跑）：
 
 ```
-Passed!  - Failed: 0, Passed: 280, Skipped: 6, Total: 286, Duration: 3 s - SeriTerm.Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   291, Skipped:     6, Total:   297, Duration: 3 s - SeriTerm.Tests.dll (net8.0)
 ```
+
+⚠️ 上一条 CI（`3ca6335`）是**红的**，抓到一个真实的竞态：`ReconnectSupervisor.BeginReconnect` 里
+`Task.Run` 的 lambda 捕获的是字段 `_cts`，而 `StopAsync` 会先 `_cts = null` 再 await 这个任务，
+lambda 若在置空之后才开始跑就是空引用（`ReconnectSupervisorTests.手动停止后不应继续重连` 报
+`NullReferenceException`，由 `StopAsync` 的 `await loop` 冒出来）。这个窗口极小，本地跑几百次都不出现，
+修掉之后补了「故障后立刻停止不应把异常抛给调用方」这条回归测试（发完故障不等 `IsReconnecting` 就直接
+`StopAsync`，重复 200 次打这个时序窗口）。
 
 ## 端到端回环（UI 自动化真实点击，含发布产物本身）
 

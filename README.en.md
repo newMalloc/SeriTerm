@@ -263,7 +263,8 @@ control names are read as ANSI and turn into mojibake).
 
 ## Verification
 
-- **286 automated tests** (280 pure logic unit tests + 6 loopback integration tests), all green under `dotnet test`;
+- **297 automated tests** (291 pure logic unit tests + 6 loopback integration tests), all green under `dotnet test`
+  (the loopback group is skipped automatically on machines without a serial port);
 - **End-to-end loopback verification** (UI automation driving real mouse / keyboard events against the published
   build itself): framing, timed sending, log writing and replay, terminal mode, smart auto-scroll, theme switching,
   title bar and window blur, clean shutdown, and automatic reconnect after unplugging the real device;
