@@ -1,10 +1,15 @@
 # 发布单文件绿色版（自包含，目标机器无需安装 .NET 运行时）。
 #
 # 用法：
-#   pwsh -File tools/publish.ps1                 # 单文件自包含（推荐分发用）
-#   pwsh -File tools/publish.ps1 -FrameworkDependent   # 精简版，需目标机装 .NET 桌面运行时
+#   pwsh -File tools/publish.ps1                 # 单文件自包含（推荐分发用，约 64 MB）
+#   pwsh -File tools/publish.ps1 -FrameworkDependent   # 精简版约 1.3 MB，需目标机装 .NET 桌面运行时
 #
 # 注意：不要开 PublishTrimmed —— WPF 不支持裁剪，会得到运行时找不到类型的错误。
+# 注意：单文件压缩只在自包含时可用。框架依赖 + EnableCompressionInSingleFile 会被 SDK 直接拒绝
+#       （NETSDK1176：仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩），故该开关按模式传。
+#
+# 便携模式：尚未实现。计划是 exe 同目录放一个空的 seriterm.portable 文件后，配置与日志改写在该目录，
+#           不再落到 %AppData% 与「文档」，方便放 U 盘/移动硬盘随身带；在那之前本脚本只负责出单文件产物。
 
 param(
     [string]$OutputDir = 'artifacts/publish',
@@ -28,8 +33,13 @@ $arguments = @(
     '-r', $Runtime,
     "--self-contained=$selfContained",
     '-p:PublishSingleFile=true',
-    '-p:IncludeNativeLibrariesForSelfExtract=true',
-    '-p:EnableCompressionInSingleFile=true',
+    '-p:IncludeNativeLibrariesForSelfExtract=true'
+)
+
+# 只有自包含才能压缩单文件；框架依赖时加上这一项会让 dotnet publish 直接以 NETSDK1176 失败
+if ($selfContained -eq 'true') { $arguments += '-p:EnableCompressionInSingleFile=true' }
+
+$arguments += @(
     '-p:DebugType=none',
     '-p:GenerateDocumentationFile=false',
     '-o', $OutputDir,
