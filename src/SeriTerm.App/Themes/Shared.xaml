@@ -326,9 +326,15 @@
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="4">
-                        <!-- 跟随 VerticalContentAlignment：多行输入框（发送区）要顶对齐，单行输入框要居中 -->
+                        <!--
+                            跟随 VerticalContentAlignment：多行输入框（发送区）要顶对齐，单行输入框要居中。
+                            这里刻意不写 Margin="{TemplateBinding Padding}"：WPF 自己会把 TextBox.Padding
+                            原样复制到 PART_ContentHost 的 Padding 上（离屏探针实测：设 Padding=6,3 时，
+                            ScrollViewer 的 Margin 和 Padding 同时都是 6,3），模板里再绑一次 Margin
+                            就等于左右各扣两遍。波特率框 76 宽时只有 44 留给数字，
+                            "1000000" 需要 56，于是被箭头前面那块"空白"裁掉了。
+                        -->
                         <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -384,14 +390,19 @@
                                 BorderThickness="1"
                                 CornerRadius="4" />
 
-                        <!-- 可编辑模式下的输入框（波特率用） -->
+                        <!--
+                            可编辑模式下的输入框（波特率用）。
+                            内边距给 4,2 而不是 ComboBox 的 7,2：这一份 Padding 会连同
+                           内容宿主自己那份一共扣掉两次，7 会让 7 位数放不下（详见上面 TextBox 模板里的注释）。
+                            4 换算下来文字左边距 6 DIP，和不可编辑下拉框里文字距 7 DIP 基本对齐。
+                        -->
                         <TextBox x:Name="PART_EditableTextBox"
                                  Visibility="Collapsed"
                                  Background="Transparent"
                                  BorderThickness="0"
                                  Foreground="{TemplateBinding Foreground}"
                                  CaretBrush="{DynamicResource ForegroundBrush}"
-                                 Padding="{TemplateBinding Padding}"
+                                 Padding="4,2"
                                  VerticalContentAlignment="Center"
                                  Margin="0,0,22,0" />
 

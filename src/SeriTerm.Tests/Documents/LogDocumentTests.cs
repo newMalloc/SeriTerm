@@ -25,10 +25,11 @@ public class LogDocumentTests
     }
 
     [Fact]
-    public void Append_一批数据只应发一次Reset通知()
+    public void Append_应逐行发Add通知而不是Reset()
     {
         var document = new LogDocument();
         var resets = 0;
+        var adds = 0;
 
         document.Lines.CollectionChanged += (_, e) =>
         {
@@ -36,12 +37,19 @@ public class LogDocumentTests
             {
                 resets++;
             }
+            else if (e.Action == NotifyCollectionChangedAction.Add)
+            {
+                adds++;
+            }
         };
 
         document.Append(Lines(1, 100, i => $"line {i}"));
 
-        // 逐行通知会让 WPF 跑 100 次布局，这里必须是 1 次
-        Assert.Equal(1, resets);
+        // 曾经这里攒成一次 Reset：WPF 的虚拟化列表会把已生成的行容器全部丢掉重建，
+        // 10 次/秒的定时发送就能把界面线程跑满（见 LogDocument.Append 的注释）。
+        // 现在是逐行 Add：只为新行生成容器，布局失效由 WPF 在帧内合并。
+        Assert.Equal(0, resets);
+        Assert.Equal(100, adds);
     }
 
     [Fact]

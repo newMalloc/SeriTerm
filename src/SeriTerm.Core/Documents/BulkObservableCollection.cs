@@ -7,10 +7,17 @@ namespace SeriTerm.Core.Documents;
 /// <summary>
 /// 支持批量增删的 <see cref="ObservableCollection{T}"/>。
 ///
-/// 为什么需要它：日志区每秒可能新增成百上千行，逐行发 CollectionChanged 会让
-/// WPF 每行都跑一次布局；这里把一批追加合并成**一次 Reset**，只重绘可视区域。
-/// 淘汰旧行采用"整段重建"而不是逐行 <c>RemoveAt(0)</c>——后者在 20 万行规模下是 O(n²)，
+/// <para>
+/// <b>追加不要用 <see cref="Defer"/></b>：一次 Reset 会让 WPF 的虚拟化列表把已生成的行容器
+/// 全部丢掉重建，开销与"屏幕上显示多少行"成正比；逐行 Add 只为新行生成容器，
+/// 帧内的多次布局失效 WPF 自己会合并。10 次/秒的定时发送用 Reset 就能把界面线程跑满
+/// （见 <see cref="LogDocument.Append"/> 的注释）。
+/// </para>
+/// <para>
+/// <see cref="Defer"/> 只用于"整段变化"：重刷所有行（切 HEX/编码）与淘汰旧行。
+/// 淘汰用的是整段重建而不是逐行 <c>RemoveAt(0)</c>——后者在 20 万行规模下是 O(n²)，
 /// 会把界面卡死好几秒。
+/// </para>
 /// </summary>
 public sealed class BulkObservableCollection<T> : ObservableCollection<T>
 {

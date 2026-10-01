@@ -60,34 +60,42 @@ public sealed class LogDocument
             return 0;
         }
 
-        using (Lines.Defer())
+        // 追加要逐行走 Add 通知，**不能**攒成一个 Reset。
+        //
+        // 原来这里是 using (Lines.Defer())：一批只发一次 Reset，看着很省。实测恰恰相反——
+        // Reset 会让 WPF 的虚拟化列表把已经生成的行容器**全部丢掉重建**（每行一个只读文本框、
+        // 一层高亮 Canvas、时间/方向两列），每次追加都要重排整个可视区。10 次/秒的定时发送
+        // （每次 Tx+Rx 两行）就够把界面线程跑满：进程 CPU 占空比 ~100%，点一下要等 0.1~2 秒，
+        // 表现就是"数据照发，界面像卡死"。
+        //
+        // 换成 Add 之后，WPF 只为新行生成容器，同一帧里的多次失效会合并成一次布局，
+        // 开销与"新增多少行"成正比，而不是与"屏幕上显示多少行"成正比。
+        // 真正需要 Reset 的只有整段变化：淘汰旧行（下面 TrimFront）和切换 HEX/编码重刷（Reformat）。
+        foreach (var line in newLines)
         {
-            foreach (var line in newLines)
+            Lines.Add(line);
+            _totalBytes += line.ByteLength;
+        }
+
+        var trim = ComputeTrimCount();
+
+        if (trim > 0)
+        {
+            for (var i = 0; i < trim && i < Lines.Count; i++)
             {
-                Lines.Add(line);
-                _totalBytes += line.ByteLength;
+                _totalBytes -= Lines[i].ByteLength;
             }
 
-            var trim = ComputeTrimCount();
+            _droppedLines += trim;
+            Lines.TrimFront(trim);
 
-            if (trim > 0)
-            {
-                for (var i = 0; i < trim && i < Lines.Count; i++)
-                {
-                    _totalBytes -= Lines[i].ByteLength;
-                }
+            // 淘汰后需要把已经不在缓冲里的命中项清掉
+            PruneEvictedMatches();
+        }
 
-                _droppedLines += trim;
-                Lines.TrimFront(trim);
-
-                // 淘汰后需要把已经不在缓冲里的命中项清掉
-                PruneEvictedMatches();
-            }
-
-            if (HasSearch)
-            {
-                MatchNewLines(newLines);
-            }
+        if (HasSearch)
+        {
+            MatchNewLines(newLines);
         }
 
         return newLines.Count;

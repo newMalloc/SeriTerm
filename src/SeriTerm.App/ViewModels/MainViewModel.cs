@@ -29,10 +29,15 @@ namespace SeriTerm.App.ViewModels;
 ///
 /// 线程模型（关键）：
 /// <list type="bullet">
-/// <item>串口读取线程只做两件事：累加计数、在 <c>_pipelineLock</c> 保护下把字节喂给 <see cref="ReceiveProcessor"/>；</item>
-/// <item>界面定时器（约 30 fps）负责把管线产出的行批量搬到 <see cref="LogDocument"/>，
-///       这样无论串口多快，界面每帧最多刷新一次；</item>
-/// <item>断帧的"最后一帧"依赖定时器调用 FlushIdle 才会显示出来。</item>
+/// <item>串口读取线程只做三件事：累加计数、在 <c>_pipelineLock</c> 保护下把字节喂给 <see cref="ReceiveProcessor"/>、
+///       然后请求一次界面刷新；</item>
+/// <item>把管线产出的行搬到 <see cref="LogDocument"/> 有两条触发路径——数据一到就投递的
+///       <see cref="RequestFlush"/>（合并成一次），以及约 30 fps 的界面定时器兜底。
+///       为什么不能只靠后者：它跑在 <see cref="DispatcherPriority.Background"/> 上，
+///       排在所有输入、绑定、渲染之后，界面一忙回显就要等几百毫秒才出现在日志里
+///       （用户看到的"点发送后回显慢半拍"就是这个）；</item>
+/// <item>断帧的"最后一帧"由 <c>_gapFlush</c> 这个一次性定时器按时叫醒 FlushIdle 显示出来，
+///       同样不依赖 Background 定时器。</item>
 /// </list>
 /// </summary>
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
@@ -86,6 +91,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private long _txBytes;
 
     private readonly DispatcherTimer _uiTimer;
+
+    /// <summary>
+    /// 空闲断帧的收尾定时器（一次性）：数据到达后过"断帧间隔"再调一次 FlushIdle，
+    /// 把最后一帧吐出来。刻意用 DataBind 优先级——它排在输入与渲染之前，
+    /// 界面忙的时候也不会像 Background 那样被无限期推后。
+    /// </summary>
+    private readonly DispatcherTimer _gapFlush;
+
+    /// <summary>已经投递了一次界面刷新请求，避免每个数据块都投一次。</summary>
+    private bool _flushQueued;
 
     public MainViewModel(
         ISerialTransport transport,
@@ -163,6 +178,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         };
         _uiTimer.Tick += (_, _) => OnUiRefresh();
         _uiTimer.Start();
+
+        // 断帧收尾：一次只叫醒一次，由 ScheduleGapFlush 按当前间隔重新起表
+        _gapFlush = new DispatcherTimer(DispatcherPriority.DataBind, _dispatcher);
+        _gapFlush.Tick += (_, _) =>
+        {
+            _gapFlush.Stop();
+            FlushPendingLines();
+        };
 
         State = _transport.State;
         StatusText = State.ToDisplayText();
@@ -1702,6 +1725,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _processor.ProcessReceived(e.Data, e.Timestamp, DateTime.Now, _pendingLines);
         }
+
+        // 成帧了的行立刻请界面来取，而不是等下一个 Background 定时器
+        RequestFlush();
     }
 
     private void OnTransportStateChanged(object? sender, TransportStateChangedEventArgs e)
@@ -1748,12 +1774,47 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---------- 界面刷新 ----------
 
-    private void OnUiRefresh()
+    /// <summary>
+    /// 数据一到就请求一次刷新。可能在串口读取线程上调用，所以只置标志 + 投递，
+    /// 真正的搬运在界面线程的 <see cref="FlushPendingLines"/> 里做。
+    ///
+    /// 合并的意义：1 Mbps 连续数据时每秒会有几十个数据块，逐块投递会把消息队列塞满；
+    /// 这里保证"已经排了一次队"就不再排，代价只有一次加锁。
+    /// </summary>
+    private void RequestFlush()
+    {
+        lock (_pipelineLock)
+        {
+            if (_flushQueued)
+            {
+                return;
+            }
+
+            _flushQueued = true;
+        }
+
+        if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        // DataBind 而不是 Background：Background 排在输入与渲染之后，
+        // 用户连点或界面正在重绘时，回显行会被压到后面才显示出来。
+        _dispatcher.InvokeAsync(FlushPendingLines, DispatcherPriority.DataBind);
+    }
+
+    /// <summary>
+    /// 把接收管线里已经成帧的行搬到日志，并安排断帧收尾。
+    /// 必须在界面线程调用；被 <see cref="RequestFlush"/> 与界面定时器共用，重复调用无副作用。
+    /// </summary>
+    private void FlushPendingLines()
     {
         List<DisplayLine>? batch = null;
 
         lock (_pipelineLock)
         {
+            _flushQueued = false;
+
             _scratch.Clear();
             _processor.FlushIdle(Stopwatch.GetTimestamp(), DateTime.Now, _scratch);
 
@@ -1780,6 +1841,32 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 AppendToLog(batch);
             }
         }
+
+        ScheduleGapFlush();
+    }
+
+    /// <summary>
+    /// 空闲间隔断帧时，"最后一帧"要等间隔到了才能确定已经收完。
+    /// 用一次性定时器按当前间隔把它叫醒，而不是靠 30 fps 的 Background 定时器捎带
+    /// ——后者在界面忙时会晚上百毫秒，回显看起来就是"卡一下才出来"。
+    /// </summary>
+    private void ScheduleGapFlush()
+    {
+        _gapFlush.Stop();
+
+        if (_processor.Options.Framing != FramingMode.Gap)
+        {
+            return;
+        }
+
+        _gapFlush.Interval = TimeSpan.FromMilliseconds(
+            Math.Clamp(_processor.Options.AutoFrameGapMilliseconds, 1, 2000));
+        _gapFlush.Start();
+    }
+
+    private void OnUiRefresh()
+    {
+        FlushPendingLines();
 
         RxText = ByteSize.Format(Interlocked.Read(ref _rxBytes));
         TxText = ByteSize.Format(Interlocked.Read(ref _txBytes));
@@ -1896,6 +1983,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _uiTimer.Stop();
+        _gapFlush.Stop();
         _receiveOptionsDebounce.Stop();
         _sendFileCts?.Cancel();
         _sendFileCts?.Dispose();

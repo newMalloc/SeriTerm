@@ -7,7 +7,8 @@ namespace SeriTerm.Core.Pipeline;
 /// <summary>
 /// 接收处理器：原始字节 → 断帧 → 文本/HEX 渲染 → <see cref="DisplayLine"/>。
 ///
-/// 线程约定：本类**不是**线程安全的。串口读取线程负责喂入数据、界面定时器负责 FlushIdle，
+/// 线程约定：本类**不是**线程安全的。串口读取线程负责喂入数据、界面线程负责 FlushIdle
+/// （数据到达后的即时刷新 + 断帧间隔到期的一次性定时器），
 /// 两者必须由调用方用同一个锁串行化（见 MainViewModel 中的用法）。
 /// </summary>
 public sealed class ReceiveProcessor
