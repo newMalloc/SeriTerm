@@ -264,6 +264,39 @@ public partial class MainWindow : Window
     private static bool IsTextInputFocused()
         => Keyboard.FocusedElement is TextBox or ComboBox or PasswordBox;
 
+    // ---------- 波特率"自定义输入" ----------
+
+    /// <summary>
+    /// 波特率下拉框最后一项是「自定义输入…」，它不是波特率，而是"切到手动输入"的开关。
+    /// 选中后把输入框清空、光标交还给用户，直接键入任意波特率即可。
+    /// 清空必须排到 Input 优先级再执行：ComboBox 会在本次选择处理中把选中项的文本
+    /// 同步进输入框，立刻清会被它覆盖回「自定义输入…」。
+    /// </summary>
+    private void OnBaudRateSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (BaudRateCombo.SelectedItem is not string item
+            || !string.Equals(item, MainViewModel.CustomBaudRateItem, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            BaudRateCombo.Text = string.Empty;
+
+            // 光标直接落到内层输入框，省得用户再点一下
+            if (BaudRateCombo.Template?.FindName("PART_EditableTextBox", BaudRateCombo) is TextBox box)
+            {
+                box.Focus();
+                box.CaretIndex = box.Text.Length;
+            }
+            else
+            {
+                BaudRateCombo.Focus();
+            }
+        });
+    }
+
     // ---------- 自绘标题栏 ----------
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;

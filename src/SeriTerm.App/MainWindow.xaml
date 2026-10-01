@@ -215,7 +215,12 @@
         <!-- ================= 主体：左侧设置 / 右侧日志+发送 ================= -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="306" MinWidth="248" />
+                <!-- 360 而不是 306：左栏改成"一行两个"后要放得下"None（无校验）""软件（XOn/XOff）"
+                     这类长值（实测 101.3 / 115.3 DIP，加内边距与箭头约 135 / 149）。
+                     MinWidth 也从 248 提到 330：再窄下去一行两个根本放不下，
+                     预设框会被压成 0 宽（实测过），不是"挤一点"而是坏了。
+                     330 这一档长值会退化成省略号、三个复选框那行会折行，都还算能看。 -->
+                <ColumnDefinition Width="360" MinWidth="330" />
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="*" MinWidth="360" />
             </Grid.ColumnDefinitions>
@@ -244,42 +249,17 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!--
+                                端口名单独占第一行（最上面）：先选口再谈参数。下面几行一律"一行两个"，
+                                左半列是固定宽度（单值控件，够用就行），右半列吃剩余宽度（值长的那几个）。
+                                这些宽度是拿真实字体量出来的，不是估的：13 号 Microsoft YaHei UI 下
+                                "校验位:"=43.3、"流控:"=30.0、"None（无校验）"=101.3、"软件（XOn/XOff）"=115.3，
+                                非可编辑下拉框的文字区约等于 宽度-26（7 左右内边距 + 右侧箭头 17）。
+                                左侧列宽同步从 306 调到 360，否则右半列放不下这两个长值。
+                            -->
                             <Grid Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="预设:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="PresetCombo" Grid.Column="1"
-                                          ItemsSource="{Binding Presets}"
-                                          SelectedItem="{Binding SelectedPreset}"
-                                          ToolTip="选择即套用该预设的连接与显示配置">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <!-- 未选中时占位提示：不然下拉框是空白的，看着像坏了 -->
-                                <TextBlock Grid.Column="1" Text="未选择预设" IsHitTestVisible="False"
-                                           Foreground="{DynamicResource DisabledForegroundBrush}"
-                                           Margin="9,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPreset}" Value="{x:Null}">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-
-                            <Grid Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="端口名:" Style="{StaticResource FieldLabel}" />
@@ -295,22 +275,58 @@
                                 </ComboBox>
                             </Grid>
 
+                            <!-- 波特率 | 预设 -->
                             <Grid Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="98" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="波特率:" Style="{StaticResource FieldLabel}" />
+                                <!-- 列表最后一项是"自定义输入…"：选中它由代码后置清空此框并把光标交给用户 -->
                                 <ComboBox x:Name="BaudRateCombo" Grid.Column="1" IsEditable="True"
                                           ItemsSource="{Binding BaudRateOptions}"
                                           Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}"
                                           IsEnabled="{Binding CanEditSettings}"
-                                          ToolTip="可直接输入任意波特率，例如 1000000" />
+                                          SelectionChanged="OnBaudRateSelectionChanged"
+                                          ToolTip="下拉选常用波特率；选「自定义输入…」后可填任意正整数，例如 1000000" />
+                                <TextBlock Grid.Column="3" Text="预设:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox x:Name="PresetCombo" Grid.Column="4"
+                                          ItemsSource="{Binding Presets}"
+                                          SelectedItem="{Binding SelectedPreset}"
+                                          ToolTip="选择即套用该预设的连接与显示配置">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <!-- 未选中时占位提示：不然下拉框是空白的，看着像坏了 -->
+                                <TextBlock Grid.Column="4" Text="未选择预设" IsHitTestVisible="False"
+                                           Foreground="{DynamicResource DisabledForegroundBrush}"
+                                           Margin="9,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedPreset}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                             </Grid>
 
+                            <!-- 数据位 | 校验位 -->
                             <Grid Margin="0,0,0,5">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="数据位:" Style="{StaticResource FieldLabel}" />
@@ -318,23 +334,27 @@
                                           ItemsSource="{Binding DataBitOptions}"
                                           SelectedItem="{Binding DataBits}"
                                           IsEnabled="{Binding CanEditSettings}" />
-                            </Grid>
-
-                            <Grid Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="校验位:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
+                                <TextBlock Grid.Column="3" Text="校验位:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Grid.Column="4"
                                           ItemsSource="{Binding ParityOptions}"
                                           SelectedItem="{Binding SelectedParity}"
-                                          IsEnabled="{Binding CanEditSettings}" />
+                                          IsEnabled="{Binding CanEditSettings}"
+                                          ToolTip="None 无校验；Odd 奇校验；Even 偶校验；Mark 标记；Space 空格">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
 
-                            <Grid Margin="0,0,0,5">
+                            <!-- 停止位 | 流控 -->
+                            <Grid Margin="0,0,0,7">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="停止位:" Style="{StaticResource FieldLabel}" />
@@ -342,18 +362,18 @@
                                           ItemsSource="{Binding StopBitsOptions}"
                                           SelectedItem="{Binding SelectedStopBits}"
                                           IsEnabled="{Binding CanEditSettings}" />
-                            </Grid>
-
-                            <Grid Margin="0,0,0,7">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="流控:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
+                                <TextBlock Grid.Column="3" Text="流控:" Style="{StaticResource FieldLabel}" />
+                                <ComboBox Grid.Column="4"
                                           ItemsSource="{Binding HandshakeOptions}"
                                           SelectedItem="{Binding SelectedHandshake}"
-                                          IsEnabled="{Binding CanEditSettings}" />
+                                          IsEnabled="{Binding CanEditSettings}"
+                                          ToolTip="软件（XOn/XOff）靠 XON/XOFF 字符控制；硬件（RTS/CTS）靠 RTS、CTS 信号线控制">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -365,11 +385,14 @@
                                           ToolTip="RTS 信号线状态；使用硬件流控时由驱动接管" />
                             </StackPanel>
 
-                            <CheckBox Content="自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,4"
-                                      ToolTip="链路中断后按 1/2/4/8/10 秒退避自动重连，设备插回来自动恢复" />
-                            <CheckBox Content="启动时自动打开串口" IsChecked="{Binding AutoOpenOnStartup}"
-                                      Margin="0,0,0,6"
-                                      ToolTip="下次启动时自动打开上次使用的串口" />
+                            <!-- 一行两个；面板被拖窄时 WrapPanel 自动折成两行，不会把文字挤出画面 -->
+                            <WrapPanel Margin="0,0,0,6">
+                                <CheckBox Content="自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,14,4"
+                                          ToolTip="链路中断后按 1/2/4/8/10 秒退避自动重连，设备插回来自动恢复" />
+                                <CheckBox Content="启动时自动打开串口" IsChecked="{Binding AutoOpenOnStartup}"
+                                          Margin="0,0,0,4"
+                                          ToolTip="下次启动时自动打开上次使用的串口" />
+                            </WrapPanel>
 
                             <TextBlock Text="{Binding ReconnectStatusText}" Style="{StaticResource HintText}"
                                        Margin="0,0,0,6"
@@ -387,13 +410,18 @@
                         <StackPanel>
                             <TextBlock Text="接收设置" Style="{StaticResource SectionHeader}" />
 
-                            <CheckBox x:Name="HexDisplayCheck" Content="十六进制显示"
-                                      IsChecked="{Binding HexDisplay}" Margin="0,0,0,6"
-                                      ToolTip="按字节显示接收内容。文本模式下回车换行会显示成空格，避免一行被拆成多行；原始字节始终保留，随时切回十六进制可查。" />
+                            <!-- 显示时间戳 | 十六进制显示：一行两个 -->
+                            <WrapPanel Margin="0,0,0,6">
+                                <CheckBox Content="显示时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,14,4"
+                                          ToolTip="每行前面显示接收时刻" />
+                                <CheckBox x:Name="HexDisplayCheck" Content="十六进制显示"
+                                          IsChecked="{Binding HexDisplay}" Margin="0,0,0,4"
+                                          ToolTip="按字节显示接收内容。文本模式下回车换行会显示成空格，避免一行被拆成多行；原始字节始终保留，随时切回十六进制可查。" />
+                            </WrapPanel>
 
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="编码:" Style="{StaticResource FieldLabel}" />
@@ -405,7 +433,7 @@
 
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="断帧:" Style="{StaticResource FieldLabel}" />
@@ -415,11 +443,15 @@
                                           ToolTip="空闲间隔断帧按时间切分；分隔符断帧按 CRLF 等字符切分，报文间隔再长也准确" />
                             </Grid>
 
+                            <!-- 间隔 | 分隔符：一行两个 -->
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="74" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="间隔:" Style="{StaticResource FieldLabel}" />
                                 <TextBox Grid.Column="1"
@@ -428,22 +460,12 @@
                                          ToolTip="空闲超过该毫秒数即认为一帧结束" />
                                 <TextBlock Grid.Column="2" Text="ms" Style="{StaticResource FieldLabel}"
                                            Margin="4,0,0,0" />
-                            </Grid>
-
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="分隔符:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1"
+                                <TextBlock Grid.Column="4" Text="分隔符:" Style="{StaticResource FieldLabel}" />
+                                <TextBox Grid.Column="5"
                                          Text="{Binding DelimiterText}"
                                          IsEnabled="{Binding IsDelimiterFraming}"
                                          ToolTip="支持 \r \n \t \xNN 转义，或 hex:0D 0A；也可直接写普通文本如 OK" />
                             </Grid>
-
-                            <CheckBox Content="显示时间戳" IsChecked="{Binding ShowTimestamp}"
-                                      ToolTip="每行前面显示接收时刻" />
                         </StackPanel>
                     </Border>
 
@@ -465,25 +487,22 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- 这两个开关用复选框而不是工具条上的胶囊按钮：
-                                 侧栏里所有布尔选项都是复选框，样式才统一。 -->
-                            <CheckBox Content="自动换行" IsChecked="{Binding LineWrap}" Margin="0,0,0,4"
-                                      ToolTip="日志内容自动换行" />
-                            <CheckBox x:Name="AutoScrollToggle" Content="自动滚动"
-                                      IsChecked="{Binding AutoScroll}" Margin="0,0,0,6"
-                                      ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
-
-                            <Grid Margin="0,0,0,7">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="62" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="字号:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="FontSizeCombo" Grid.Column="1"
-                                          ItemsSource="{Binding FontSizeOptions}"
-                                          SelectedItem="{Binding LogFontSize}"
-                                          ToolTip="日志区字号（只影响显示，不影响落盘内容）" />
-                            </Grid>
+                            <!-- 自动滚动 | 自动换行 | 字号：一行三个。
+                                 布尔选项一律用复选框（侧栏里样式统一），面板拖窄时整组折行。 -->
+                            <WrapPanel Margin="0,0,0,6">
+                                <CheckBox x:Name="AutoScrollToggle" Content="自动滚动"
+                                          IsChecked="{Binding AutoScroll}" Margin="0,0,14,4"
+                                          ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
+                                <CheckBox Content="自动换行" IsChecked="{Binding LineWrap}" Margin="0,0,14,4"
+                                          ToolTip="日志内容自动换行" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="字号:" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox x:Name="FontSizeCombo" Width="60"
+                                              ItemsSource="{Binding FontSizeOptions}"
+                                              SelectedItem="{Binding LogFontSize}"
+                                              ToolTip="日志区字号（只影响显示，不影响落盘内容）" />
+                                </StackPanel>
+                            </WrapPanel>
 
                             <!-- 保存 / 清空作用在"当前显示的内容"上，跟着日志设置一起留在左栏；
                                  右栏因此不再需要日志工具条那一行，日志区多回一行高度 -->

@@ -107,7 +107,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
         Ports = [];
-        BaudRateOptions = SerialSettings.CommonBaudRates;
+        BaudRateOptions =
+        [
+            .. SerialSettings.CommonBaudRates.Select(r => r.ToString(CultureInfo.InvariantCulture)),
+            CustomBaudRateItem,
+        ];
         DataBitOptions = SerialSettings.CommonDataBits;
         ParityOptions = [.. SerialSettings.ParityOptions.Select(o => new Choice<Parity>(o.Value, o.Display))];
         StopBitsOptions = [.. SerialSettings.StopBitsOptions.Select(o => new Choice<StopBits>(o.Value, o.Display))];
@@ -178,7 +182,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<PortItem> Ports { get; }
 
-    public IReadOnlyList<int> BaudRateOptions { get; }
+    /// <summary>
+    /// 波特率下拉框的最后一项。它不是波特率，而是"切到手动输入"的开关：
+    /// 选中后由视图清空输入框并把光标交还给用户（见 MainWindow.OnBaudRateSelectionChanged）。
+    /// 列表里放字符串而不是 int，正是为了能混进这一项。
+    /// </summary>
+    public const string CustomBaudRateItem = "自定义输入…";
+
+    public IReadOnlyList<string> BaudRateOptions { get; }
 
     public IReadOnlyList<int> DataBitOptions { get; }
 
