@@ -4,6 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/newMalloc/SeriTerm?label=release)](https://github.com/newMalloc/SeriTerm/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[English](README.en.md) | **简体中文**
+
 Windows 串口调试助手（C# / WPF / .NET 8）。面向嵌入式、单片机和硬件调试里"看数据、发命令、抓日志"这三件日常事，
 复刻 [lingguang「串口调试助手」](https://lgblog.github.io/Help/zh-Hans/) 的核心串口能力，并在长时间抓取、大数据量显示、
 故障提示这几处做了更稳的实现。
