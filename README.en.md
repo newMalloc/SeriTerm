@@ -91,7 +91,8 @@ matched characters are highlighted individually:
 - Dark / light themes, switchable at runtime;
 - Custom-drawn title bar (follows the theme) and window background blur (can be turned off);
 - An **About** button at the right end of the title bar (or press <kbd>F1</kbd>): version, commit, runtime, license and
-  links to the GitHub repository / releases / docs, plus one-click copy of the version block for bug reports.
+  links to the GitHub repository / releases; the dialog is a solid-colour window, unaffected by the main window's
+  translucent "blurred background" surfaces.
 
 ## Requirements
 

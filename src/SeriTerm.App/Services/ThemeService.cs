@@ -89,9 +89,16 @@ public sealed class ThemeService : IThemeService
         }
 
         var dictionaries = app.Resources.MergedDictionaries;
+
+        // 用绝对 pack URI 而不是相对路径：相对 URI 相对的是"入口程序集"，
+        // 只有入口就是本程序时才解析得到（探针/单元测试宿主不是，会直接抛
+        // "找不到资源 themes/dark.xaml"）。写成绝对形式后，谁当入口都能拿到同一份资源。
+        var assemblyName = typeof(ThemeService).Assembly.GetName().Name;
         var replacement = new ResourceDictionary
         {
-            Source = new Uri($"Themes/{fileName}", UriKind.Relative),
+            Source = new Uri(
+                $"pack://application:,,,/{assemblyName};component/Themes/{fileName}",
+                UriKind.Absolute),
         };
 
         for (var i = 0; i < dictionaries.Count; i++)

@@ -315,7 +315,7 @@ public partial class MainWindow : Window
     /// <summary>「关于」窗口。每次点都新建：它只是一次性的小对话框，没必要缓存。</summary>
     private void OnAboutClick(object sender, RoutedEventArgs e) => ShowAbout();
 
-    private void ShowAbout() => new AboutWindow { Owner = this }.ShowDialog();
+    private void ShowAbout() => new AboutWindow(_themeService) { Owner = this }.ShowDialog();
 
     // ---------- 背景模糊 ----------
 

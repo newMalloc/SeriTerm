@@ -1239,25 +1239,58 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
 文字用「关于」而不是图标——旁边两个外观开关都是图标，再加一个 ⓘ 会被当成第三个显示开关。
 补了 <kbd>F1</kbd>：`MainWindow.OnPreviewKeyDown` 的 switch 里加一条，终端模式不受影响（F1 不在终端按键表里）。
 
-**对话框**（`AboutWindow.xaml` + `.cs`，470×360）
+**对话框**（`AboutWindow.xaml` + `.cs`，470×317）
 
 - 自绘标题栏，和主窗口一样是 `WindowStyle=None` + `WindowChrome`：Windows 10 的系统标题栏不跟随深浅主题，
   挂一条白条就露馅。模态（`ShowDialog`）、`Owner` 为主窗口、`ShowInTaskbar=False`。
 - 信息全部来自新的 `Services/AppInfo.cs`，**界面里没有写死的版本号**：版本读程序集上的
   `AssemblyInformationalVersionAttribute`（也就是 `Directory.Build.props` 里的 `<Version>`），
   再把 MSBuild 拼在 `+` 后面的提交号拆出来单独显示成短号（7 位，等宽字体），鼠标悬停给出完整号。
-  提 issue 要贴的那段文本由 `AppInfo.BuildCopyText()` 生成，带完整提交号、运行时与仓库地址。
 - **图标帧要自己挑**：WPF 解 ICO 给的默认帧是**第 0 帧**，而 ICO 里的帧按尺寸升序排列，第 0 帧是 16×16，
   直接 `Width=64 Height=64` 就是拿 16px 放大——糊。`UpdateIconFrame()` 按"当前 DPI 下真要多少物理像素"
   从 `BitmapFrame.Decoder.Frames` 里选最接近的一帧，打平时取大的（缩小比放大清晰）；`Loaded` 与
   `OnDpiChanged` 各调一次。150% 缩放下 64 DIP = 96 px，64 与 128 打平 → 选 128。
   之所以不另做一张 PNG 资源：ICO 本就在资源包里，挑帧零体积成本（另塞 256px PNG 会让发布体积再涨几十上百 KB）。
-- GitHub 链接用普通按钮而不是 `Hyperlink`：Hyperlink 的默认配色走系统色，深色主题下是难以阅读的深蓝，
-  点击热区只有文字本身，也不进 Tab 顺序。四个入口分别是仓库 / 发布版 / 使用说明 / 开发文档，
-  网址只在 `AppInfo` 里各写一份（按钮的 `ToolTip` 也从它取）。打开失败时把网址显示在对话框里，方便手动复制。
+- GitHub 入口用普通按钮而不是 `Hyperlink`：Hyperlink 的默认配色走系统色，深色主题下是难以阅读的深蓝，
+  点击热区只有文字本身，也不进 Tab 顺序。网址只在 `AppInfo` 里各写一份（按钮的 `ToolTip` 也从它取），
+  打开失败时把网址显示在对话框里，方便手动复制。
+- **窗口里没有「关闭」按钮**（使用者反馈"多余、位置也怪"）：标题栏右上角本来就有一个 ✕，
+  再在右下角吊一颗「关闭」既重复又孤立。去掉之后 Esc 由 `AboutWindow.OnKeyDown` 自己接
+  （原来靠那颗按钮的 `IsCancel`）。同一轮里还去掉了「复制版本信息」「使用说明」「开发文档」三颗按钮：
+  只留 GitHub 仓库 / 发布版下载；剪贴板那段文本生成（`AppInfo.BuildCopyText`）随之删除，
+  剪贴板重试工具仍留在 `Common/ClipboardText.cs` 供 `LogView` 用。
 
-**顺带的小重构**：剪贴板写入的"重试三次再认输"原本是 `LogView` 的私有方法，这次 `AboutWindow` 也要用，
-提到 `Common/ClipboardText.cs`（`ClipboardText.TrySet`），`LogView` 的三处调用点改成调它，行为不变。
+**⚠️ 交付后发现的问题：开着"模糊背景"时这个对话框是灰蒙蒙半透明的**
+
+使用者的截图里正文底是 `#A1A1A1`、标题栏 `#DDDDDD`，而主题里写的是 `#F4F4F4` / `#F0F0F0`。
+根因：`SurfaceTranslucency` 在主窗口模糊背景生效时，会把 `WindowBackgroundBrush`（alpha `0xA8`）、
+`TitleBarBackgroundBrush`（`0xC0`）等换成同色半透明版，好让 DWM 后面的模糊壁纸透出来。
+主窗口自己画了壁纸层，所以没问题；**「关于」窗口是纯色窗口，66% 的浅灰叠在黑色窗口底上**：
+
+```
+正文  244×168/255 = 160.8  → 使用者截图量到的 161
+标题栏 240×192/255 + 160.8×(1-192/255) = 220.4 → 使用者截图量到的 221
+```
+
+后果是次要文字（副标题、第三方依赖说明用的 `SubtleForegroundBrush #6B6B6B`）落在 `#A1A1A1` 上，
+对比度从设计值 **4.85:1 掉到 2.06:1**（WCAG AA 正文要求 4.5:1）。深色主题下窗口底变成 `(20,20,20)`
+比 `#1E1E1E` 更黑，浅色文字反而更清楚，所以问题集中在浅色主题。
+
+**为什么没在上线前发现**：探针为了截图可比对，强制 `BlurBackground=false`，恰好绕开了使用者的真实配置
+（`true`）——"为了让测量稳定而改掉的配置"正好就是出问题的那一项。修复后探针加了 `--blur`，
+并且会先断言"半透明覆盖字典确实生效"，再断言"「关于」窗口仍然不透明"，避免把"没复现出问题"当成"已经修好"。
+
+**修法**（`AboutWindow.SetOpaqueSurface`）：窗口与标题栏背景不再走 `Application.Resources`，
+而是直接从**当前主题字典**（`IThemeService.ActiveTheme`）取原始不透明画刷——`SurfaceTranslucency`
+的注释里本来就写着"取原始颜色必须从当前主题字典里取"，只是当时没想到别的窗口也会被覆盖字典命中。
+拿不到主题字典时退回动态资源。注意取到的是**画刷实例**，不能再 `SetResourceReference(key)`，
+否则又会走一遍资源查找、命中的还是那份覆盖字典。主题切换（`ThemeChanged`）时重设一次，窗口关闭时摘钩子。
+
+**顺带修掉的一处**：`ThemeService.SwapThemeDictionary` 原来用相对 URI（`Themes/dark.xaml`），
+它相对的是**入口程序集**，只有入口就是本程序时才解析得到（探针/测试宿主直接抛
+`找不到资源 themes/dark.xaml`）。改成 `pack://application:,,,/{程序集名};component/Themes/{x}.xaml`
+的绝对形式，谁当入口都能拿到同一份资源；探针因此可以直接调真正的 `ThemeService.Apply`，
+不再需要自己换字典。
 
 **⚠️ 三个自己踩的坑（都在探针里）**
 
@@ -1265,32 +1298,38 @@ ICO ：97,241 字节，7 帧（16/24/32/48/64/128/256），每帧都是 PNG 压�
    **排到 Input 优先级异步执行**，`ShowDialog` 的阻塞（嵌套消息循环）发生在 `invoke()` 返回之后，
    于是"对话框是在点击期间弹出的"这条证据根本没被记到。改成直接
    `RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent))` 后同步可测：点击到对话框关闭共约 1.4 s
-   （多次实测 1368~1411 ms，其中大部分是探针自己的等待）。
+   （多次实测 1323~1702 ms，其中大部分是探针自己的等待）。
 2. 截图时渲染的是 `window.Content`：窗口的 `Background` 画在**窗口自己的视觉**上，只渲染 Content 拿到的是
    透明底，深色主题截图看起来像"白底浅字"的低对比界面——差点当成配色 bug 去改 XAML。改成渲染窗口自身。
-3. 探针里直接调 `ThemeService.Apply` 抛 `IOException: 找不到资源 themes/dark.xaml`：该实现用的是相对 URI
-   （`Themes/dark.xaml`），相对的是**入口程序集**，而探针的入口是 aboutprobe。探针改成自己用 pack URI
-   换字典（与 `ThemeService.SwapThemeDictionary` 等价）。生产代码里入口就是本程序，不受影响。
+3. `ShowDialog` 返回不等于"检查做完了"：对话框关闭后，检查函数里那些 `await` 的续体还要跑几步
+   （Esc 那一项就在关闭之后）。探针原来不等它，`RunAsync` 尾巴上的 `Environment.Exit` 会先把进程收掉，
+   于是最后几项检查**静默消失、报告却显示通过**——单文件那一轮真的发生了（`ESCAPE[F1]` 整条不见）。
+   改成用 `TaskCompletionSource` 等检查收尾（10 s 超时算失败）。
 
 **实测**（探针 `aboutprobe`：真实 MainWindow + 真实 AboutWindow，150% 缩放，窗口 1507×926 DIP）
 
 ```
 标题栏一行（x 为窗口内坐标）：模糊背景 x=1234.7 | 切换到浅色 x=1270.7 | 关于 x=1314.7 | 最小化 x=1374 | 最大化 x=1418 | 关闭 x=1462
   → 「关于」宽 44、与主题按钮相邻且在其右侧，位于窗口按钮左侧
-对话框：470×360 DIP，Owner=主窗口，模态（点击到关闭约 1.4 s，期间完成检查且关闭后无残留）
+对话框：470×317 DIP，Owner=主窗口，模态（点击到关闭约 1.4 s，期间完成检查且关闭后无残留）
 文本：SeriTerm 串口调试助手 / Windows 串口调试助手（C# / WPF / .NET 8）
-      版本 1.0.0（与程序集信息版本一致） / 提交 0c26600（与信息版本里的短号一致）
+      版本 1.0.0（与程序集信息版本一致） / 提交 694c6b7（与信息版本里的短号一致）
       运行时 .NET 8.0.19（x64） / 许可 MIT License · Copyright © 2026 newMalloc
 图标：显示帧 128×128，当前需要 96 物理像素（若用默认帧则是 16×16）
-复制：SeriTerm 串口调试助手 / 版本 1.0.0 / 提交 0c266008028c8eac60af2a14a87e440f1d488312 /
-      运行时 .NET 8.0.19（x64） / MIT License · Copyright © 2026 newMalloc / https://github.com/newMalloc/SeriTerm
+按钮：只剩 GitHub 仓库 / 发布版下载；正文里没有「关闭」「复制版本信息」「使用说明」「开发文档」
+关闭：标题栏 ✕ 仍在（AutomationProperties.Name=关闭）；真键盘 Esc 关窗（两轮都验，窗口前台=True）
+表面（--blur，覆盖字典已生效 alpha=168）：浅色 #F4F4F4 alpha=255、深色 #1E1E1E alpha=255，都是不透明
+对比度：浅色正文 14.99:1、次要文字 4.85:1；深色正文 13.61:1、次要文字 6.00:1（修复前浅色次要文字只有 2.06:1）
 深浅两套主题各出一张截图；提交号那一行取自 SourceLink 注入的信息版本，没有 `+` 段时整行（含标签）收起
 ```
 
-**验证**：`dotnet build` 0 警告 0 错误；单测 **296/296**；
-自包含单文件发布 `artifacts\publish\SeriTerm.exe` 67,125,329 字节（64.0 MB，比上一版多 4 KB），
-其 `ProductVersion` = `1.0.0+0c266008028c8eac60af2a14a87e440f1d488312`，与对话框显示的一致。
-单文件场景单独验过一遍：把探针按同一套参数（自包含 + `PublishSingleFile` + 压缩）发布成 72,438,737 字节的单文件再跑，
-`RESULT|通过`，图标帧仍为 128、版本号与提交号一致——`BitmapFrame.Decoder` 在单文件包里同样可用，
+**验证**：`dotnet build` 0 警告 0 错误；单测逻辑部分 **290/290**——
+6 条回环集成测试这轮跑不了，因为使用者当时正开着发布版 exe（PID 11364）占着 COM5，
+同时锁住了 `artifacts\publish\SeriTerm.exe` 让重新发布失败；使用者选择"我自己测试就行"，
+所以本轮把新版发布到 `artifacts\publish-v2\SeriTerm.exe` 67,125,070 字节（64.0 MB），
+`ProductVersion` = `1.0.0+694c6b7128a2bb0db0a25cdcd75368d8a614d821`。
+单文件场景另外验过：把探针按同一套参数（自包含 + `PublishSingleFile` + 压缩）发布成 72,442,529 字节的单文件再跑，
+`RESULT|通过`，图标帧仍为 128、Esc 关窗、表面不透明——`BitmapFrame.Decoder` 在单文件包里同样可用，
 绿色版不会退化成"16px 放大"。探针全程只读使用者的 `settings.json`（探针的 `ProbeSettingsStore.Save` 直接拒绝写入），
 实测探针运行期间该文件 `LastWriteTime` 未变。
+

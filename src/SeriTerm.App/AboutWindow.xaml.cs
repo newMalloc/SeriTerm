@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using SeriTerm.App.Common;
 using SeriTerm.App.Services;
 
 namespace SeriTerm.App;
@@ -16,9 +17,15 @@ public partial class AboutWindow : Window
     /// <summary>图标显示尺寸（DIP）。</summary>
     private const double IconSize = 64;
 
-    public AboutWindow()
+    private readonly IThemeService _themeService;
+
+    public AboutWindow(IThemeService themeService)
     {
+        _themeService = themeService;
+
         InitializeComponent();
+
+        ApplyOpaqueSurface();
 
         VersionText.Text = AppInfo.Version;
         RuntimeText.Text = AppInfo.RuntimeDescription;
@@ -41,10 +48,12 @@ public partial class AboutWindow : Window
         // 网址只在 AppInfo 里写一份，这里的悬停提示与按钮动作都从它取
         RepositoryButton.ToolTip = AppInfo.RepositoryUrl;
         ReleasesButton.ToolTip = AppInfo.ReleasesUrl;
-        ReadmeButton.ToolTip = AppInfo.ReadmeUrl;
-        PlanButton.ToolTip = AppInfo.DevelopmentPlanUrl;
 
         Loaded += (_, _) => UpdateIconFrame();
+
+        // 窗口没活多久，但主题服务是单例，不摘钩子就会一直攥着一个死窗口
+        _themeService.ThemeChanged += OnThemeChanged;
+        Closed += (_, _) => _themeService.ThemeChanged -= OnThemeChanged;
     }
 
     /// <summary>窗口被拖到另一块不同 DPI 的屏幕上时，重新挑一次图标帧。</summary>
@@ -52,6 +61,55 @@ public partial class AboutWindow : Window
     {
         base.OnDpiChanged(oldDpi, newDpi);
         UpdateIconFrame();
+    }
+
+    /// <summary>
+    /// Esc 关窗。原来靠那颗「关闭」按钮的 IsCancel，按钮去掉之后必须自己接——
+    /// 否则这个窗口只剩标题栏的 ✕ 一条退路，键盘用户被关在里面。
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private void OnThemeChanged(object? sender, ThemeMode mode) => ApplyOpaqueSurface();
+
+    /// <summary>
+    /// 窗口表面用主题里的**原始不透明**画刷。
+    ///
+    /// 主窗口开着"模糊背景"时，<see cref="SurfaceTranslucency"/> 会往 Application.Resources 末尾
+    /// 合并一个覆盖字典，把 <c>WindowBackgroundBrush</c>（alpha 0xA8）等换成半透明版，好让主窗口
+    /// 后面那层模糊壁纸透出来。主窗口自己画了壁纸层，所以没问题；本窗口是纯色窗口，
+    /// 66% 的浅灰叠在黑色窗口底上会变成灰蒙蒙的 #A1A1A1（实测），副标题这类次要文字的
+    /// 对比度会从设计值 4.85:1 掉到 2.06:1。所以这里绕开 Application.Resources，
+    /// 直接从主题字典取原色——SurfaceTranslucency 的注释里也写着"取原始颜色必须从当前主题字典里取"。
+    ///
+    /// 注意取到的是**画刷实例**，不能再 SetResourceReference(key)：那样又会走一遍资源查找，
+    /// 命中的还是那份半透明覆盖字典。
+    /// </summary>
+    private void ApplyOpaqueSurface()
+    {
+        SetOpaqueSurface(this, Control.BackgroundProperty, "WindowBackgroundBrush");
+        SetOpaqueSurface(TitleBar, Border.BackgroundProperty, "TitleBarBackgroundBrush");
+    }
+
+    private void SetOpaqueSurface(FrameworkElement target, DependencyProperty property, string key)
+    {
+        if (_themeService.ActiveTheme?[key] is Brush opaque)
+        {
+            target.SetValue(property, opaque);
+            return;
+        }
+
+        // 拿不到主题字典时退回动态资源：至少还能跟随主题，代价是会跟着半透明
+        target.SetResourceReference(property, key);
     }
 
     /// <summary>
@@ -81,19 +139,9 @@ public partial class AboutWindow : Window
         AppIcon.Source = best;
     }
 
-    private void OnCopyVersionClick(object sender, RoutedEventArgs e)
-    {
-        var copied = ClipboardText.TrySet(AppInfo.BuildCopyText());
-        ShowStatus(copied ? "已复制" : "复制失败：剪贴板被其它程序占用", failed: !copied);
-    }
-
     private void OnOpenRepositoryClick(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.RepositoryUrl);
 
     private void OnOpenReleasesClick(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.ReleasesUrl);
-
-    private void OnOpenReadmeClick(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.ReadmeUrl);
-
-    private void OnOpenPlanClick(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.DevelopmentPlanUrl);
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 

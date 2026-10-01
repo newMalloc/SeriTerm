@@ -37,7 +37,9 @@
         <DockPanel>
 
             <!-- ===== 自绘标题栏 ===== -->
-            <Border DockPanel.Dock="Top" Height="34"
+            <!-- 背景在代码后置里赋"主题原始画刷"（见 AboutWindow.xaml.cs）：Application.Resources
+                 里的同名键在主窗口开模糊背景时是半透明版，本窗口没有壁纸层垫底。 -->
+            <Border x:Name="TitleBar" DockPanel.Dock="Top" Height="34"
                     Background="{DynamicResource TitleBarBackgroundBrush}">
                 <DockPanel LastChildFill="False">
                     <TextBlock DockPanel.Dock="Left" Text="关于" Margin="10,0,0,0"
@@ -105,7 +107,7 @@
 
                 <TextBlock x:Name="ThirdPartyText" Style="{StaticResource HintText}" Margin="0,12,0,0" />
 
-                <!-- ===== GitHub 链接 ===== -->
+                <!-- ===== GitHub 入口 ===== -->
                 <!-- 用按钮而不是 Hyperlink：Hyperlink 的默认配色来自系统色，
                      深色主题下是难以阅读的深蓝，而且点击热区只有文字本身；
                      按钮还能 Tab 到、回车触发。 -->
@@ -113,33 +115,13 @@
                     <Button x:Name="RepositoryButton" Content="GitHub 仓库"
                             Click="OnOpenRepositoryClick" Margin="0,0,6,4" />
                     <Button x:Name="ReleasesButton" Content="发布版下载"
-                            Click="OnOpenReleasesClick" Margin="0,0,6,4" />
-                    <Button x:Name="ReadmeButton" Content="使用说明"
-                            Click="OnOpenReadmeClick" Margin="0,0,6,4" />
-                    <Button x:Name="PlanButton" Content="开发文档"
-                            Click="OnOpenPlanClick" Margin="0,0,0,4" />
+                            Click="OnOpenReleasesClick" Margin="0,0,0,4" />
                 </WrapPanel>
 
-                <!-- ===== 底部操作 ===== -->
-                <!-- 用 Grid 而不是"按钮 + 横向 StackPanel"：横向 StackPanel 给子元素无限宽，
-                     状态文字（打开失败时会带上整个网址）不会换行，会把「关闭」挤出窗口。
-                     中间那列是星号列，文字在这里才会自动折行。 -->
-                <Grid Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Button Grid.Column="0" x:Name="CopyButton" Content="复制版本信息" Click="OnCopyVersionClick"
-                            VerticalAlignment="Center"
-                            ToolTip="把版本、提交、运行时与仓库地址复制到剪贴板（反馈问题时贴这一段）" />
-                    <TextBlock Grid.Column="1" x:Name="StatusHint" Style="{StaticResource HintText}"
-                               Margin="8,0,8,0" Visibility="Collapsed" />
-
-                    <Button Grid.Column="2" Content="关闭" MinWidth="76"
-                            Click="OnCloseClick" IsDefault="True" IsCancel="True" />
-                </Grid>
+                <!-- 打开链接失败时的提示；平时折叠，所以不占高度。
+                     用 TextBlock 直接铺在星号逻辑里（StackPanel 是全宽的），文字会自动折行。 -->
+                <TextBlock x:Name="StatusHint" Style="{StaticResource HintText}"
+                           Margin="0,8,0,0" Visibility="Collapsed" />
             </StackPanel>
         </DockPanel>
     </Border>

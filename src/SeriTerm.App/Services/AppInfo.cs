@@ -21,10 +21,6 @@ internal static class AppInfo
 
     public const string ReleasesUrl = Repository + "/releases";
 
-    public const string ReadmeUrl = Repository + "/blob/main/README.md";
-
-    public const string DevelopmentPlanUrl = Repository + "/blob/main/docs/development-plan.md";
-
     /// <summary>许可协议；与仓库根目录的 LICENSE 一致。</summary>
     public const string LicenseName = "MIT License";
 
@@ -53,29 +49,6 @@ internal static class AppInfo
     /// <summary>例如 <c>.NET 8.0.22（x64）</c>。绿色版里能直接看出跑的是哪套运行时。</summary>
     public static string RuntimeDescription { get; } =
         $"{RuntimeInformation.FrameworkDescription}（{RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}）";
-
-    /// <summary>
-    /// 「复制版本信息」写进剪贴板的内容。提 issue 时贴这一段就够了，
-    /// 所以带上完整提交号与仓库地址，而不只是版本号。
-    /// </summary>
-    public static string BuildCopyText()
-    {
-        var lines = new List<string>
-        {
-            "SeriTerm 串口调试助手",
-            $"版本 {Version}",
-        };
-
-        if (CommitHash is not null)
-        {
-            lines.Add($"提交 {CommitHash}");
-        }
-
-        lines.Add($"运行时 {RuntimeDescription}");
-        lines.Add($"{LicenseName} · {CopyrightHolder}");
-        lines.Add(RepositoryUrl);
-        return string.Join(Environment.NewLine, lines);
-    }
 
     private static string ResolveVersion()
     {
