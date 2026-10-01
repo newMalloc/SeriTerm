@@ -157,6 +157,41 @@ try {
         Write-Output "SELECTED|$($pattern.Current.GetSelection().Count)"
         Save-Shot -Handle $handle -Name '02-selection'
     }
+
+    # --- 关掉搜索条：命中高亮（行底色 + 字符方块）必须一起消失 ---
+    $closeButton = Find-Name -Root $root -Name '✕' -ControlType $CT::Button
+    if ($null -eq $closeButton) { throw '找不到搜索条的关闭按钮' }
+    Invoke-El $closeButton '关闭搜索'
+    Start-Sleep -Milliseconds 1200
+    Save-Shot -Handle $handle -Name '03-search-closed'
+
+    # 在日志区里找"连续的琥珀色横条"：只有查找高亮才可能形成几十像素长的横条，
+    # 橙色文本（Tx 行）的抗锯齿边缘只会留下一两个像素的碎点，所以按"最长连续长度"判定。
+    # 坐标系：UIA 矩形是屏幕坐标，截图以窗口左上角为原点，要先减去窗口原点。
+    $winRect = New-Object SearchProbe+RECT
+    [void][SearchProbe]::GetWindowRect($handle, [ref]$winRect)
+    $listRect = $list.Current.BoundingRectangle
+    $shot = [System.Drawing.Bitmap]::FromFile((Join-Path $OutDir '03-search-closed.png'))
+    $bandRows = 0
+    for ($py = [int]($listRect.Top - $winRect.Top); $py -lt [int]($listRect.Bottom - $winRect.Top); $py += 2) {
+        if ($py -lt 0 -or $py -ge $shot.Height) { continue }
+        $run = 0
+        $best = 0
+        for ($px = [int]($listRect.Left - $winRect.Left); $px -lt [int]($listRect.Right - $winRect.Left); $px += 1) {
+            if ($px -lt 0 -or $px -ge $shot.Width) { continue }
+            $c = $shot.GetPixel($px, $py)
+            $pale = [math]::Abs($c.R - 255) + [math]::Abs($c.G - 228) + [math]::Abs($c.B - 154)
+            $strong = [math]::Abs($c.R - 255) + [math]::Abs($c.G - 190) + [math]::Abs($c.B - 61)
+            if ($pale -lt 60 -or $strong -lt 60) {
+                $run++
+                if ($run -gt $best) { $best = $run }
+            }
+            else { $run = 0 }
+        }
+        if ($best -ge 8) { $bandRows++ }
+    }
+    $shot.Dispose()
+    Write-Output "AFTER_CLOSE|仍有高亮横条的行数=$bandRows（期望 0）"
 }
 finally {
     if (-not $process.HasExited) {

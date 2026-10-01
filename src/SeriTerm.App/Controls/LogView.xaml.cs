@@ -478,6 +478,8 @@ public partial class LogView : UserControl
 
         var query = _viewModel?.SearchText;
 
+        // 没有关键字（没搜索，或刚把搜索条关掉）时也要走到这里：
+        // 上面那句 Clear 才是把上一次画的方块擦掉的地方，提前 return 会把高亮留在屏幕上
         if (box.DataContext is not DisplayLine line || string.IsNullOrEmpty(query) || string.IsNullOrEmpty(box.Text))
         {
             return;
@@ -555,14 +557,14 @@ public partial class LogView : UserControl
         return rects;
     }
 
-    /// <summary>搜索条件或字号/换行方式变了：把所有已经生成出来的行重画一遍。</summary>
+    /// <summary>
+    /// 搜索条件或字号/换行方式变了：把所有已经生成出来的行重画一遍。
+    ///
+    /// 注意这里**不能**因为"当前没有关键字"就跳过：关掉搜索条也是一个需要重画的事件，
+    /// 得让它把上一次画的方块擦掉（曾经因为提前 return，关掉搜索框后高亮一直留在屏幕上）。
+    /// </summary>
     private void RefreshMatchHighlights()
     {
-        if (string.IsNullOrEmpty(_viewModel?.SearchText))
-        {
-            return;
-        }
-
         foreach (var box in FindDescendants<TextBox>(LogList))
         {
             UpdateMatchHighlight(box);
