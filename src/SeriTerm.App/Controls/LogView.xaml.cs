@@ -36,6 +36,12 @@ public partial class LogView : UserControl
     /// <summary>按下左键时的位置，用来区分"点一下选中一行"和"拖动选择多行"。</summary>
     private Point _mouseDownPosition;
 
+    /// <summary>拖动连选的锚点行索引，-1 表示这次按下不参与拖动连选。</summary>
+    private int _dragAnchorIndex = -1;
+
+    /// <summary>拖动过程中已经扩选到的行索引。</summary>
+    private int _dragCurrentIndex = -1;
+
     public LogView()
     {
         InitializeComponent();
@@ -165,12 +171,22 @@ public partial class LogView : UserControl
     // ---------- 选中与复制 ----------
 
     /// <summary>
-    /// 拖动选择时停止跟随最新数据：否则新行一到就把视野拉到底，刚选中的行立刻被冲走。
-    /// 只认"按下之后真的移动过"（超过 <see cref="DragThreshold"/>），
-    /// 单纯点一下选中一行不会顺手把自动滚动关掉。
+    /// 按下左键：记住起点，并记下"拖动连选"的锚点行。
+    ///
+    /// WPF 的 ListBox **不会**因为按住拖动就自动连选（实测：从第 1 行拖到第 6 行，选中数仍是 1），
+    /// 所以拖动连选要自己实现，见 <see cref="OnLogListMouseMove"/>。
+    /// 按住 Ctrl/Shift 时把活交回 WPF 自己的加减选逻辑，不抢。
     /// </summary>
     private void OnLogListPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        => _mouseDownPosition = e.GetPosition(LogList);
+    {
+        _mouseDownPosition = e.GetPosition(LogList);
+        _dragCurrentIndex = -1;
+
+        var withModifier = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+        _dragAnchorIndex = withModifier || e.OriginalSource is not DependencyObject source
+            ? -1
+            : IndexOfItemAt(source);
+    }
 
     /// <summary>
     /// 右键点在没被选中的行上时，先选中这一行——否则"复制"复制的还是上一次选中的内容。
@@ -193,25 +209,85 @@ public partial class LogView : UserControl
         item.Focus();
     }
 
+    /// <summary>
+    /// 拖动连选 + 顺手停掉自动滚动。
+    ///
+    /// 拖动时鼠标常常已经移到列表外面（上方/下方），此时拿不到行容器，
+    /// 就按"上/下各走一行"继续扩选并把它滚进视野，这样拖到边缘也能一路选下去。
+    /// </summary>
     private void OnLogListMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || _viewModel is null || !_viewModel.AutoScroll)
+        if (e.LeftButton != MouseButtonState.Pressed)
         {
             return;
         }
 
-        var current = e.GetPosition(LogList);
-        if (Math.Abs(current.X - _mouseDownPosition.X) < DragThreshold
-            && Math.Abs(current.Y - _mouseDownPosition.Y) < DragThreshold)
+        var position = e.GetPosition(LogList);
+        var moved = Math.Abs(position.X - _mouseDownPosition.X) >= DragThreshold
+                    || Math.Abs(position.Y - _mouseDownPosition.Y) >= DragThreshold;
+
+        if (!moved)
         {
             return;
         }
 
-        if (LogList.SelectedItems.Count > 0)
+        if (_dragAnchorIndex >= 0)
+        {
+            ExtendSelectionTo(position);
+        }
+
+        // 拖动选择时停止跟随最新数据：否则新行一到就把视野拉到底，刚选中的行立刻被冲走。
+        // （单纯点一下选中一行不会走到这里，所以不会顺手把自动滚动关掉。）
+        if (_viewModel is { AutoScroll: true } && LogList.SelectedItems.Count > 0)
         {
             _viewModel.PauseAutoScroll();
         }
     }
+
+    private void ExtendSelectionTo(Point position)
+    {
+        var index = IndexOfItemAt(Mouse.DirectlyOver as DependencyObject);
+
+        if (index < 0)
+        {
+            // 拖到列表外面：按方向继续走一行，并把它滚进视野
+            var step = position.Y < 0 ? -1 : position.Y > LogList.ActualHeight ? 1 : 0;
+
+            if (step == 0 || LogList.Items.Count == 0)
+            {
+                return;
+            }
+
+            var last = _dragCurrentIndex >= 0 ? _dragCurrentIndex : _dragAnchorIndex;
+            index = Math.Clamp(last + step, 0, LogList.Items.Count - 1);
+            LogList.ScrollIntoView(LogList.Items[index]);
+        }
+
+        if (index == _dragCurrentIndex)
+        {
+            return;
+        }
+
+        _dragCurrentIndex = index;
+        SelectRange(_dragAnchorIndex, index);
+    }
+
+    private void SelectRange(int anchor, int current)
+    {
+        var from = Math.Max(0, Math.Min(anchor, current));
+        var to = Math.Min(LogList.Items.Count - 1, Math.Max(anchor, current));
+
+        LogList.SelectedItems.Clear();
+        for (var i = from; i <= to; i++)
+        {
+            LogList.SelectedItems.Add(LogList.Items[i]);
+        }
+    }
+
+    private int IndexOfItemAt(DependencyObject? source)
+        => source is not null && ItemsControl.ContainerFromElement(LogList, source) is ListBoxItem container
+            ? LogList.ItemContainerGenerator.IndexFromContainer(container)
+            : -1;
 
     private void OnCopyCanExecute(object sender, CanExecuteRoutedEventArgs e)
         => e.CanExecute = LogList.SelectedItems.Count > 0;
