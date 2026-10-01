@@ -156,7 +156,7 @@ src/
     Pipeline/                    # Receive processor, display lines, receive options
     Documents/                   # Log document (storage / eviction / search) and batched-notification collection
   SeriTerm.App/                  # WPF presentation layer
-    Assets/                      # Application icon
+    Assets/                      # Application icon (design source PNG + the ICO generated from it)
     Services/                    # Theming, settings store, user prompts, device friendly names, file dialogs, IME
     ViewModels/                  # MainViewModel and friends
     Controls/                    # LogView: virtualized log + auto-scroll + search overlay
@@ -241,7 +241,7 @@ control names are read as ANSI and turn into mojibake).
 | Script | Purpose |
 |---|---|
 | `publish.ps1` | Produce the single-file portable build |
-| `make-icon.ps1` | Generate the application icon (with PNG preview, reproducible) |
+| `make-icon.ps1` | Build the multi-size ICO from `Assets/seriterm.png`: auto-crops to the device body, scales in premultiplied alpha, and emits a light/dark preview sheet (reproducible) |
 | `capture-window.ps1` | Launch the app and take a screenshot (with DPI awareness handling) |
 | `ui-review-capture.ps1` | Batch screenshots: light / dark theme × default / taller window, can feed loopback data (for UI review) |
 | `probe-layout.ps1` | Print the real rectangles of key controls to judge numerically what got pushed out of view |

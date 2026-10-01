@@ -144,9 +144,30 @@ Passed!  - Failed: 0, Passed: 280, Skipped: 6, Total: 286, Duration: 3 s - SeriT
   实测加进第二条收藏之后，**第一条在 UIA 树的 Button 节点就没了名字**（只剩一个空的 DataItem），
   脚本和读屏软件都找不到它。改成增量同步（增 / 删 / 移动，见开发规格 11.29）后两条都在树里。
 
+## 应用图标（M11 起用，M14 换成设计稿）
+
+图标换成 Photoshop 导出的设计稿（`src/SeriTerm.App/Assets/seriterm.png`，1571×1571，带 alpha 通道，
+SHA256 `536922B7…`），由 `tools/make-icon.ps1 -CropMode Subject` 生成 `seriterm.ico`（97,241 字节，7 帧）。
+实测：
+
+- **取景判定的稳健性**：整幅内容包围盒 `{30,462,1527×617}`；按"每列/每行不透明像素数 ≥0.2 倍图高"选出的主体
+  包围盒 `{386,463,911×616}`。门槛从 0.13 到 0.20 倍图高，结果逐像素一致——波形与箭头整列最多十几像素，
+  外壳每列 380+ 像素，两者相差一个量级，判定不吃门槛。
+- **边缘没有毛边**：256px 帧里 715 个半透明边缘像素平均 RGB `(27,41,74)`（描边深蓝），
+  近白像素 0.00%、近黑像素 0.00%——既没有透明区域的白色 RGB 渗出来，也没有预乘没还原的发黑。
+  16px 帧内容 bbox `(0,3)-(14,12)`，不透明占比 56.2%。
+- **两条图标通道都验过**（Win32 资源 vs WPF pack URI 资源是两条路）：
+  `bin\Release\net8.0-windows\SeriTerm.exe`、`artifacts\publish\SeriTerm.exe`、`artifacts\publish-fd\SeriTerm.exe`
+  抽出的 32px 图标与新 ICO 的 32px 帧**最大像素差均为 0**；换图标前的发布产物则是与旧 ICO 差 0。
+  WPF 侧用 `iconcheck` 探针加载 `pack://application:,,,/SeriTerm;component/Assets/seriterm.ico`：
+  解码器报 7 帧，按 `MainWindow.xaml` 的 `Image Width=16 Height=16` 渲染出的 16×16 有
+  136 不透明 / 8 半透明 / 112 全透明像素，与直接渲染 16px 帧差 0（与 32px、256px 帧差 240）。
+- 图标随 exe 走：已缓存的资源管理器图标与正在运行的旧实例不会自己更新，需重启程序 / 刷新图标缓存。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。
 - 查找浮层遮挡范围：浮层右边界距日志区右边 48 px、顶边界距上边 24 px；无收藏、未搜索时整块折叠。
 - 收藏多于 6 条时列表在 176 px 内自行滚动，浮层不会一直往下长。
-- 发布产物 `artifacts/publish/SeriTerm.exe` 单文件 63.7 MB（自包含 + 压缩，`PublishTrimmed` 必须关闭：WPF 不支持裁剪）。
+- 发布产物 `artifacts/publish/SeriTerm.exe` 单文件 64.0 MB（67,121,218 字节；自包含 + 压缩，`PublishTrimmed` 必须关闭：WPF 不支持裁剪）。
+  换成设计稿图标后比上一版大 256 KB（图标本身从 10 KB 变成 97 KB，且它同时进 Win32 图标资源与 WPF 资源包）。

@@ -135,7 +135,7 @@ src/
     Pipeline/                    # 接收处理器、显示行、接收选项
     Documents/                   # 日志文档（存储 / 淘汰 / 搜索）与批量通知集合
   SeriTerm.App/                  # WPF 表现层
-    Assets/                      # 应用图标
+    Assets/                      # 应用图标（设计稿 PNG + 由它生成的 ICO）
     Services/                    # 主题、配置存储、用户提示、设备友好名、文件对话框、输入法控制
     ViewModels/                  # MainViewModel 等
     Controls/                    # LogView：虚拟化日志 + 自动滚动 + 查找浮层
@@ -208,7 +208,7 @@ pwsh -File tools/publish.ps1 -FrameworkDependent
 | 脚本 | 用途 |
 |---|---|
 | `publish.ps1` | 发布单文件绿色版 |
-| `make-icon.ps1` | 生成应用图标（含 PNG 预览，可复现） |
+| `make-icon.ps1` | 由 `Assets/seriterm.png` 生成多尺寸 ICO：自动裁到设备主体、按预乘 alpha 缩放，并出一张各尺寸浅/深底预览图（可复现） |
 | `capture-window.ps1` | 启动应用并截图（含 DPI 感知处理） |
 | `ui-review-capture.ps1` | 批量截图：浅 / 深主题 × 默认 / 加高尺寸，可回环灌数据（界面评审用） |
 | `probe-layout.ps1` | 打印关键控件的真实矩形，用数字判断谁被挤出可视区 |
