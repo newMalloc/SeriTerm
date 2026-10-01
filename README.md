@@ -1,13 +1,14 @@
 # SeriTerm
 
 [![CI](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/newMalloc/SeriTerm?label=release)](https://github.com/newMalloc/SeriTerm/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Windows 串口调试助手（C# / WPF / .NET 8）。面向嵌入式、单片机和硬件调试里"看数据、发命令、抓日志"这三件日常事，
 复刻 [lingguang「串口调试助手」](https://lgblog.github.io/Help/zh-Hans/) 的核心串口能力，并在长时间抓取、大数据量显示、
 故障提示这几处做了更稳的实现。
 
-- **单文件绿色版**：一次发布即一个 exe，目标机器不需要安装 .NET 运行时；
+- **下载即用**：到 [Releases](https://github.com/newMalloc/SeriTerm/releases) 拿单文件绿色版（win-x64，免安装 .NET 运行时）；
 - **逻辑与界面分离**：接收管线、断帧、编解码、日志落盘、重连策略都在无 WPF 依赖的 `SeriTerm.Core` 里，可完整单测；
 - **长时间接收不卡顿**：虚拟化日志视图 + 批量刷新，显示行上限 20 万，超出按段淘汰最旧。
 
@@ -176,6 +177,9 @@ pwsh -File tools/publish.ps1 -FrameworkDependent
 ```
 
 产物在 `artifacts/publish/`，单文件约 64 MB（自包含 + 压缩）。
+
+正式发布的版本由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 自动产出：推一个 `v*` 标签，
+工作流会执行上面的发布脚本、算出 SHA256，并把 exe 挂到同名 [Release](https://github.com/newMalloc/SeriTerm/releases) 上。
 
 > ⚠️ 不要开启 `PublishTrimmed`：WPF 不支持裁剪。
 > 压缩发布（`EnableCompressionInSingleFile`）会让首次启动慢一点点，换来体积减半。
