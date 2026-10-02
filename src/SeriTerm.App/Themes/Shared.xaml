@@ -563,8 +563,14 @@
     </Style>
 
     <!-- ============ 分隔条 ============ -->
+    <!--
+        分隔条不画任何东西：它原来是 4 DIP 宽的 PanelBorderBrush 实心竖条，
+        夹在左栏滚动条和日志卡片之间，看起来就是一道多余的线。
+        仍然要 Background="Transparent"（不能删掉这一句）：GridSplitter 靠背景做命中测试，
+        背景为 null 就既拖不动、也不会变成左右箭头光标。
+    -->
     <Style TargetType="GridSplitter">
-        <Setter Property="Background" Value="{DynamicResource PanelBorderBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Width" Value="4" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="VerticalAlignment" Value="Stretch" />
