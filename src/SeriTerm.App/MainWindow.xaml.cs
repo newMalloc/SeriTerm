@@ -312,6 +312,22 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
+    /// <summary>
+    /// 日志卡片的圆角裁剪。Border 只会把"自己的边框"画成圆角，子元素不跟着裁：
+    /// 日志行选中/命中的底色是整行方块，会在四角的圆弧外面露出四个小方角。
+    /// 卡片尺寸一变就换一块同样圆角的裁剪区，行底色就老老实实待在圆角里。
+    /// </summary>
+    private void OnLogCardSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is Border card && e.NewSize.Width > 0 && e.NewSize.Height > 0)
+        {
+            card.Clip = new RectangleGeometry(
+                new Rect(new Point(), e.NewSize),
+                card.CornerRadius.TopLeft,
+                card.CornerRadius.TopLeft);
+        }
+    }
+
     /// <summary>「关于」窗口。每次点都新建：它只是一次性的小对话框，没必要缓存。</summary>
     private void OnAboutClick(object sender, RoutedEventArgs e) => ShowAbout();
 

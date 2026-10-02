@@ -75,8 +75,11 @@
         单行单列：日志铺满整块区域，查找框与收藏栏叠在右上角。
         刻意不给搜索条留一行高度——查找是临时动作、收藏只是偶尔点一下，
         让日志长期为此让出一整条（约 40px）不划算，所以改成浮层。
+        底色不在这里：日志现在是宿主（MainWindow）里的一张圆角卡片，
+        底色画在卡片的 Border 上，这里的根 Grid 保持透明，方角才不会盖住卡片的圆角。
+        Transparent 而不是不写 Background：空白处的命中测试要靠它。
     -->
-    <Grid Background="{DynamicResource LogBackgroundBrush}">
+    <Grid Background="Transparent">
         <ListBox x:Name="LogList"
                  ItemsSource="{Binding Log.Lines}"
                  Background="Transparent"

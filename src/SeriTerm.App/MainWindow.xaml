@@ -573,19 +573,36 @@
             <!-- ===== 右：日志 + 发送。发送区固定在日志下方，永远不用滚动去找"发送" ===== -->
             <!-- 日志上方不再有工具条那一行：显示设置、保存/清空、查找收藏都在左栏，
                  右键菜单与 Ctrl+C 负责复制选中的行 -->
-            <Grid Grid.Column="2">
+            <!-- 右栏和左栏用同一套"留白 + 卡片"的排版：上下左右都让出和左栏一样的内边距
+                 （左栏是 ScrollViewer 的 Padding="10,10,8,10"，这里上 10 / 右 8，
+                 下边不留——发送卡片要贴着状态栏，和左栏最后一张卡片贴着窗口底一样）。
+                 以前日志是铺满整块右栏的，圆角、边框都没有，只有发送区孤零零一条贴在下面。 -->
+            <Grid Grid.Column="2" Margin="0,10,8,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <controls:LogView x:Name="LogViewControl" Grid.Row="0" />
+                <!-- 日志卡片：和左栏的 SectionPanel 同样的圆角 + 1px 边框，
+                     底色画在这张卡上（LogView 自己的根 Grid 已经改成透明），
+                     否则方角的 Grid 会把圆角盖住 -->
+                <Border x:Name="LogCard" Grid.Row="0"
+                        Background="{DynamicResource LogBackgroundBrush}"
+                        BorderBrush="{DynamicResource PanelBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="5"
+                        SizeChanged="OnLogCardSizeChanged">
+                    <controls:LogView x:Name="LogViewControl" />
+                </Border>
 
                 <!-- ===== 发送区 ===== -->
+                <!-- 发送区是另一张卡片：和日志之间留 8 DIP 的窗口底色缝隙，
+                     缝隙宽度和左栏两张 SectionPanel 之间的间距一致。
+                     之前它只是日志下面一条贴着底边的横条、只有一根 1px 分隔线，
+                     和日志糊成一整块；拉开之后"日志"和"发送"是两个层次分明的区域。 -->
                 <Border Grid.Row="1"
-                        Background="{DynamicResource PanelBackgroundBrush}"
-                        BorderBrush="{DynamicResource PanelBorderBrush}"
-                        BorderThickness="0,1,0,0"
+                        Style="{StaticResource SectionPanel}"
+                        Margin="0,8,0,0"
                         Padding="10,8">
                     <StackPanel>
                         <!-- 选项行用 WrapPanel：窗口窄的时候自动折行，不会把按钮挤出画面。
