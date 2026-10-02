@@ -132,11 +132,20 @@
                     </Button>
 
                     <!-- 「关于」夹在主题按钮与分隔线之间：分隔线的作用是把右边三个窗口按钮
-                         圈成一组，必须紧挨着它们；"这个程序自己是谁"的入口留在左边一组。 -->
+                         圈成一组，必须紧挨着它们；"这个程序自己是谁"的入口留在左边一组。
+                         图标而不是文字：和旁边的主题按钮一样是 14x14 的几何，ⓘ 是"关于/信息"
+                         的通用形状，标题栏这一排全是图标，混一个文字按钮会显得突兀。
+                         无障碍名称仍是"关于"，读屏和自动化跟以前一样能找到它。 -->
                     <Button Style="{StaticResource CaptionButton}" Click="OnAboutClick"
-                            FontSize="12.5" Content="关于"
                             AutomationProperties.Name="关于"
-                            ToolTip="关于 SeriTerm：版本号、提交、运行时与 GitHub 仓库（F1）" />
+                            ToolTip="关于 SeriTerm：版本号、提交、运行时与 GitHub 仓库（F1）">
+                        <Grid Width="14" Height="14">
+                            <Ellipse Width="13" Height="13" StrokeThickness="1.3" Fill="Transparent"
+                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
+                            <Path Data="{StaticResource IconInfoGlyph}"
+                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
+                        </Grid>
+                    </Button>
 
                     <Border Width="1" Height="16" Margin="6,0,8,0" VerticalAlignment="Center"
                             Background="{DynamicResource PanelBorderBrush}" />

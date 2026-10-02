@@ -105,6 +105,10 @@
     <!-- 模糊背景：半实心圆（右半边填色），左边描边圆圈在 XAML 里叠 -->
     <StreamGeometry x:Key="IconHalfDisc">M 7,1.5 A 5.5,5.5 0 0 1 7,12.5 Z</StreamGeometry>
 
+    <!-- 关于（ⓘ）：小圆点 + 竖条，外圈圆圈由 XAML 里的 Ellipse 描边叠出。
+         FillRule 默认 EvenOdd，但这两个图元互不相交，所以各自都会被填上。 -->
+    <StreamGeometry x:Key="IconInfoGlyph">M 7,3.05 A 0.95,0.95 0 1 0 7,4.95 A 0.95,0.95 0 1 0 7,3.05 Z M 6.15,6.3 H 7.85 V 10 H 6.15 Z</StreamGeometry>
+
     <!-- ============ 自绘标题栏按钮 ============ -->
     <!-- 注意 WindowChrome.IsHitTestVisibleInChrome：标题栏区域默认被当作"可拖动标题"，
          不加上这一条按钮就收不到点击。 -->
