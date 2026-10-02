@@ -18,13 +18,9 @@ Windows 串口调试助手（C# / WPF / .NET 8）。面向嵌入式、单片机�
 
 ## 界面
 
-| 浅色主题 | 深色主题 |
-|---|---|
-| ![浅色主题主界面](docs/images/main-light.png) | ![深色主题主界面](docs/images/main-dark.png) |
+![SeriTerm 主界面](docs/images/main.png)
 
-查找与收藏浮层——叠在日志右上角，不占日志行高，命中的字符被逐字高亮：
-
-![查找与收藏浮层](docs/images/search-favorites.png)
+（抓的是 COM5 回环：日志里的每一行都是真实收发，Tx 与 Rx 成对出现。）
 
 ## 功能特性
 

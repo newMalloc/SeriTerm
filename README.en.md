@@ -23,16 +23,11 @@ captures, large amounts of displayed data, and failure reporting.
 
 Docs: [development spec and milestones](docs/development-plan.md) · [verification log](docs/verification.md) (both in Chinese)
 
-## Screenshots
+## Screenshot
 
-| Light theme | Dark theme |
-|---|---|
-| ![Light theme main window](docs/images/main-light.png) | ![Dark theme main window](docs/images/main-dark.png) |
+![SeriTerm main window](docs/images/main.png)
 
-Search and favorites overlay — it floats over the top-right corner of the log instead of consuming a log row, and
-matched characters are highlighted individually:
-
-![Search and favorites overlay](docs/images/search-favorites.png)
+(Captured over a COM5 loopback: every line in the log is real traffic, so Tx and Rx come in pairs.)
 
 ## Features
 
