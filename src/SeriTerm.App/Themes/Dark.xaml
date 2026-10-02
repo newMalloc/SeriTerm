@@ -20,8 +20,9 @@
     <SolidColorBrush x:Key="RxForegroundBrush" Color="#E8E8E8" />
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#007ACC" />
 
-    <!-- 自绘标题栏（Windows 10 的系统标题栏不跟随主题，只能自己画） -->
-    <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#2B2B2B" />
+    <!-- 自绘标题栏（Windows 10 的系统标题栏不跟随主题，只能自己画）。
+         标题栏不再是一条单独的色带：底色直接用 WindowBackgroundBrush，和窗口四周连成一片，
+         所以这里没有 TitleBarBackgroundBrush 这个键了。 -->
     <SolidColorBrush x:Key="WindowBorderBrush" Color="#3C3C3C" />
     <SolidColorBrush x:Key="CaptionButtonHoverBrush" Color="#3A3A3D" />
     <SolidColorBrush x:Key="CaptionButtonPressedBrush" Color="#464649" />

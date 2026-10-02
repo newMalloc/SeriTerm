@@ -37,10 +37,11 @@
         <DockPanel>
 
             <!-- ===== 自绘标题栏 ===== -->
-            <!-- 背景在代码后置里赋"主题原始画刷"（见 AboutWindow.xaml.cs）：Application.Resources
+            <!-- 底色和窗口底色是同一支画刷，顶部不再是一条单独的色带。
+                 背景在代码后置里赋"主题原始画刷"（见 AboutWindow.xaml.cs）：Application.Resources
                  里的同名键在主窗口开模糊背景时是半透明版，本窗口没有壁纸层垫底。 -->
             <Border x:Name="TitleBar" DockPanel.Dock="Top" Height="34"
-                    Background="{DynamicResource TitleBarBackgroundBrush}">
+                    Background="{DynamicResource WindowBackgroundBrush}">
                 <DockPanel LastChildFill="False">
                     <TextBlock DockPanel.Dock="Left" Text="关于" Margin="10,0,0,0"
                                FontSize="12.5" VerticalAlignment="Center" />

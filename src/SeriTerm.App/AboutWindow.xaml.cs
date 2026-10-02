@@ -97,7 +97,10 @@ public partial class AboutWindow : Window
     private void ApplyOpaqueSurface()
     {
         SetOpaqueSurface(this, Control.BackgroundProperty, "WindowBackgroundBrush");
-        SetOpaqueSurface(TitleBar, Border.BackgroundProperty, "TitleBarBackgroundBrush");
+        // 标题栏和窗口底色是同一支画刷（顶部不单独占一条色带），但要单独赋一次：
+        // 上面那次只改了 Window 自己的 Background，标题栏那块 Border 的 DynamicResource
+        // 仍然会查到半透明覆盖字典。
+        SetOpaqueSurface(TitleBar, Border.BackgroundProperty, "WindowBackgroundBrush");
     }
 
     private void SetOpaqueSurface(FrameworkElement target, DependencyProperty property, string key)

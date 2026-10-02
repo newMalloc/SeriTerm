@@ -60,7 +60,7 @@
             两个死按钮（⚙/?)和一个与标题重复的 "SeriTerm" 字样，整行其实是多余的。
         -->
         <Border DockPanel.Dock="Top" Height="34"
-                Background="{DynamicResource TitleBarBackgroundBrush}">
+                Background="{DynamicResource WindowBackgroundBrush}">
             <!-- LastChildFill=False：否则最后那个"靠右"的按钮组会被当成填充元素，
                  结果窗口按钮跑到标题文字后面，而不是贴在右上角。 -->
             <DockPanel LastChildFill="False">

@@ -20,7 +20,6 @@ internal static class SurfaceTranslucency
     private static readonly (string Key, byte Alpha)[] Surfaces =
     [
         ("WindowBackgroundBrush", 0xA8),
-        ("TitleBarBackgroundBrush", 0xC0),
         ("PanelBackgroundBrush", 0xCC),
         ("LogBackgroundBrush", 0xA0),
     ];
