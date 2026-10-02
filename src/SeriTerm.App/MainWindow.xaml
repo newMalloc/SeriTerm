@@ -59,8 +59,13 @@
             原来的顶部工具栏里一半是重复项（自动滚动在侧栏还有一份）、
             两个死按钮（⚙/?)和一个与标题重复的 "SeriTerm" 字样，整行其实是多余的。
         -->
-        <Border DockPanel.Dock="Top" Height="34"
-                Background="{DynamicResource WindowBackgroundBrush}">
+        <!--
+            标题栏自己**不画底色**：画了就会在"模糊背景"打开时多叠一层半透明的窗口底色，
+            顶部于是比四周的留白深一截，又变成一条看得见的色带。
+            不画底色时：不透明模式透出窗口自己的 WindowBackgroundBrush（和四周同色），
+            模糊模式直接透出壁纸 + 蒙版（和卡片之间的留白同色），两种模式顶部都是一片底色。
+        -->
+        <Border DockPanel.Dock="Top" Height="34" Background="Transparent">
             <!-- LastChildFill=False：否则最后那个"靠右"的按钮组会被当成填充元素，
                  结果窗口按钮跑到标题文字后面，而不是贴在右上角。 -->
             <DockPanel LastChildFill="False">
