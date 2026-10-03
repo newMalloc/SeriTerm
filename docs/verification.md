@@ -228,6 +228,59 @@ SHA256、系统要求与文档链接。切分逻辑用同一段 PowerShell 在�
 已发布的 Release（v1.0.0 / v1.0.1）正文按同一格式补齐；**tag 对象本身不可改**——已推送的 tag 只有
 强推才能改写，所以那两个标签的说明保持原样，新标签起按 `CHANGELOG.md` 那节写。
 
+## 小体积启动器（NativeAOT + 自动装运行时）
+
+`src/SeriTerm.Launcher` 用 NativeAOT 编成**原生 exe**（自己不含 .NET 运行时），内嵌 Brotli 压缩的框架依赖
+程序体（1,698,661 字节 → 625,533 字节）。以下数字均为本机实测（Windows 10 19045、VS 2022 自带的 MSVC、
+本机唯一安装的 SDK 是 9.0.304；CI 用 8.0.x 构建，两者产物哈希不同但流程一致）。
+
+**体积拆解**
+
+| 对象 | 字节 | 大小 |
+|---|---|---|
+| 启动器本体（不内置程序体） | 3,311,104 | 3.16 MB |
+| 最终产物 `SeriTerm-1.0.4-win-x64.exe` | 3,936,768 | 3.75 MB |
+| 自包含完整版 `SeriTerm-1.0.4-win-x64-full.exe` | 67,127,223 | 64.0 MB |
+
+相差 **17.1 倍**。换掉托管 HTTPS 之前本体是 6,170,624 字节（5.88 MB），用同一份源码做两个对照得到归因：
+
+- 把下载那段整个换成桩（无 HttpClient/TLS）：**2,755,072 字节** → 托管 HTTPS 占 **3.25 MB**；
+- 把 Brotli 解包换成桩：**5,396,480 字节** → Brotli 解码器占 **0.77 MB**。
+
+因此改成 P/Invoke 调 `winhttp.dll`（TLS 走系统 SChannel、代理与证书都用系统的），本体回到 3.16 MB。
+
+**NativeAOT 下踩到的两个坑（都已实测确认）**
+
+- `Activator.CreateInstance(Type.GetTypeFromCLSID(...))` + `[ComImport]` 会抛
+  `PlatformNotSupportedException: PlatformNotSupported_ComInterop`（NativeAOT 默认关闭内置 COM 互操作；
+  加 `BuiltInComInteropSupport=true` 或 `RuntimeHostConfigurationOption` 都不生效，编译产物字节数也没变）。
+  改成 `CoCreateInstance` + 按 vtable 序号取函数指针后，`IProgressDialog` 正常弹出（实测窗口标题、
+  两行文字、进度条与取消按钮都正常，`HasUserCancelled` 可读）。
+- `WinVerifyTrust` 走 `WTD_CHOICE_FILE` 只认**内嵌**签名：`kernel32.dll` 通过（0x00000000），
+  而 `cmd.exe`／`notepad.exe` 返回 `0x800B0100`（TRUST_E_NOSIGNATURE，它们是目录签名）。
+  官方运行时安装包是内嵌签名（`CN=.NET, O=Microsoft Corporation`），实测返回 0x00000000，
+  所以这条检查不会误杀；反过来未签名文件（自己编的 exe）也确实返回 0x800B0100。
+
+**下载链路**
+
+- `https://aka.ms/windowsdesktop-runtime-8.0-win-x64` 是**死链**（302 到 Bing 搜索页）；
+  可用的是 `https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe` → 301 →
+  `builds.dotnet.microsoft.com/.../windowsdesktop-runtime-8.0.31-win-x64.exe`，58,715,896 字节（56.0 MB）。
+- 走启动器的 WinHTTP 路径下载该文件：58,715,896 字节、用时 5.3 s、
+  SHA256 `C375DFD80A967405CFEFF634912C1FCCC56261CE3D9209EA473F60A21184D1CC`，
+  与另一次用托管 HttpClient 独立下载的哈希逐字节一致，`WinVerifyTrust` 返回 0x00000000。
+
+**分支验证**
+
+- 已装运行时（本机 8.0.19，来源为 `HKLM\...\WOW6432Node\...\sharedfx` 注册表）→ `--diagnose` 退出码 0，
+  直接运行则解包到 `%LocalAppData%\SeriTerm\app\1.0.4.0\SeriTerm.exe` 并启动主程序；
+  故意投放的假旧版本目录 `app\0.9.9.0` 被自动清掉；运行前后 `%AppData%\SeriTerm\settings.json`
+  的 SHA256 完全一致（`EC769344…F6B920`）。
+- 未装运行时（用 `SERITERM_DOTNET_ROOT` 指向空目录模拟）→ 依次出现
+  「SeriTerm · 需要 .NET 桌面运行时」与「SeriTerm」两个对话框，点「否」后退出码 **2**。
+- ⚠️ **未实测**：安装程序本身的执行（`/install /passive /norestart` + UAC）。跑它会改动本机已装的
+  .NET 8 桌面运行时（8.0.19 → 8.0.31），所以只验证到"下载完成 + 签名通过 + 退出码分支"为止。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。

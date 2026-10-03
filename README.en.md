@@ -16,8 +16,14 @@ long captures without stutter, a 200,000-line display cap, automatic reconnect, 
 
 ## Download
 
-Grab the single-file portable build from [Releases](https://github.com/newMalloc/SeriTerm/releases):
-win-x64, self-contained, **no .NET runtime required** on the target machine.
+Pick either file from [Releases](https://github.com/newMalloc/SeriTerm/releases) — they behave identically:
+
+| File | Size | Notes |
+|---|---|---|
+| `SeriTerm-<version>-win-x64.exe` | ~3.8 MB | **Recommended.** Contains no .NET runtime. Machines that already have the .NET 8/9/10 desktop runtime download only these few MB; if it is missing, the launcher asks once and then installs Microsoft's official runtime (~56 MB, once per machine, shared by every .NET app) before starting. |
+| `SeriTerm-<version>-win-x64-full.exe` | ~67 MB | The runtime is bundled inside. No network, no installs — for offline or locked-down machines. |
+
+Both are win-x64 single files: double-click to run, no installer.
 
 ## Features
 
@@ -61,8 +67,8 @@ win-x64, self-contained, **no .NET runtime required** on the target machine.
 
 ## Requirements
 
-Windows 10 1809 or later (64-bit). The portable build needs no .NET runtime; building from source needs
-.NET SDK 8.0 or later.
+Windows 10 1809 or later (64-bit). The full build needs no runtime at all; the launcher needs the .NET 8 desktop
+runtime (installed automatically if missing). Building from source needs .NET SDK 8.0 or later.
 
 ## Build and test
 
@@ -80,13 +86,21 @@ hardware the group is skipped rather than failed.
 ## Packaging
 
 ```powershell
-pwsh -File tools/publish.ps1                     # single-file portable build, ~64 MB, for distribution
-pwsh -File tools/publish.ps1 -FrameworkDependent # slim build, ~1.7 MB, needs the .NET desktop runtime
+pwsh -File tools/publish.ps1                     # launcher, ~3.8 MB (default, for distribution)
+pwsh -File tools/publish.ps1 -All                # launcher + self-contained full build (~67 MB)
+pwsh -File tools/publish.ps1 -SelfContained      # self-contained full build only
+pwsh -File tools/publish.ps1 -FrameworkDependent # framework-dependent single file, ~1.7 MB (local dev)
 ```
 
-Pushing a `v*` tag makes [release.yml](.github/workflows/release.yml) build the exe and attach it to the matching
-Release. The release body is taken from the corresponding version section in [CHANGELOG.md](CHANGELOG.md) — write it
-first, or the workflow fails instead of publishing.
+The launcher is a **native exe** compiled with
+[NativeAOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/): it carries no .NET runtime itself, so it
+starts on a machine with nothing installed. The actual application (a framework-dependent single file) is Brotli
+compressed, embedded inside it, unpacked to `%LocalAppData%\SeriTerm\app\<version>\` on start, and older versions are
+cleaned up automatically.
+
+Pushing a `v*` tag makes [release.yml](.github/workflows/release.yml) build with `-All` and attach both exes to the
+matching Release. The release body is taken from the corresponding version section in [CHANGELOG.md](CHANGELOG.md) —
+write it first, or the workflow fails instead of publishing.
 
 ## Configuration
 
@@ -103,7 +117,8 @@ first, or the workflow fails instead of publishing.
   with no search open it collapses and the log uses the full width.
 - The left settings column needs scrolling in a short window; the primary "Open port" action is always on the first
   screen.
-- The single-file build extracts itself to a temporary directory on first launch, so that launch is slightly slower.
+- The self-contained single-file build extracts itself to a temporary directory on first launch, so that launch is
+  slightly slower; the launcher unpacks its 1.7 MB payload to `%LocalAppData%\SeriTerm\app\` once per version.
 
 ## License
 

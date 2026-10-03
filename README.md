@@ -13,8 +13,14 @@ Windows 串口调试助手（C# / WPF / .NET 8）。看数据、发命令、抓�
 
 ## 下载
 
-到 [Releases](https://github.com/newMalloc/SeriTerm/releases) 拿单文件绿色版：win-x64、自包含，
-目标机器**无需安装 .NET 运行时**，双击即用。
+到 [Releases](https://github.com/newMalloc/SeriTerm/releases) 选一个，两个功能完全一样：
+
+| 产物 | 大小 | 说明 |
+|---|---|---|
+| `SeriTerm-<版本>-win-x64.exe` | 约 3.8 MB | **推荐**。本身不含 .NET 运行时；已装 .NET 8/9/10 桌面运行时的机器只下这几 MB，没装的会在启动时先问一句，同意后自动从微软官方站点装好（约 56 MB，装一次，之后所有 .NET 程序共用）再继续启动。 |
+| `SeriTerm-<版本>-win-x64-full.exe` | 约 67 MB | 运行时整套打包在 exe 内，不联网、不装任何东西，离线 / 内网分发用。 |
+
+两个都是 win-x64 单文件，双击即用，不需要安装程序。
 
 ## 功能
 
@@ -55,7 +61,8 @@ Windows 串口调试助手（C# / WPF / .NET 8）。看数据、发命令、抓�
 
 ## 环境要求
 
-Windows 10 1809 或更高（64 位）。单文件绿色版免装 .NET 运行时；从源码构建需要 .NET SDK 8.0 或更高。
+Windows 10 1809 或更高（64 位）。完整版免装任何运行时；启动器需要 .NET 8 桌面运行时（缺失时会自动装好）。
+从源码构建需要 .NET SDK 8.0 或更高。
 
 ## 构建与测试
 
@@ -72,11 +79,17 @@ dotnet test  SeriTerm.sln
 ## 发布
 
 ```powershell
-pwsh -File tools/publish.ps1                     # 单文件绿色版，约 64 MB，分发用
-pwsh -File tools/publish.ps1 -FrameworkDependent # 精简版，约 1.7 MB，需目标机装 .NET 桌面运行时
+pwsh -File tools/publish.ps1                     # 启动器，约 3.8 MB（默认，分发用）
+pwsh -File tools/publish.ps1 -All                # 启动器 + 自包含完整版（约 67 MB）
+pwsh -File tools/publish.ps1 -SelfContained      # 只出自包含完整版
+pwsh -File tools/publish.ps1 -FrameworkDependent # 框架依赖单文件，约 1.7 MB（开发自用）
 ```
 
-推一个 `v*` 标签，[release.yml](.github/workflows/release.yml) 会构建并把 exe 挂到同名 Release 上。
+启动器是 [NativeAOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/) 编出来的**原生 exe**：
+它自己不含 .NET 运行时，所以"机器上什么都没装"时也能双击运行；真正的程序体（框架依赖单文件）
+经 Brotli 压缩后内嵌在它里面，启动时解包到 `%LocalAppData%\SeriTerm\app\<版本>\` 再跑（升级后自动清掉旧版本）。
+
+推一个 `v*` 标签，[release.yml](.github/workflows/release.yml) 会用 `-All` 构建并把两个 exe 都挂到同名 Release 上。
 Release 说明正文取自 [CHANGELOG.md](CHANGELOG.md) 里对应版本那一节，**发版前先补好**，缺了就报错不发。
 
 ## 配置
