@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>SeriTerm.Launcher</RootNamespace>
+    <!-- 产物就叫 SeriTerm.exe：用户拿到手看到的是它，它再把真正的程序体解包出来跑 -->
+    <AssemblyName>SeriTerm</AssemblyName>
+    <ApplicationIcon>..\SeriTerm.App\Assets\seriterm.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- 这个 exe 的存在意义是"目标机器上什么都没装也能双击就跑"，
+         所以它自己必须是原生代码、绝不能依赖 .NET 运行时（否则就成了先有鸡还是先有蛋）。
+         NativeAOT 正好符合：编译出的是纯原生 exe，不需要装任何运行时。 -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <StripSymbols>true</StripSymbols>
+    <!-- 体积优先：这个 exe 越接近 2 MB，替代 67 MB 自包含版的意义才越大 -->
+    <OptimizationPreference>Size</OptimizationPreference>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 内置程序体：框架依赖单文件 exe（约 1.7 MB）经 Brotli 压缩后的结果，
+         由 tools/publish.ps1 用 -p:SeriTermPayload=<路径> 传进来。
+         直接 dotnet build 时不传该属性，程序体就不存在——这是正常情况：
+         启动器此时仍能跑（诊断开关可用），只是会明确报"本 exe 里没有内置程序体"。 -->
+    <EmbeddedResource Include="$(SeriTermPayload)" LogicalName="SeriTerm.payload.br" Condition="'$(SeriTermPayload)' != ''" />
+  </ItemGroup>
+
+</Project>

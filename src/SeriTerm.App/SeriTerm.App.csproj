@@ -4,6 +4,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- 有 8.x 就用 8.x（Main 的语义是"找不到 8.x 才往上跨大版本"）。
+         这样只装了 .NET 9/10 桌面运行时的机器不必再下载 8.x 安装包，
+         与启动器 RuntimeProbe 的判定保持一致。 -->
+    <RollForward>Major</RollForward>
     <RootNamespace>SeriTerm.App</RootNamespace>
     <AssemblyName>SeriTerm</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
