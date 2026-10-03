@@ -1,6 +1,8 @@
 name: Release
 
-# 打 v* 标签时发布单文件绿色版，并把 exe 挂到同名 GitHub Release。
+# 打 v* 标签时发布两个产物，并挂到同名 GitHub Release：
+#   · 小体积启动器（约 4 MB）：不含运行时；机器上没有 .NET 桌面运行时时会先帮用户装好再启动
+#   · 自包含完整版（约 67 MB）：运行时都在 exe 里，离线/内网可用
 on:
   push:
     tags: [ 'v*' ]
@@ -10,7 +12,7 @@ permissions:
 
 jobs:
   publish:
-    name: 发布单文件绿色版（win-x64）
+    name: 发布（启动器 + 自包含完整版 / win-x64）
     runs-on: windows-latest
 
     steps:
@@ -22,22 +24,30 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: 发布（自包含单文件）
+      # 启动器用 NativeAOT 编译，需要 MSVC 工具链；windows-latest 自带 VS 2022 + C++ 工作负载。
+      # 自包含完整版同时产出，供不能联网装运行时的机器使用。
+      - name: 发布（启动器 + 自包含完整版）
         shell: pwsh
-        run: ./tools/publish.ps1 -OutputDir artifacts/publish
+        run: ./tools/publish.ps1 -All -OutputDir artifacts/publish
 
       - name: 生成发布说明
         shell: pwsh
         run: |
-          # 产物文件名带版本号：SeriTerm-<版本>-<RID>.exe（版本读自 exe 自身的版本资源）
-          $exe = Get-ChildItem artifacts/publish/SeriTerm-*.exe | Select-Object -First 1
-          if (-not $exe) { throw '发布产物里没有带版本号的 exe（SeriTerm-<版本>-<RID>.exe）' }
+          # 产物文件名都带版本号（版本读自 exe 自身的版本资源）：
+          #   启动器   SeriTerm-<版本>-<RID>.exe
+          #   完整版   SeriTerm-<版本>-<RID>-full.exe
+          $boot = Get-ChildItem artifacts/publish/SeriTerm-*-win-x64.exe | Select-Object -First 1
+          $full = Get-ChildItem artifacts/publish/SeriTerm-*-win-x64-full.exe | Select-Object -First 1
+          if (-not $boot) { throw '发布产物里没有启动器（SeriTerm-<版本>-<RID>.exe）' }
+          if (-not $full) { throw '发布产物里没有自包含完整版（SeriTerm-<版本>-<RID>-full.exe）' }
 
           # 标签与产物版本必须一致，否则下载下来的文件名会撒谎。不一致时改 Directory.Build.props 的 <Version>。
           $tag = $env:GITHUB_REF_NAME
           $version = $tag -replace '^v', ''
-          if (-not $exe.Name.StartsWith("SeriTerm-$version-", [StringComparison]::Ordinal)) {
-            throw "标签 $tag 与产物版本对不上：产物是 $($exe.Name)。请先把 Directory.Build.props 的 <Version> 改成 $version 再打标签。"
+          foreach ($exe in @($boot, $full)) {
+            if (-not $exe.Name.StartsWith("SeriTerm-$version-", [StringComparison]::Ordinal)) {
+              throw "标签 $tag 与产物版本对不上：产物是 $($exe.Name)。请先把 Directory.Build.props 的 <Version> 改成 $version 再打标签。"
+            }
           }
 
           # 发布说明正文直接取自 CHANGELOG.md 里本版本那一节：
@@ -53,9 +63,10 @@ jobs:
           $body = (($lines[$start..$end]) -join "`n").Trim()
           if (-not $body) { throw "CHANGELOG.md 的 $tag 一节是空的。" }
 
-          $size = $exe.Length
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
-          $mb = [math]::Round($size / 1MB, 1)
+          $bootMb = [math]::Round($boot.Length / 1MB, 2)
+          $fullMb = [math]::Round($full.Length / 1MB, 1)
+          $bootHash = (Get-FileHash $boot.FullName -Algorithm SHA256).Hash
+          $fullHash = (Get-FileHash $full.FullName -Algorithm SHA256).Hash
 
           $notes = @"
           $body
@@ -64,10 +75,23 @@ jobs:
 
           ### 下载
 
-          - 文件：``$($exe.Name)``（文件名里的 $version 就是程序内显示的版本号）
-          - 大小：$size 字节（$mb MB）
-          - SHA256：``$hash``
-          - 单文件绿色版（win-x64、自包含）：目标机器无需安装 .NET 运行时，下载后直接双击运行。
+          两个产物功能完全一样，按你的情况选一个即可。文件名里的 $version 就是程序内显示的版本号。
+
+          **1. ``$($boot.Name)`` —— 推荐，$bootMb MB**
+
+          - 大小：$($boot.Length) 字节（$bootMb MB）
+          - SHA256：``$bootHash``
+          - 本身不含 .NET 运行时，因此在没装运行时的机器上也能双击运行：
+            启动时会检查 .NET 8 桌面运行时，已装就直接启动；没装会先问一句，
+            同意后从微软官方站点下载官方安装包（校验数字签名）并安装，装完自动继续启动。
+          - 已经装过 .NET 8/9/10 桌面运行时的机器，只下载这 $bootMb MB；
+            没有任何 .NET 的机器需要额外下载约 56 MB 的官方运行时安装包（装一次，之后所有 .NET 程序共用）。
+
+          **2. ``$($full.Name)`` —— 离线/内网用，$fullMb MB**
+
+          - 大小：$($full.Length) 字节（$fullMb MB）
+          - SHA256：``$fullHash``
+          - 运行时整套打包在 exe 里，不联网、不装任何东西，下载后直接双击运行。
             首次启动需要自解压到临时目录，会比常规安装版稍慢一点。
 
           ### 系统要求
@@ -95,5 +119,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $exe = Get-ChildItem artifacts/publish/SeriTerm-*.exe | Select-Object -First 1
-          gh release create $env:GITHUB_REF_NAME $exe.FullName --title "SeriTerm $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+          $boot = Get-ChildItem artifacts/publish/SeriTerm-*-win-x64.exe | Select-Object -First 1
+          $full = Get-ChildItem artifacts/publish/SeriTerm-*-win-x64-full.exe | Select-Object -First 1
+          gh release create $env:GITHUB_REF_NAME $boot.FullName $full.FullName --title "SeriTerm $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
