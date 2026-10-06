@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SeriTerm.Core.Framing;
+using SeriTerm.Core.Mcp;
 using SeriTerm.Core.Presets;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
@@ -87,6 +88,12 @@ public sealed class AppSettings
 
     /// <summary>窗口背景亚克力模糊（透出被模糊的桌面壁纸）。</summary>
     public bool BlurBackground { get; set; } = true;
+
+    /// <summary>AI（MCP）接入总开关。默认开：只读档下没有写入能力，开着才方便用户直接接入。</summary>
+    public bool McpEnabled { get; set; } = true;
+
+    /// <summary>AI 权限档位。<b>默认只读</b>：要发送数据必须由用户在界面上显式切换。</summary>
+    public McpPermission McpPermission { get; set; } = McpPermission.ReadOnly;
 }
 
 public interface ISettingsStore

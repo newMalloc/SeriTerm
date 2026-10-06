@@ -427,6 +427,7 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 
 1. **TFM**：默认 `net8.0-windows` 落地；M8 打包前决定是否升 `net10.0-windows`。
 2. **扩展命令**（AT 命令库、分组批量发送）：暂列 v1.1（约 0.5 天）；若要，插在 M4 之后。
+3. **MCP（AI 接入）**：暂列 v1.1，权限模型已定为"默认只读 + 可选完全权限"，详见 §12。
 
 ---
 
@@ -1451,3 +1452,74 @@ _loop = Task.Run(() => ReconnectLoopAsync(settings, cts.Token));
 "CHANGELOG.md 里没有这一节"的失败分支。
 
 **这一版的版本号**：`<Version>` 1.0.1 → 1.0.2，`dotnet build` 0 警告 0 错误、`dotnet test` **297/297**。
+
+### 11.36 AI 接入（MCP）：默认只读、可选完全权限
+
+**需求（使用者原话）**：加个权限控制设置，默认只读、可选完全权限就行啦；不用写预期 3 天，不用写等有人用了再做额外的事情，默认要做这些工作量。
+
+**架构：三个进程，各管一件事。**
+
+```
+AI 客户端 ──stdio──▶ SeriTerm.exe --mcp-stdio（桥）──命名管道──▶ SeriTerm.exe（界面进程，持有串口）
+```
+
+- MCP 客户端要求 server 用 stdio 说话，而 stdio 只属于它自己拉起的那个子进程，所以桥必须是**另一个进程**；
+  界面进程同时拿着串口、还得给人看日志，不能走 stdio。
+- 桥用**同一个 exe 的第二种模式**（`--mcp-stdio`）：SeriTerm 以"单文件绿色版"为卖点，
+  多带一个 exe 就等于每次发布都要多解释一句"这个也得一起下载"。
+- 管道 `SeriTerm.Mcp.<用户标识短哈希>` + `PipeOptions.CurrentUserOnly`：管道名是每台机器的共享命名空间，
+  带用户标识才不会在"两个用户各开一个 SeriTerm"时互相抢；同时只有当前用户能连。
+- 一次连接一个请求：桥按需连接，界面进程因此不必维护跨请求状态，`serial_wait_for_pattern` 这种长请求也堵不住别人。
+
+**分层：护栏放在 Core，动作放在 App。**
+
+- `SeriTerm.Core/Mcp/` 里是**不依赖 WPF** 的全部逻辑：工具目录（`McpToolCatalog`，一份定义同时喂给
+  界面进程、桥进程和测试）、参数解析与校验、权限检查、限速（`CallRateLimiter` 令牌桶 3/秒、突发 6）、
+  单次长度上限（4096 字节）、帧缓冲（`FrameJournal`）、关键词匹配（`FrameJournal` + `McpPatternMatcher`）、
+  派发层（`McpSessionDispatcher`）、stdio 协议（`McpStdioServer`）、管道客户端（`McpPipeClient`）。
+  这样才能用 `dotnet test` 把"只读档必须拒绝发送""连点 7 次会被限速"这类护栏钉住。
+- `SeriTerm.App/ViewModels/MainViewModel.Mcp.cs` 用 **partial 类**实现 `IMcpSession`：
+  它要读一堆私有字段（传输层、日志、计数器），做成独立类就得把它们全公开。
+- 帧数据**另存一份**给 AI（默认 2 万帧 / 16 MB），不让 AI 直接读日志控件那份：
+  界面上的"暂停显示"是给人用的，不该让 AI 跟着瞎；日志区按行数/字节数淘汰，而 AI 是轮询的，
+  游标必须能自己解释"中间丢了哪些"（`evictedFrames` 如实报出）。
+
+**权限：两档 + 四条护栏。**
+
+- 只读（默认）只暴露 4 个读工具；`serial_open` / `serial_close` / `serial_set_baud_rate` / `serial_write`
+  在只读档下**连清单都不出现**——让模型反复撞一个注定被拒的动作，对谁都没好处。
+- 完全权限必须由用户在左栏勾选（状态栏常驻显示 `MCP: 完全权限`，用警示色）：单次 ≤ 4096 字节、
+  开关串口与发送共用一个限速桶、每次发送留一行 `[AI] 发送 N 字节：…` 的审计行、取消勾选即刻收回。
+- 审计行去重：同一条提示 10 秒内只写一次（跑偏的模型会连着重试同一个被拒的动作）。
+- 连接提示按"会话"而不是按"连接"记：客户端是一次调用连一次，不设 30 秒的空闲判定，
+  每次工具调用都会在日志里刷出"已接入/已断开"两行。
+
+**踩过的坑**（细节与实测见 `docs/verification.md` 的「AI 接入（MCP）」一节）：
+
+1. 桥最初把整个 `params`（`{name, arguments}`）当成工具参数转发，界面进程按"未知参数 `name`"拒绝——
+   **所有**工具调用都会失败。线上形状现在写进了 `IMcpBackend` 的注释，并有回归测试。
+2. `McpProtocol.WireJson` 少了 `TypeInfoResolver`，`JsonNode.ToJsonString(WireJson)` 直接抛
+   `InvalidOperationException`。补 `DefaultJsonTypeInfoResolver`。
+3. `volatile` 不能修饰可空值类型，权限缓存的 `volatile McpPermission?` 改成 `volatile int` + 位移编码。
+4. `_mcpServer?.ClientCountChanged -= handler` 不是合法语法（null 条件赋值是预览特性），改成显式 `if`。
+5. 启动器原本"拉起主程序就自己退出"：MCP 客户端盯着的正是它拉起的那个进程，于是必须让启动器在
+   `--mcp-stdio` 模式下 `WaitForExit` 陪着，否则从启动器接入会被判成"server 立刻退出"。
+
+**这一版的版本号**：`<Version>` 1.0.4 → 1.1.0，`dotnet build` 0 警告 0 错误、`dotnet test` **354/354**。
+
+---
+
+## 12. AI 接入（MCP）：v1.1.0 已实现
+
+**决策（使用者原话）**：加个权限控制设置，默认只读、可选完全权限就行啦。
+
+- **权限模型 = 一个开关、两档**：默认**只读**（列端口 / 读帧 / 等关键词，不能发送）；
+  用户显式勾选「允许 AI 发送数据（完全权限）」后才能发送。选择持久化到 `settings.json`，
+  左栏卡片与状态栏都能一眼看出当前哪一档。
+- **完全权限档一并实现**：发送速率上限（3/秒、突发 6）、单条长度上限（4096 字节）、
+  日志里带 `[AI]` 的审计行、随时取消勾选收回权限。
+- **只读档也暴露帧语义**：AI 拿到的是 M3 断好的帧 + 帧时间戳 + 方向 + 游标，而不是裸字节。
+
+实现细节、分层与踩坑记录见 §11.36；用法与工具清单见 [docs/mcp.md](mcp.md)；
+端到端实测证据见 [docs/verification.md](verification.md) 的「AI 接入（MCP）」一节；
+发版前用 `pwsh -File tools/mcp-smoke.ps1 -Exe <exe>` 走一遍真链路。

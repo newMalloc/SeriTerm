@@ -96,13 +96,21 @@ internal static class Program
             return ExitPayloadMissing;
         }
 
-        Launch(payload.ExePath, args);
+        Launch(payload.ExePath, args, wait: IsMcpStdio(args));
 
         return ExitOk;
     }
 
-    /// <summary>把主程序拉起来。刻意不等它结束：启动器使命已完成，早点退出，任务管理器里只留一个 SeriTerm。</summary>
-    private static void Launch(string exePath, string[] args)
+    /// <summary>
+    /// 是不是在替 AI 客户端当 MCP server（<c>--mcp-stdio</c>）。
+    /// 这种模式下启动器**不能**把主程序拉起来就退出：MCP 客户端盯着的是它自己拉起的那个进程，
+    /// 看到"server 立刻退出"就会判定连接断开。所以得留下来陪着，直到客户端关掉管道。
+    /// </summary>
+    private static bool IsMcpStdio(string[] args) =>
+        args.Any(a => string.Equals(a, "--mcp-stdio", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>把主程序拉起来。一般刻意不等它结束：启动器使命已完成，早点退出，任务管理器里只留一个 SeriTerm。</summary>
+    private static void Launch(string exePath, string[] args, bool wait = false)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -125,7 +133,16 @@ internal static class Program
             startInfo.Environment["DOTNET_ROOT"] = overrideRoot;
         }
 
-        Process.Start(startInfo);
+        var child = Process.Start(startInfo);
+
+        if (!wait || child is null)
+        {
+            return;
+        }
+
+        // 标准输入输出没有被重定向，子进程直接继承启动器的那一套句柄，
+        // 也就是 AI 客户端的管道——这里只负责"别先死"。
+        child.WaitForExit();
     }
 
     private static int RunDiagnose(string[] args)

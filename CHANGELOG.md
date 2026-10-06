@@ -7,6 +7,43 @@
 打标签之前请先在下面补好该版本一节——`release.yml` 会**直接把这一节当作 GitHub Release 的说明正文**，
 找不到就报错退出（宁可发不出去，也不要发一个没有说明的 Release）。
 
+## v1.1.0 — 2026-10-07
+
+**新增**
+
+- **AI 接入（MCP）**：内置 [MCP](https://modelcontextprotocol.io) 服务端，Claude Desktop / Cursor / VS Code
+  里的模型**能直接读到设备的输出**，不必再把日志复制粘贴给它。界面左栏「AI 接入」→「复制配置」，粘进 AI 客户端即可。
+  - 8 个工具：`serial_list_ports`、`serial_get_status`、`serial_read_frames`、`serial_wait_for_pattern`、
+    `serial_open`、`serial_close`、`serial_set_baud_rate`、`serial_write`；
+  - `serial_wait_for_pattern` 会**阻塞等到**设备打印出指定内容（重启后的第一行、`OK`、`panic`），
+    这是"复制粘贴日志"做不到的；读帧带游标（`nextCursor`），按游标续读不重复也不漏；
+  - **权限两档**：默认**只读**，此时只暴露 4 个读工具（写入类工具连清单都不出现，免得模型反复撞墙）；
+    要发送数据必须由用户在界面上勾选「允许 AI 发送数据（完全权限）」，状态栏常驻显示当前档位；
+  - 完全权限下的四条护栏：单次 ≤ 4096 字节、发送 ≤ 3 次/秒（突发 6 次）、
+    每次发送在日志里留一行 `[AI] 发送 N 字节：…` 的审计记录、随时取消勾选即可收回权限；
+  - 通信只走**本机命名管道且仅当前用户可连**（`PipeOptions.CurrentUserOnly`），不开任何网络端口；
+  - AI 读的是**独立帧缓冲**（2 万帧 / 16 MB）：界面上的「暂停显示」骗不到它，日志区淘汰旧行也不会让它悄悄漏数据
+    ——中间丢了多少由 `evictedFrames` 如实报出。
+- `SeriTerm.exe --mcp-stdio`：同一个 exe 的第二种模式。被 AI 客户端拉起时它**不建窗口**，
+  只把 stdio 上的 MCP 请求转成一次命名管道往返；界面没开着会自动把界面拉起来（最多等 20 秒）。
+- 启动器认识 `--mcp-stdio`：这种模式下它会陪着主程序直到客户端断开——
+  启动器原本"拉起主程序就自己退出"，而 MCP 客户端盯着的正是它拉起的那个进程，早退会被当成连接断开。
+
+**变更**
+
+- 左栏新增「AI 接入」卡片：服务开关、权限勾选、服务状态、已接入客户端数、复制配置；
+- 状态栏新增 `MCP: 只读 / 完全权限`，完全权限用警示色加粗显示。
+
+**测试**
+
+- 新增 **52** 个 MCP 单元测试（帧缓冲淘汰与游标、限速器、关键词匹配、派发层护栏、stdio 协议、管道客户端），
+  含两个回归用例：`tools/call` 只把 `params.arguments` 转发给后端、字符串 id 原样回传；
+- `dotnet build` 0 警告 0 错误；`dotnet test` **354/354**（346 纯逻辑 + 8 回环集成）；
+- 端到端冒烟（新增 `tools/mcp-smoke.ps1`，COM5 回环）：只读档下工具清单是 4 项、
+  `serial_open` / `serial_write` 返回 `[permission_denied]`；完全权限档下工具清单 8 项，
+  打开 COM5(1000000) → 发送 20 字节 → `serial_wait_for_pattern` 命中回环数据 → `serial_read_frames` 游标正确，
+  审计行 `[AI] 已接入 / 已打开串口 / 发送 20 字节` 全部落在日志里。
+
 ## v1.0.4 — 2026-10-03
 
 **新增**

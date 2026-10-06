@@ -228,7 +228,27 @@
                     <TextBlock Text="Rx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
                     <TextBlock Text="{Binding RxText}" Margin="0,0,16,0" />
                     <TextBlock Text="Tx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
-                    <TextBlock Text="{Binding TxText}" />
+                    <TextBlock Text="{Binding TxText}" Margin="0,0,16,0" />
+
+                    <!-- AI 权限档位常驻状态栏：切到完全权限是一件"要一直记得"的事，
+                         不能只在左栏那张卡片里看得到 -->
+                    <TextBlock Text="MCP:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0"
+                               Visibility="{Binding McpEnabled, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding McpPermissionText}"
+                               ToolTip="{Binding McpClientText}"
+                               Visibility="{Binding McpEnabled, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding McpFullPermission}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Grid>
         </Border>
@@ -579,6 +599,29 @@
                             <TextBlock Text="{Binding LogStatusText}" Style="{StaticResource HintText}"
                                        Margin="0,6,0,0"
                                        Visibility="{Binding IsLoggingEnabled, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- AI 接入（MCP） -->
+                    <Border Style="{StaticResource SectionPanel}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,7">
+                                <TextBlock Text="AI 接入" Style="{StaticResource SectionHeader}" Margin="0" />
+                                <Button Style="{StaticResource SmallButton}" HorizontalAlignment="Right" Content="复制配置"
+                                        Command="{Binding CopyMcpConfigCommand}"
+                                        ToolTip="把这段配置粘进 Claude Desktop / Cursor / VS Code 的 MCP 设置里，AI 就能读到本程序收到的数据" />
+                            </Grid>
+
+                            <CheckBox Content="启用 MCP 服务" IsChecked="{Binding McpEnabled}" Margin="0,0,0,4"
+                                      ToolTip="{Binding McpPipeName, StringFormat=让本机的 AI 客户端连上本程序（仅当前用户可连）。管道：{0}}" />
+
+                            <!-- 判定权限只看这一个复选框：不勾＝只读（默认） -->
+                            <CheckBox Content="允许 AI 发送数据（完全权限）" IsChecked="{Binding McpFullPermission}" Margin="0,0,0,6"
+                                      ToolTip="不勾＝只读：AI 只能列端口、读帧、等关键词。勾上后 AI 还能打开/关闭串口、改波特率、发送数据；每次发送都会在日志里留下带 [AI] 的审计行，随时可以取消勾选收回权限。" />
+
+                            <TextBlock Text="{Binding McpServiceStateText}" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding McpClientText}" Style="{StaticResource HintText}"
+                                       Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 

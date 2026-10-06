@@ -60,6 +60,19 @@ Both are win-x64 single files: double-click to run, no installer.
 - Text log plus a **raw byte log** that can be replayed back into the log view, rolled over by size;
 - Background asynchronous write queue, so writing never blocks receiving.
 
+**AI access (MCP)**
+
+- A built-in [MCP](https://modelcontextprotocol.io) server: models in Claude Desktop / Cursor / VS Code
+  **read your device's output directly** instead of you copy-pasting the log. Left panel → "AI 接入" → "复制配置";
+- **It can wait**: `serial_wait_for_pattern` blocks until the device prints the text you asked for
+  (the first line after a reboot, `OK`, `panic`);
+- **Frames, not raw bytes**: data arrives already split by your framing settings, with arrival time, direction and a
+  cursor that makes incremental reads neither duplicate nor miss;
+- **Read-only by default**: write tools are not even listed. Sending requires ticking
+  "允许 AI 发送数据（完全权限）" in the UI; the status bar always shows the current tier, sends are size- and
+  rate-limited, every send leaves an `[AI]` audit line in the log, and the permission can be revoked in one click;
+- Local named pipe only, current user only, no network port. See [docs/mcp.md](docs/mcp.md) (Chinese).
+
 **UI**
 
 - Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be turned off);
@@ -78,10 +91,13 @@ dotnet run   --project src/SeriTerm.App
 dotnet test  SeriTerm.sln
 ```
 
-**302 automated tests** (294 pure logic unit tests + 8 loopback integration tests), green out of the box.
+**354 automated tests** (346 pure logic unit tests + 8 loopback integration tests), green out of the box.
 The loopback group needs a USB-TTL adapter with **TX and RX shorted**; it uses `COM5` by default and the port can be
 overridden without touching the source (`$env:SERITERM_LOOPBACK_PORT = 'COM3'`). On a machine without loopback
 hardware the group is skipped rather than failed.
+
+The MCP path spans three processes (AI client → `--mcp-stdio` bridge → UI process). Unit tests cover the protocol and
+the guard rails; before a release, run `pwsh -File tools/mcp-smoke.ps1 -Exe <exe>` for an end-to-end pass.
 
 ## Packaging
 

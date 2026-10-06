@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SeriTerm.App.Services;
+using SeriTerm.App.Services.Mcp;
 using SeriTerm.App.ViewModels;
 using SeriTerm.Core.Serial;
 
@@ -24,6 +25,14 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // --mcp-stdio：给 AI 客户端当 stdio 桥用。不建窗口、不进 DI 容器——
+        // 这个模式下进程只做转发，任何界面动作（含弹窗）都会污染 stdout。
+        if (e.Args.Any(argument => string.Equals(argument, McpStdioBridge.Argument, StringComparison.OrdinalIgnoreCase)))
+        {
+            RunMcpStdioBridge();
+            return;
+        }
 
         var services = new ServiceCollection();
         ConfigureServices(services);
@@ -63,6 +72,32 @@ public partial class App : Application
         // 界面
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
+    }
+
+    /// <summary>
+    /// <c>--mcp-stdio</c> 模式：跑 stdio 桥，直到 AI 客户端关掉管道为止。
+    /// 走后台线程，界面线程只负责在桥退出后把进程收掉（这个模式下没有窗口可关）。
+    /// </summary>
+    private void RunMcpStdioBridge()
+    {
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        _ = Task.Run(async () =>
+        {
+            var exitCode = 0;
+
+            try
+            {
+                exitCode = await McpStdioBridge.RunAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                WriteErrorLog(ex);
+                exitCode = 1;
+            }
+
+            Dispatcher.Invoke(() => Shutdown(exitCode));
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)

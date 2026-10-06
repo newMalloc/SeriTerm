@@ -14,6 +14,7 @@ using SeriTerm.App.Services;
 using SeriTerm.Core.Documents;
 using SeriTerm.Core.Framing;
 using SeriTerm.Core.Logging;
+using SeriTerm.Core.Mcp;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.Core.Presets;
 using SeriTerm.Core.Search;
@@ -184,6 +185,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         // 兜底：配置里的值与字段默认值相同时属性通知不会触发，这里再同步一次
         _reconnect.Enabled = AutoReconnect;
+
+        // AI 接入（MCP）：控制面在这里建好并按配置决定是否开始监听（见 MainViewModel.Mcp.cs）
+        InitializeMcp();
 
         Log.SearchChanged += (_, _) => UpdateSearchStatus();
 
@@ -1741,6 +1745,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         _settings.AutoReconnect = AutoReconnect;
         _settings.AutoOpenOnStartup = AutoOpenOnStartup;
+        _settings.McpEnabled = McpEnabled;
+        _settings.McpPermission = Permission;
         _settings.BlurBackground = BlurBackground;
         _settings.TerminalLocalEcho = TerminalLocalEcho;
         _settings.TerminalBackspaceSendsDel = TerminalBackspaceSendsDel;
@@ -1793,6 +1799,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         AutoReconnect = settings.AutoReconnect;
         AutoOpenOnStartup = settings.AutoOpenOnStartup;
+
+        // AI 接入：权限档位要在监听开始之前就位，否则刚启动那几秒的权限是错的
+        McpFullPermission = settings.McpPermission == McpPermission.Full;
+        McpEnabled = settings.McpEnabled;
         BlurBackground = settings.BlurBackground;
         TerminalLocalEcho = settings.TerminalLocalEcho;
         TerminalBackspaceSendsDel = settings.TerminalBackspaceSendsDel;
@@ -1849,6 +1859,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 case TransportState.Faulted when !string.IsNullOrWhiteSpace(e.Message):
                     AddSystemLine($"链路中断：{StatusDetail}");
 
+                    // 记下来给 AI 解释用：它读不到"界面上那行红字"，但可以读状态
+                    Volatile.Write(ref _lastLinkError, new McpLinkError(e.Message, DateTime.Now));
+
                     // 自动重连会接管：只做非阻塞提示。
                     // 这里绝不能弹模态框——它挡住界面、也让用户以为程序卡死了，而他其实什么都不用做。
                     if (AutoReconnect)
@@ -1865,6 +1878,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 case TransportState.Open:
                     // 重连成功也要把上一次的故障说明换掉，否则状态栏会停在"链路故障"的旧文案上
                     StatusDetail = _transport.CurrentSettings?.ToShortDescription() ?? StatusDetail;
+                    Volatile.Write(ref _lastLinkError, null);
                     break;
 
                 case TransportState.Closed when e.OldState != TransportState.Closed:
@@ -1998,6 +2012,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        // AI 读的是这份副本：它与界面显示同一来源，但不受"暂停显示"和日志淘汰的影响
+        PublishToJournal(lines);
+
         Log.Append(lines);
 
         var logger = _sessionLogger;
@@ -2018,6 +2035,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void BufferWhilePaused(List<DisplayLine> lines)
     {
+        // 暂停显示是给人看的功能：AI 这边照收不误，否则"暂停一下"会让模型以为设备哑了
+        PublishToJournal(lines);
+
         _pausedBuffer.AddRange(lines);
 
         if (_pausedBuffer.Count > MaxPausedBufferLines)
@@ -2090,6 +2110,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _baudRateDebounce.Stop();
         _sendFileCts?.Cancel();
         _sendFileCts?.Dispose();
+
+        // 先关控制面：退出过程中不该还有新的 AI 请求进来碰已经释放的传输层
+        await ShutdownMcpAsync().ConfigureAwait(false);
 
         _timedSender.SendFailed -= OnTimedSendFailed;
         await _timedSender.DisposeAsync().ConfigureAwait(false);

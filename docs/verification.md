@@ -19,14 +19,15 @@ UI 自动化脚本一律使用**真实鼠标拖动 / 真实虚拟键注入 + UIA
 
 ## 自动化测试
 
-`dotnet test SeriTerm.sln`：**297 通过 / 0 失败**（291 个纯逻辑单测 + 6 个回环集成测试）。
+`dotnet test SeriTerm.sln`：**354 通过 / 0 失败**（346 个纯逻辑单测 + 8 个回环集成测试）。
 
 单测覆盖：断帧边界（空闲 / 分隔符 / 跨块 / 空帧 / 上限）、HEX 与字节模式解析、ANSI 过滤、终端按键编码、
 GB2312 / UTF-8 跨块解码、显示行存储与淘汰、搜索与淘汰联动、发送组装、定时发送、文件分块发送、
-日志落盘与重放读取、重连退避与重连流程、故障归类（拔线 vs 端口被占用）、配置预设增删改。
+日志落盘与重放读取、重连退避与重连流程、故障归类（拔线 vs 端口被占用）、配置预设增删改，
+以及 AI 接入（MCP）的帧缓冲、限速器、关键词匹配、派发层护栏、stdio 协议与管道客户端（52 个，详见下文）。
 
-没有串口的机器（例如 CI runner）上，6 个回环测试整组 **skipped**，结果仍为绿。CI 日志实测
-（`8f3074e` 那一跑）：
+没有串口的机器（例如 CI runner）上，8 个回环测试整组 **skipped**，结果仍为绿。CI 日志实测
+（`8f3074e` 那一跑，当时总数 297）：
 
 ```
 Passed!  - Failed:     0, Passed:   291, Skipped:     6, Total:   297, Duration: 3 s - SeriTerm.Tests.dll (net8.0)
@@ -281,11 +282,75 @@ SHA256、系统要求与文档链接。切分逻辑用同一段 PowerShell 在�
 - ⚠️ **未实测**：安装程序本身的执行（`/install /passive /norestart` + UAC）。跑它会改动本机已装的
   .NET 8 桌面运行时（8.0.19 → 8.0.31），所以只验证到"下载完成 + 签名通过 + 退出码分支"为止。
 
+## AI 接入（MCP，v1.1.0）
+
+链路跨三个进程（AI 客户端 → `SeriTerm.exe --mcp-stdio` 桥 → 界面进程），所以证据分两层：
+单测覆盖协议与护栏，`tools/mcp-smoke.ps1` 做真实的端到端。
+
+**自动化**
+
+- `dotnet test --filter "FullyQualifiedName~Mcp"`：**52 通过 / 0 失败**；
+- 覆盖：帧缓冲淘汰与游标语义（含"方向过滤也要推进游标"）、限速器令牌补充与突发上限、
+  关键词匹配三种模式与非法输入、派发层的权限/限速/长度/参数四类拒绝路径、stdio 协议（通知不回应、
+  未知方法 -32601、坏 JSON -32700、后端不可用时工具级 `[not_connected]`）、命名管道客户端
+  （用自定义管道名起真的 `NamedPipeServerStream`，不碰真实运行时用的那条）。
+
+**端到端（COM5 回环，Debug 构建，界面进程真实运行）**
+
+只读档（默认配置）——`pwsh -File tools/mcp-smoke.ps1 -Exe <exe>`：
+
+```
+tools/list → count 4：serial_list_ports / serial_get_status / serial_read_frames / serial_wait_for_pattern
+serial_get_status → open=true, portName=COM5, baudRate=1000000, permission=readOnly, connectedClients=1
+serial_open  → isError=true  [permission_denied] ...
+serial_write → isError=true  [permission_denied] ...
+```
+
+完全权限档（`settings.json` 里 `McpPermission: "Full"`）——加 `-ExpectFullPermission`：
+
+```
+tools/list → count 8（多出 serial_open / serial_close / serial_set_baud_rate / serial_write）
+serial_get_status → open=false, permission=full
+serial_open  → open=true, baudRate=1000000        （界面上的端口/参数同步成这次实际生效的一套）
+serial_write → sentBytes=20, hex=73 65 … 6B 65 0D 0A, rateLimitRemaining=4
+serial_wait_for_pattern("seriterm-mcp-smoke", since=0) → matched=true, scannedFrames=1,
+    frames[0] = { seq 5, rx, 20 bytes, text "seriterm-mcp-smoke\r\n" }
+serial_read_frames(since=0, direction=rx) → nextCursor=5, oldestCursor=1, totalFrames=5, evictedFrames=0
+```
+
+`rateLimitRemaining=4` 正是"`serial_open` 与 `serial_write` 各消耗一个令牌"（突发 6）的结果——
+顺带证明了开关串口与发送走的是同一个限速桶。
+
+审计行（`serial_read_frames` 取 `direction=system`，就是界面上那几行）：
+
+```
+[AI] 已接入（权限：完全权限）。
+[AI] 已打开串口：COM5 1000000,8,None,1
+[AI] 发送 20 字节：seriterm-mcp-smoke
+```
+
+**这一版踩到的坑（都已修，留作以后的路标）**
+
+- 桥接层最初把整个 `params`（`{name, arguments}`）当成工具参数转发，界面进程按"未知参数 `name`"拒绝，
+  所有工具调用都会失败。契约里现在写明了线上形状，回归用例断言假后端只收到 `arguments` 里的字段。
+- `McpProtocol.WireJson` 少了 `TypeInfoResolver`：`JsonNode.ToJsonString(WireJson)` 会抛
+  `InvalidOperationException`（"must specify a TypeInfoResolver setting before being marked as read-only"）。
+  已给两个选项实例补上 `DefaultJsonTypeInfoResolver`。
+- `volatile` 不能修饰可空值类型（`McpPermission?`），权限缓存改用 `volatile int` + 位移编码。
+- 目标机上的 `PowerShell 7 + System.IO.Ports` 与 UIA 都正常工作，冒烟脚本用 `ProcessStartInfo` 重定向
+  stdin/stdout 即可驱动桥进程，不需要额外工具。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。
 - 查找浮层遮挡范围：浮层右边界距日志区右边 48 px、顶边界距上边 24 px；无收藏、未搜索时整块折叠。
 - 收藏多于 6 条时列表在 176 px 内自行滚动，浮层不会一直往下长。
+- 「AI 接入」卡片在 2560×1540（本机最大化）下**不需要滚动**即可看到：
+  UIA 读回的矩形是标题 `34,1112–513,1145`、两个复选框 `…,1155–1182` 与 `…,1188–1215`、
+  「复制配置」按钮 `417,1112–513,1145`、状态文字 `…,1224–1247` 与 `…,1253–1276`，
+  而窗口状态栏在 y≈1504。更矮的窗口（如 1280×800）下它和「日志保存」一样需要滚动才能看到——
+  这一点与上面那条既有边界同源，没有额外恶化。
+- 状态栏的 `MCP: 只读` 在 Rx/Tx 之后、贴右边界：UIA 矩形 `2445,1504–2495,1531` 与 `2503,1504–2543,1531`。
 - 发布产物文件名带版本号（见上一节）：自包含 `SeriTerm-1.0.1-win-x64.exe` 单文件 64.0 MB（67,125,094 字节；自包含 + 压缩，`PublishTrimmed` 必须关闭：WPF 不支持裁剪）。
   换成设计稿图标后比上一版大 256 KB（图标本身从 10 KB 变成 97 KB，且它同时进 Win32 图标资源与 WPF 资源包）；
   加「关于」窗口后再多几 KB。
