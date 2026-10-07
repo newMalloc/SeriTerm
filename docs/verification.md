@@ -348,6 +348,27 @@ serial_read_frames(since=0, direction=rx) → nextCursor=5, oldestCursor=1, tota
   实测同一条冒烟命令换成启动器路径即全绿：`pwsh -File tools/mcp-smoke.ps1 -Exe artifacts\publish\SeriTerm-1.1.0-win-x64.exe`
   → `initialize` 返回 `serverVersion: 1.1.0`、只读档 4 个工具、两个写工具 `[permission_denied]`、退出码 0。
 
+## README 截图重拍（v1.1.0）
+
+**为什么不是直接截屏**：这台开发机长期停在锁屏上，锁屏时 DWM 不为用户桌面交出像素——
+`PrintWindow`（哪怕带 `PW_RENDERFULLCONTENT`）和 `CopyFromScreen` 出来的都是黑图（实测：整屏捕获是一张
+纯色 2560×1600，窗口捕获是全黑 2560×1540）。
+
+**做法**：写一次性工装 `artifacts/shot/`（WPF，被 .gitignore 忽略），它
+① 用真的 DI 组合根起**真的** `MainViewModel` + `MainWindow` 并最大化；
+② 用 `RenderTargetBitmap` 把窗口自己画进位图——这条路不过 DWM，锁屏下照样出图；
+③ 打开真实 COM5 回环，把 12 行"设备输出"逐条**真发真收**（所以 Tx/Rx 成对、时间戳与断帧都是真的）；
+④ 期间用 `McpPipeClient` 真的调一次 `serial_write`（日志里因此有 `[AI]` 审计行），
+    再用一个长 `serial_wait_for_pattern` 把管道连接挂住，卡片上就真的显示"已接入 1 个 AI 客户端"；
+⑤ 最后打开 `Ctrl+F` 浮层、关键字 `error`。
+演示态配置（完全权限、115200、预置查找收藏、关掉背景模糊）由 `artifacts/shot/run.ps1` 临时替换
+`settings.json`，跑完立即还原（本机配置属于使用者，不该被一次截图改掉）。
+
+**成品**：`docs/images/main.png`，2560×1540（125% DPI 全屏）、208 762 字节。
+图里同时能看到：左栏「AI 接入」卡片（启用 + 完全权限 + 已接入 1 个客户端 + 复制配置）、
+状态栏 `MCP: 完全权限`（警示色）、右上 `Ctrl+F` 实时查找（`error` 命中 `第 1 / 共 4 条`、字符级高亮）
+与「查找收藏」（error / OK / retry / boot），以及日志里成对的 `Tx`/`Rx` 与两行 `[AI]` 审计。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。

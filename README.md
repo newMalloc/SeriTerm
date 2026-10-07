@@ -12,6 +12,11 @@ Windows 串口调试助手（C# / WPF / .NET 8）。看数据、发命令、抓�
 
 ![主界面](docs/images/main.png)
 
+> 上图是一张实拍（全屏、真实运行）：左栏「AI 接入」里 MCP 已接入 1 个客户端，状态栏右侧显示当前权限档位
+> `MCP: 完全权限`；右上是 `Ctrl+F` 实时查找（`error` 命中 4 处、字符级高亮）与「查找收藏」；
+> 日志里的设备输出是经 COM5 回环**实发实收**的（`Tx` / `Rx` 成对），其中 `[AI] 发送 8 字节：STATUS`
+> 那两行是 AI 通过 MCP 真的发出去的命令。截图为了演示把权限切到了完全权限——**默认档是只读**。
+
 ## 下载
 
 到 [Releases](https://github.com/newMalloc/SeriTerm/releases) 选一个，两个功能完全一样：

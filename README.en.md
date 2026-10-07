@@ -16,6 +16,13 @@ requires your explicit consent.
 
 ![Main window](docs/images/main.png)
 
+> The screenshot above is a real full-screen capture: the "AI 接入" card in the left column shows one MCP client
+> connected and the status bar shows the current tier (`MCP: 完全权限`); top right is the `Ctrl+F` live search
+> (4 hits on `error`, character-level highlighting) together with the favourites list. The device output in the log
+> was really sent and received over a COM5 loopback (paired `Tx` / `Rx` lines); the `[AI] 发送 8 字节：STATUS`
+> lines are a command the AI actually sent through MCP. The capture switched the tier to full permission for the
+> demo — **the default is read-only**.
+
 ## Download
 
 Pick either file from [Releases](https://github.com/newMalloc/SeriTerm/releases) — they behave identically:
