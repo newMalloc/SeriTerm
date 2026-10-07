@@ -340,6 +340,14 @@ serial_read_frames(since=0, direction=rx) → nextCursor=5, oldestCursor=1, tota
 - 目标机上的 `PowerShell 7 + System.IO.Ports` 与 UIA 都正常工作，冒烟脚本用 `ProcessStartInfo` 重定向
   stdin/stdout 即可驱动桥进程，不需要额外工具。
 
+**发布产物本身**（`artifacts\publish\SeriTerm-1.1.0-win-x64.exe`，即默认下载的那个 3.8 MB 启动器）
+
+- 双击后解包到 `%LocalAppData%\SeriTerm\app\1.1.0.0\SeriTerm.exe` 并拉起界面进程（实测进程路径与目录名一致）；
+- 把**启动器自己**配成 MCP server 也能用：启动器会把 `--mcp-stdio` 原样转给主程序，并且**留在原地陪着**它
+  （原本的启动器是"拉起主程序就自己退出"，那样 MCP 客户端会认为 server 立刻断开）。
+  实测同一条冒烟命令换成启动器路径即全绿：`pwsh -File tools/mcp-smoke.ps1 -Exe artifacts\publish\SeriTerm-1.1.0-win-x64.exe`
+  → `initialize` 返回 `serverVersion: 1.1.0`、只读档 4 个工具、两个写工具 `[permission_denied]`、退出码 0。
+
 ## 已知边界的实测依据
 
 - 左栏在 1280×800 下需要滚动：「日志保存」一节从 y = 1267 px 才开始，而窗口底边在 810 px。
