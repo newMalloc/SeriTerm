@@ -17,8 +17,7 @@ Windows 串口调试助手（C# / WPF / .NET 8）。看数据、发命令、抓�
 
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
-▶ 上面是 56 秒介绍动画（内嵌播放器）· [网页版](https://newmalloc.github.io/SeriTerm/video/)（文字是矢量的，最清晰）
-· [下载 mp4](https://github.com/newMalloc/SeriTerm/releases)
+[网页版](https://newmalloc.github.io/SeriTerm/video/)
 
 ## 下载
 

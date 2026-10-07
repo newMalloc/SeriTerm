@@ -22,8 +22,7 @@ It also ships a built-in MCP server, so an AI can read your device directly.
 
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
-▶ The inline player above is the 56-second intro · [web version](https://newmalloc.github.io/SeriTerm/video/) (vector text, sharpest)
-· [download the mp4](https://github.com/newMalloc/SeriTerm/releases)
+[web version](https://newmalloc.github.io/SeriTerm/video/)
 
 ## Download
 
