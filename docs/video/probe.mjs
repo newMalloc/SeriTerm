@@ -1,0 +1,12 @@
+import { chromium } from 'playwright-core';
+import path from 'node:path';
+const url = 'file:///' + path.join(process.cwd(), 'index.html').replace(/\\/g, '/') + '?static=1';
+const browser = await chromium.launch({ channel: 'msedge', args: ['--hide-scrollbars'] });
+const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+page.on('pageerror', e => console.error('PAGEERROR:\n' + (e.stack || e.message)));
+page.on('console', m => console.log('CONSOLE[' + m.type() + ']:', m.text()));
+await page.goto(url, { waitUntil: 'load' });
+await page.waitForTimeout(2500);
+console.log('ready =', await page.evaluate(() => window.__ready));
+console.log('total =', await page.evaluate(() => window.__total));
+await browser.close();

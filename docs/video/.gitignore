@@ -1,0 +1,6 @@
+# 脚本产物，不入库
+node_modules/
+frames/
+snap/
+verify/
+out/

@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SeriTerm 介绍动画</title>
+<style>
+  :root{
+    --bg:#0e1013;
+    --panel:#171a1f;
+    --panel2:#1c2027;
+    --line:#2b3038;
+    --text:#e9ecf1;
+    --dim:#98a1ad;
+    --dim2:#6d7681;
+    --accent:#2f9bf0;
+    --accent2:#0e7ad4;
+    --tx:#ffa028;
+    --ok:#4ec94e;
+    --warn:#e0a030;
+    --err:#e05a5a;
+    --hl:rgba(110,90,23,.72);
+    --hlcur:#b07c10;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  body{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;color:var(--text)}
+  #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;background:var(--bg);overflow:hidden;
+         -webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+  .mono{font-family:"Cascadia Mono","Consolas","Microsoft YaHei UI",monospace}
+
+  /* ---------- 背景 ---------- */
+  #bg{position:absolute;inset:0;pointer-events:none}
+  #bg .grid{position:absolute;inset:0;opacity:.35;
+    background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+    background-size:64px 64px}
+  #bg .glow1{position:absolute;width:1500px;height:1200px;left:-300px;top:-420px;
+    background:radial-gradient(closest-side,rgba(47,155,240,.20),transparent 70%)}
+  #bg .glow2{position:absolute;width:1400px;height:1100px;right:-380px;bottom:-460px;
+    background:radial-gradient(closest-side,rgba(78,201,78,.10),transparent 70%)}
+  #bg .vig{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 45%,transparent 45%,rgba(0,0,0,.55) 100%)}
+  .sweep{position:absolute;height:1px;width:340px;left:0;top:0;
+    background:linear-gradient(90deg,transparent,rgba(47,155,240,.85),transparent)}
+
+  /* ---------- 场景框架 ---------- */
+  .scene{position:absolute;inset:0;opacity:0}
+
+  /* ---------- 通用文字 ---------- */
+  .hd{font-size:56px;font-weight:700;letter-spacing:.5px;line-height:1.15}
+  .sub{font-size:25px;color:var(--dim);margin-top:16px;line-height:1.4}
+  .eyebrow{font-size:20px;letter-spacing:4px;color:var(--accent);font-weight:600;margin-bottom:16px}
+  .tag{display:inline-flex;align-items:center;gap:8px;font-size:19px;color:var(--dim);
+       border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:999px;padding:8px 18px}
+
+  /* ---------- 窗口（截图容器） ---------- */
+  .win{position:absolute;border-radius:14px;background:#15171b;border:1px solid #30353d;
+       box-shadow:0 50px 110px rgba(0,0,0,.65),0 0 0 1px rgba(0,0,0,.6);overflow:hidden}
+  .win .bar{height:40px;display:flex;align-items:center;gap:10px;padding:0 16px;background:#1b1f25;
+       border-bottom:1px solid #2a2f36}
+  .win .bar .t{font-size:15px;color:#9aa2ad}
+  .win .bar .ico{width:16px;height:16px;border-radius:3px;background:#2f9bf0;opacity:.9}
+  .win .body{position:relative;overflow:hidden}
+  .win .shot{display:block;width:100%;height:auto}
+  .win .dim{position:absolute;inset:0;background:rgba(7,9,12,.58)}
+  .win .spot{position:absolute;border-radius:10px;background-repeat:no-repeat;
+       box-shadow:0 0 0 2px var(--accent),0 0 44px rgba(47,155,240,.45),0 0 120px rgba(47,155,240,.18)}
+
+  /* ---------- 提示卡 ---------- */
+  .chip{position:absolute;background:rgba(14,17,21,.92);border:1px solid rgba(255,255,255,.13);
+       border-radius:12px;padding:16px 22px 16px 20px;box-shadow:0 20px 50px rgba(0,0,0,.55);max-width:520px}
+  .chip::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:var(--accent)}
+  .chip .ct{font-size:24px;font-weight:600}
+  .chip .cd{font-size:18px;color:var(--dim);margin-top:6px;line-height:1.35}
+
+  /* ---------- 日志模拟 ---------- */
+  .logbox{background:#141619;border:1px solid #2a2f36;border-radius:12px;overflow:hidden;position:absolute}
+  .logbox .lb-bar{height:42px;display:flex;align-items:center;gap:12px;padding:0 16px;background:#1b1f25;
+       border-bottom:1px solid #2a2f36;font-size:16px;color:var(--dim)}
+  .logbox .lb-body{position:relative;overflow:hidden}
+  .ln{height:26px;line-height:26px;font-size:17px;white-space:pre;color:#cfd6df;
+      font-family:"Cascadia Mono","Consolas","Microsoft YaHei UI",monospace}
+  .ln .ts{color:#7d8794}
+  .ln .dir{display:inline-block;width:26px}
+  .ln.tx{color:#cfd6df}
+  .ln.tx .dir{color:var(--tx)}
+  .ln.rx .dir{color:#8fa0b4}
+  .ln.hl{background:var(--hl)}
+  .ln.hl.cur{background:var(--hlcur)}
+  .ln.warn{color:#ffd9a3}
+  .fade{position:absolute;left:0;right:0;height:70px;pointer-events:none}
+  .fade.top{top:0;background:linear-gradient(#141619,rgba(20,22,25,0))}
+  .fade.bot{bottom:0;background:linear-gradient(rgba(20,22,25,0),#141619)}
+
+  /* ---------- 数据卡 ---------- */
+  .stat{position:absolute;background:linear-gradient(180deg,rgba(38,44,53,.95),rgba(24,28,34,.95));
+       border:1px solid #333a44;border-radius:14px;padding:22px 26px}
+  .stat .sv{font-size:44px;font-weight:700;letter-spacing:.5px}
+  .stat .sl{font-size:19px;color:var(--dim);margin-top:8px}
+  .stat .sv .unit{font-size:22px;color:var(--dim);font-weight:500;margin-left:6px}
+
+  /* ---------- MCP ---------- */
+  .client{position:absolute;display:flex;align-items:center;gap:14px;background:#191d23;
+       border:1px solid #303640;border-radius:12px;padding:0 20px;height:74px;width:300px}
+  .client .ci{width:34px;height:34px;border-radius:8px;background:linear-gradient(140deg,#3aa0f5,#1b6fbf);
+       display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff}
+  .client .cn{font-size:21px}
+  .pipe{position:absolute;height:2px;background:repeating-linear-gradient(90deg,rgba(47,155,240,.9) 0 14px,transparent 14px 26px)}
+  .toolrow{display:flex;align-items:center;gap:14px;height:56px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .toolrow .td{width:9px;height:9px;border-radius:50%;background:var(--ok)}
+  .toolrow.w .td{background:var(--warn)}
+  .toolrow .tn{font-size:20px;font-family:"Cascadia Mono","Consolas",monospace;width:290px}
+  .toolrow .tz{font-size:19px;color:var(--dim)}
+
+  /* ---------- 复选 ---------- */
+  .check{display:inline-flex;align-items:center;gap:12px;font-size:21px;color:var(--dim)}
+  .cbox{width:24px;height:24px;border-radius:5px;border:2px solid #4a525d;position:relative;background:#191d23}
+  .cbox.on{border-color:var(--accent);background:var(--accent)}
+  .cbox.on::after{content:"";position:absolute;left:7px;top:2px;width:6px;height:12px;
+       border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
+
+  /* ---------- 时间线 ---------- */
+  .node{position:absolute;transform:translate(-50%,-50%);text-align:center}
+  .ndot{width:22px;height:22px;border-radius:50%;margin:0 auto;box-shadow:0 0 0 6px rgba(255,255,255,.05)}
+  .nlabel{font-size:20px;margin-top:14px;white-space:nowrap;color:var(--text)}
+  .nsub{font-size:17px;color:var(--dim2);margin-top:6px;white-space:nowrap;font-family:"Cascadia Mono",Consolas,monospace}
+  .tline{position:absolute;height:3px;background:#2b3038;border-radius:3px}
+  .tlinefill{position:absolute;height:3px;background:linear-gradient(90deg,var(--ok),var(--accent));border-radius:3px}
+
+  /* ---------- 帧切分 ---------- */
+  .byte{display:inline-flex;align-items:center;justify-content:center;width:66px;height:76px;margin:0 6px;
+       background:#1b2027;border:1px solid #313843;border-radius:10px;font-size:27px;
+       font-family:"Cascadia Mono",Consolas,monospace;color:#dfe6ef}
+  .byte.delim{color:#ffcf8a;border-color:#5d4a24;background:#241f16}
+  .cut{position:absolute;width:2px;background:linear-gradient(180deg,transparent,rgba(47,155,240,.9),transparent)}
+  .brace{position:absolute;height:34px;border:2px solid var(--accent);border-top:none;border-radius:0 0 8px 8px}
+  .framelbl{position:absolute;font-size:20px;color:var(--accent);text-align:center}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg">
+    <div class="glow1"></div><div class="glow2"></div><div class="grid"></div><div id="sweeps"></div><div class="vig"></div>
+  </div>
+
+  <!-- ================= 1. 开场 ================= -->
+  <section class="scene" id="s1">
+    <div id="introWrap" style="position:absolute;inset:0">
+      <div id="introRing" style="position:absolute;left:960px;top:392px;width:184px;height:184px;margin:-92px 0 0 -92px;
+           border:2px solid rgba(47,155,240,.55);border-radius:50%"></div>
+      <div id="introRing2" style="position:absolute;left:960px;top:392px;width:184px;height:184px;margin:-92px 0 0 -92px;
+           border:2px solid rgba(47,155,240,.35);border-radius:50%"></div>
+      <img id="introIcon" src="../../src/SeriTerm.App/Assets/seriterm.png" style="position:absolute;left:960px;top:392px;width:184px;height:184px;margin:-92px 0 0 -92px">
+      <div id="introTitle" style="position:absolute;left:0;right:0;top:512px;text-align:center;font-size:104px;font-weight:700;letter-spacing:2px">SeriTerm</div>
+      <div id="introSub" style="position:absolute;left:0;right:0;top:646px;text-align:center;font-size:32px;color:#b9c2cd">Windows 串口调试助手</div>
+      <div id="introLine" style="position:absolute;left:50%;top:716px;height:2px;width:0;background:linear-gradient(90deg,transparent,var(--accent),transparent);transform:translateX(-50%)"></div>
+      <div id="introTags" style="position:absolute;left:0;right:0;top:762px;text-align:center"></div>
+      <div id="introFoot" style="position:absolute;left:0;right:0;top:846px;text-align:center;font-size:21px;color:#7d8794">C# · WPF · .NET 8 &nbsp;|&nbsp; MIT 开源</div>
+    </div>
+  </section>
+
+  <!-- ================= 2. 主界面巡览 ================= -->
+  <section class="scene" id="s2">
+    <div class="win" id="s2Win">
+      <img class="shot" src="../images/main.png">
+      <div class="dim" id="s2Dim"></div>
+      <div class="spot" id="s2Spot"></div>
+    </div>
+    <div id="s2Chips"></div>
+    <div id="s2Caption" style="position:absolute;left:0;right:0;bottom:26px;text-align:center;font-size:22px;color:#8d96a2"></div>
+  </section>
+
+  <!-- ================= 3. 长跑不卡 ================= -->
+  <section class="scene" id="s3">
+    <div style="position:absolute;left:64px;top:52px">
+      <div class="eyebrow">高流量长跑</div>
+      <div class="hd">滚 20 万行，界面照样跟手</div>
+    </div>
+    <div class="logbox" id="s3Box" style="left:64px;top:250px;width:1000px;height:640px">
+      <div class="lb-bar"><span style="color:#c9d2dc">日志</span><span>·</span><span>COM5 · 115200 · 8N1</span>
+        <span style="margin-left:auto">自动滚动</span></div>
+      <div class="lb-body" id="s3Body" style="height:598px">
+        <div id="s3Track"></div>
+        <div class="fade top"></div><div class="fade bot"></div>
+      </div>
+    </div>
+    <div class="stat" id="s3C1" style="left:1140px;top:250px;width:716px">
+      <div class="sv" id="s3Count">0<span class="unit">行</span></div>
+      <div class="sl">日志视图显示上限，超出按段淘汰</div>
+    </div>
+    <div class="stat" id="s3C2" style="left:1140px;top:460px;width:716px">
+      <div class="sv">30 Hz<span class="unit">批量刷新</span></div>
+      <div class="sl">接收线程只入环形缓冲，界面按帧率批量取</div>
+    </div>
+    <div class="stat" id="s3C3" style="left:1140px;top:670px;width:716px">
+      <div class="sv">异步写盘<span class="unit">不阻塞接收</span></div>
+      <div class="sl">文本日志 + 原始字节日志，按大小分卷</div>
+    </div>
+    <div id="s3Fps" class="tag" style="position:absolute;left:64px;top:938px;font-size:20px">● 界面线程：稳定 60 FPS</div>
+  </section>
+
+  <!-- ================= 4. 断帧 ================= -->
+  <section class="scene" id="s4">
+    <div style="position:absolute;left:0;right:0;top:76px;text-align:center">
+      <div class="eyebrow">断帧</div>
+      <div class="hd">字节流 → 完整帧</div>
+      <div class="sub">不粘包、也不把半包显示出来</div>
+    </div>
+    <div id="s4Strip" style="position:absolute;left:0;right:0;top:392px;text-align:center;height:96px"></div>
+    <div id="s4Cuts"></div>
+    <div id="s4Note" style="position:absolute;left:0;right:0;top:646px;text-align:center;font-size:21px;color:#8d96a2">
+      <span class="mono" style="color:#ffcf8a">0D 0A</span> 是分隔符：遇到它就切一帧
+    </div>
+    <div id="s4Chips" style="position:absolute;left:0;right:0;top:722px;text-align:center"></div>
+    <div id="s4Note2" style="position:absolute;left:0;right:0;top:836px;text-align:center;font-size:22px;color:#9aa3ae">
+      多编码跨块解码（UTF-8 / GB2312 …），一个汉字被拆在两个数据包里也不会乱码
+    </div>
+  </section>
+
+  <!-- ================= 5. 自动重连 ================= -->
+  <section class="scene" id="s5">
+    <div style="position:absolute;left:64px;top:52px">
+      <div class="eyebrow">连接稳定性</div>
+      <div class="hd">拔插、掉线，自己接回来</div>
+      <div class="sub">指数退避重连；端口真的不在系统里时，按设备拔出处理，不误报「被其它程序占用」</div>
+    </div>
+    <div id="s5Line" class="tline" style="left:150px;top:520px;width:1620px"></div>
+    <div id="s5Fill" class="tlinefill" style="left:150px;top:520px;width:0"></div>
+    <div id="s5Nodes"></div>
+    <div id="s5Log" style="position:absolute;left:260px;top:662px;width:1400px;background:#141619;border:1px solid #2a2f36;
+         border-radius:12px;padding:18px 22px;font-size:18px;line-height:1.8;font-family:'Cascadia Mono',Consolas,monospace"></div>
+    <div id="s5Caption" style="position:absolute;left:0;right:0;bottom:88px;text-align:center;font-size:23px;color:#9aa3ae"></div>
+  </section>
+
+  <!-- ================= 6. 查找与收藏 ================= -->
+  <section class="scene" id="s6">
+    <div style="position:absolute;left:64px;top:52px">
+      <div class="eyebrow">查找</div>
+      <div class="hd">Ctrl+F 实时查找，字符级高亮</div>
+    </div>
+    <div class="logbox" id="s6Box" style="left:64px;top:232px;width:1310px;height:640px">
+      <div class="lb-bar"><span style="color:#c9d2dc">日志</span><span>·</span><span>COM5 · 115200 · 8N1</span></div>
+      <div class="lb-body" id="s6Body" style="height:598px;padding:12px 0"></div>
+    </div>
+    <div id="s6Find" style="position:absolute;left:1014px;top:250px;width:360px">
+      <div style="background:#1b2027;border:1px solid var(--accent);border-radius:10px;height:46px;
+           display:flex;align-items:center;padding:0 14px;font-size:20px">
+        <span class="mono" id="s6Text" style="color:#eaf0f7"></span><span id="s6Caret" style="width:2px;height:24px;background:var(--accent);margin-left:2px"></span>
+        <span style="margin-left:auto;font-size:15px;color:#7d8794">Ctrl+F</span>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;font-size:18px;color:var(--dim)">
+        <span id="s6Count">第 0 / 共 4 条</span>
+        <span style="margin-left:auto">区分大小写 ▾</span>
+      </div>
+    </div>
+    <div id="s6Fav" style="position:absolute;left:1420px;top:232px;width:436px;background:#191d23;
+         border:1px solid #303640;border-radius:12px;padding:18px 20px">
+      <div style="font-size:19px;color:var(--dim);margin-bottom:12px">查找收藏</div>
+      <div id="s6FavList"></div>
+    </div>
+    <div id="s6Hint" style="position:absolute;left:1420px;top:700px;width:436px;font-size:20px;color:#9aa3ae;line-height:1.5"></div>
+  </section>
+
+  <!-- ================= 7. MCP ================= -->
+  <section class="scene" id="s7">
+    <div style="position:absolute;left:64px;top:48px">
+      <div class="eyebrow">AI 接入（MCP）</div>
+      <div class="hd">AI 直接读你的设备</div>
+      <div class="sub">不用再把日志复制粘贴给模型</div>
+    </div>
+    <div id="s7Clients"></div>
+    <div id="s7Bus"></div>
+    <div id="s7Node" style="position:absolute;left:470px;top:316px;width:300px;height:150px;background:#191d23;
+         border:1px solid #3a4250;border-radius:14px;display:flex;align-items:center;gap:16px;padding:0 22px"></div>
+    <div id="s7Pipe"></div>
+    <div id="s7Arch" style="position:absolute;left:64px;top:648px;width:866px;text-align:center;font-size:19px;color:#9aa3ae">
+      AI 客户端 → 本机命名管道（仅当前用户可连）→ SeriTerm 界面进程
+    </div>
+    <div id="s7Panel" style="position:absolute;left:930px;top:206px;width:926px;background:#15181d;
+         border:1px solid #303640;border-radius:14px;overflow:hidden">
+      <div style="height:52px;display:flex;align-items:center;gap:12px;padding:0 20px;background:#1b2027;border-bottom:1px solid #2a2f36">
+        <span style="font-size:20px">MCP 工具清单</span><span style="font-size:17px;color:var(--dim2)">tools/list</span>
+        <span id="s7ToolCount" style="margin-left:auto;font-size:18px;color:var(--accent)"></span>
+      </div>
+      <div id="s7Tools"></div>
+    </div>
+    <div id="s7Config" style="position:absolute;left:64px;top:700px;width:830px;background:#101316;border:1px solid #262c33;
+         border-radius:12px;padding:16px 20px;font-family:'Cascadia Mono',Consolas,monospace;font-size:17px;line-height:1.72;color:#cfd6df"></div>
+    <div id="s7Toggle" style="position:absolute;left:930px;top:820px"></div>
+    <div id="s7Audit" style="position:absolute;left:930px;top:892px;width:926px;background:#101316;border:1px solid #262c33;
+         border-radius:10px;padding:14px 18px;font-size:18px;line-height:1.7;font-family:'Cascadia Mono',Consolas,monospace"></div>
+  </section>
+
+  <!-- ================= 8. 收尾 ================= -->
+  <section class="scene" id="s8">
+    <div id="s8Lock" style="position:absolute;left:0;right:0;top:58px;text-align:center">
+      <img src="../../src/SeriTerm.App/Assets/seriterm.png" style="width:112px;height:112px">
+      <div style="font-size:56px;font-weight:700;margin-top:10px;letter-spacing:1px">SeriTerm</div>
+      <div style="font-size:24px;color:#9aa3ae;margin-top:8px">Windows 串口调试助手 · 单文件绿色版</div>
+    </div>
+    <div id="s8Cards"></div>
+    <div id="s8Facts" style="position:absolute;left:0;right:0;top:646px;text-align:center;font-size:23px;color:#9aa3ae"></div>
+    <div id="s8Url" style="position:absolute;left:0;right:0;top:742px;text-align:center;font-size:30px">
+      <span class="mono" style="color:#7fc4ff">github.com/newMalloc/SeriTerm</span>
+    </div>
+    <div id="s8Tail" style="position:absolute;left:0;right:0;top:816px;text-align:center;font-size:21px;color:#7d8794">MIT 许可 · 354 个自动化测试 · 发布页直接下载 exe</div>
+  </section>
+</div>
+
+<script>
+"use strict";
+const FPS = 30;
+const W = 1920, H = 1080;
+const IMG_W = 2560, IMG_H = 1540;      // 截图原始像素
+const WIN_X = 180, WIN_Y = 36;         // 窗口在舞台上的位置
+const WIN_W = 1560, BAR_H = 0;
+const IMG_DW = WIN_W, IMG_DH = Math.round(IMG_W ? WIN_W * IMG_H / IMG_W : 0); // 962
+const SCALE = WIN_W / IMG_W;           // 0.625
+
+/* ---------------- 时间轴 ---------------- */
+const SCENES = [
+  { id:'s1', start:0.0,  end:4.6  },
+  { id:'s2', start:4.4,  end:13.0 },
+  { id:'s3', start:12.8, end:20.6 },
+  { id:'s4', start:20.4, end:27.4 },
+  { id:'s5', start:27.2, end:33.6 },
+  { id:'s6', start:33.4, end:40.8 },
+  { id:'s7', start:40.6, end:49.8 },
+  { id:'s8', start:49.6, end:56.6 },
+];
+const TOTAL = SCENES[SCENES.length-1].end;
+const FADE = 0.55;
+
+/* ---------------- 工具 ---------------- */
+const $ = (s, r) => (r||document).querySelector(s);
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t,a,b) => b === a ? (t >= b ? 1 : 0) : clamp01((t-a)/(b-a));
+const ease = x => 1 - Math.pow(1-x, 3);
+const ease2 = x => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x+2,3)/2;
+const eseg = (t,a,b) => ease(seg(t,a,b));
+const mix = (a,b,k) => a + (b-a)*k;
+const show = (el, v) => { el.style.opacity = v; el.style.visibility = v <= 0.001 ? 'hidden' : 'visible'; };
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+
+/* ---------------- 背景流光 ---------------- */
+const sweeps = [];
+(function buildSweeps(){
+  const host = $('#sweeps');
+  const seed = [0.03,0.19,0.37,0.52,0.68,0.86];
+  for (let i=0;i<6;i++){
+    const s = el('div','sweep');
+    s.dataset.y = (60 + seed[i]*960).toFixed(0);
+    s.dataset.ph = seed[i].toFixed(3);
+    s.dataset.sp = (0.020 + (i%3)*0.009).toFixed(3);
+    s.dataset.op = (0.20 + (i%4)*0.13).toFixed(2);
+    host.appendChild(s); sweeps.push(s);
+  }
+})();
+function drawBg(t){
+  for (const s of sweeps){
+    const y = +s.dataset.y, ph = +s.dataset.ph, sp = +s.dataset.sp, op = +s.dataset.op;
+    const k = (ph + t*sp) % 1;
+    s.style.transform = 'translate(' + ((k*2380 - 400).toFixed(1)) + 'px,' + y + 'px)';
+    s.style.opacity = (op * Math.sin(Math.PI*k)).toFixed(3);
+  }
+}
+
+/* ---------------- 场景 1：开场 ---------------- */
+const introTags = ['单文件绿色版','免安装','无外部依赖'];
+(function(){
+  const host = $('#introTags');
+  introTags.forEach((txt,i) => {
+    const n = el('span','tag', txt);
+    n.style.margin = '0 8px'; n.style.opacity = 0;
+    n.dataset.i = i;
+    host.appendChild(n);
+  });
+})();
+function renderS1(t){
+  const iconIn = eseg(t,0.05,0.85);
+  const ic = $('#introIcon');
+  ic.style.opacity = iconIn;
+  ic.style.transform = 'scale(' + mix(0.72,1,ease(iconIn)).toFixed(4) + ')';
+  const r1 = seg(t,0.30,1.70), r2 = seg(t,0.85,2.30);
+  const ring = (node,k) => { node.style.opacity = (0.85*(1-k)).toFixed(3); node.style.transform = 'scale(' + mix(0.65,2.05,ease(k)).toFixed(3) + ')'; };
+  ring($('#introRing'), r1); ring($('#introRing2'), r2);
+  const tIn = eseg(t,0.75,1.45);
+  const ti = $('#introTitle');
+  ti.style.opacity = tIn; ti.style.transform = 'translateY(' + mix(26,0,tIn).toFixed(1) + 'px)';
+  const sIn = eseg(t,1.05,1.75);
+  const su = $('#introSub');
+  su.style.opacity = sIn; su.style.transform = 'translateY(' + mix(22,0,sIn).toFixed(1) + 'px)';
+  $('#introLine').style.width = (eseg(t,1.25,1.95) * 560).toFixed(1) + 'px';
+  const tags = $('#introTags').children;
+  for (let i=0;i<tags.length;i++){
+    const k = eseg(t,1.55 + i*0.13, 2.15 + i*0.13);
+    tags[i].style.opacity = k;
+    tags[i].style.transform = 'translateY(' + mix(16,0,k).toFixed(1) + 'px)';
+  }
+  const fIn = eseg(t,2.0,2.6);
+  $('#introFoot').style.opacity = fIn * 0.95;
+}
+
+/* ---------------- 场景 2：主界面巡览 ---------------- */
+const CALLOUTS = [
+  { t:6.20, rect:[21,69,509,415],   chip:[360,70], w:480, title:'端口设置',
+    detail:'设备友好名 + 波特率/校验/流控，预设可命名保存' },
+  { t:7.70, rect:[21,495,509,230],  chip:[360,320], w:480, title:'接收设置',
+    detail:'文本 / HEX 双模式，空闲间隔 / 分隔符断帧' },
+  { t:9.20, rect:[1959,72,550,343], chip:[700,100], w:440, title:'Ctrl+F 实时查找',
+    detail:'命中计数、字符级高亮，关键字可收藏' },
+  { t:10.70,rect:[21,1111,509,177], chip:[360,630], w:480, title:'AI 接入（MCP）',
+    detail:'复制配置即可让模型读到设备输出' },
+];
+(function(){
+  const host = $('#s2Chips');
+  CALLOUTS.forEach((c,i) => {
+    const n = el('div','chip', '<div class="ct">'+c.title+'</div><div class="cd">'+c.detail+'</div>');
+    n.style.left = (WIN_X + c.chip[0]) + 'px';
+    n.style.top = (WIN_Y + c.chip[1] + BAR_H) + 'px';
+    n.style.width = c.w + 'px';
+    n.style.opacity = 0; host.appendChild(n); c.node = n;
+  });
+})();
+function renderS2(t){
+  const s = SCENES[1];
+  const wIn = eseg(t, s.start + 0.10, s.start + 1.15);
+  const win = $('#s2Win');
+  win.style.left = WIN_X + 'px'; win.style.top = WIN_Y + 'px';
+  win.style.width = WIN_W + 'px';
+  const zoom = 1 + 0.022 * eseg(t, s.start + 0.9, s.end);
+  win.style.transformOrigin = '50% 55%';
+  win.style.transform = 'translateY(' + mix(70,0,wIn).toFixed(1) + 'px) scale(' + (mix(0.94,1,ease(wIn)) * zoom).toFixed(4) + ')';
+  win.style.opacity = wIn;
+
+  // 聚光
+  let dim = 0, active = -1;
+  for (let i=0;i<CALLOUTS.length;i++){
+    const c = CALLOUTS[i];
+    const on = seg(t, c.t - 0.32, c.t) * (1 - seg(t, c.t + 1.18, c.t + 1.5));
+    if (on > dim){ dim = on; active = i; }
+  }
+  $('#s2Dim').style.opacity = dim.toFixed(3);
+  const spot = $('#s2Spot');
+  if (active >= 0){
+    const c = CALLOUTS[active];
+    const r = c.rect;
+    spot.style.display = 'block';
+    spot.style.left = (r[0]*SCALE).toFixed(1) + 'px';
+    spot.style.top  = (r[1]*SCALE).toFixed(1) + 'px';
+    spot.style.width  = (r[2]*SCALE).toFixed(1) + 'px';
+    spot.style.height = (r[3]*SCALE).toFixed(1) + 'px';
+    spot.style.backgroundImage = 'url(../images/main.png)';
+    spot.style.backgroundSize = IMG_DW + 'px ' + IMG_DH + 'px';
+    spot.style.backgroundPosition = (-r[0]*SCALE).toFixed(1) + 'px ' + (-r[1]*SCALE).toFixed(1) + 'px';
+    spot.style.opacity = Math.min(1, dim*1.4).toFixed(3);
+  } else {
+    spot.style.opacity = 0;
+  }
+  CALLOUTS.forEach((c,i) => {
+    const k = seg(t, c.t - 0.28, c.t + 0.10) * (1 - seg(t, c.t + 1.18, c.t + 1.46));
+    const n = c.node;
+    n.style.opacity = k;
+    const dir = c.chip[0] > 800 ? 1 : -1;
+    n.style.transform = 'translateX(' + (dir * mix(26,0,ease(k))).toFixed(1) + 'px)';
+    n.style.zIndex = 5;
+  });
+  const capIn = eseg(t, s.end - 1.35, s.end - 0.85);
+  $('#s2Caption').style.opacity = capIn;
+  $('#s2Caption').textContent = '深 / 浅两套主题，运行中即时切换 · 设置自动记住，下次打开接着用';
+}
+
+/* ---------------- 场景 3：长跑 ---------------- */
+const LOG_LINES = [
+  ['10:15:24.573','--','串口已打开: COM5 115200,8,None,1',''],
+  ['10:15:24.759','Tx','STATUS',''],
+  ['10:15:25.226','Rx','boot: SeriTerm demo device v1.1.0',''],
+  ['10:15:25.362','Rx','wifi: connecting to "lab-ap" ...',''],
+  ['10:15:25.497','Rx','wifi: connected, ip=192.168.1.42 rssi=-58',''],
+  ['10:15:25.637','Rx','sensor: temp=23.5C hum=41%',''],
+  ['10:15:25.778','Rx','mqtt: publish ok topic=device/telemetry',''],
+  ['10:15:25.910','Rx','error: crc mismatch, expected 0x4B21 got 0x4A21','warn'],
+  ['10:15:26.054','Rx','retry 1/3 ...',''],
+  ['10:15:26.197','Rx','error: crc mismatch, expected 0x4B21 got 0x4A21','warn'],
+  ['10:15:26.329','Rx','retry 2/3 ...',''],
+  ['10:15:26.332','Rx','OK: frame accepted, seq=42',''],
+  ['10:15:26.473','Rx','01 03 04 00 00 00 00 FA 33',''],
+  ['10:15:26.600','Tx','sensor: temp=23.6C hum=41%',''],
+  ['10:15:26.604','Rx','sensor: temp=23.6C hum=41%',''],
+  ['10:15:26.740','Rx','device: status=idle uptime=00:12:41',''],
+  ['10:15:26.750','Tx','device: status=idle uptime=00:12:41',''],
+  ['10:15:26.988','Rx','mqtt: publish ok topic=device/telemetry',''],
+  ['10:15:27.121','Rx','wifi: rssi=-58 → -57',''],
+  ['10:15:27.256','Tx','PING',''],
+  ['10:15:27.261','Rx','PONG 0.8ms',''],
+  ['10:15:27.404','Rx','hex: A5 5A 10 20 30 40 50 60 0D 0A',''],
+];
+(function(){
+  const track = $('#s3Track');
+  const rows = [];
+  for (let r=0;r<3;r++){
+    for (let i=0;i<LOG_LINES.length;i++){
+      const [ts,dir,msg,cls] = LOG_LINES[i];
+      const n = el('div','ln ' + (dir==='Tx'?'tx':'rx') + (cls?' '+cls:''),
+        '<span class="ts">'+ts+'</span>  <span class="dir">'+dir+'</span>'+msg);
+      n.dataset.li = i;
+      track.appendChild(n); rows.push(n);
+    }
+  }
+  $('#s3Track').dataset.count = rows.length;
+  $('#s3Track').dataset.listh = (LOG_LINES.length * 26);
+})();
+function renderS3(t){
+  const s = SCENES[2], t0 = s.start + 0.35;
+  const run = Math.max(0, t - t0);
+  const V = 620; // px/s
+  const listH = +$('#s3Track').dataset.listh;
+  const off = (run * V) % listH;
+  $('#s3Track').style.transform = 'translateY(' + (-off).toFixed(1) + 'px)';
+  // 高亮轮换
+  const hlIndex = Math.floor(run / 0.42) % LOG_LINES.length;
+  const rows = $('#s3Track').children;
+  const flash = 1 - seg(run % 0.42, 0.22, 0.42);
+  for (let i=0;i<rows.length;i++){
+    const isHl = (+rows[i].dataset.li) === hlIndex;
+    rows[i].classList.toggle('hl', isHl && flash > 0.05);
+    rows[i].classList.toggle('cur', isHl && flash > 0.6);
+  }
+  // 计数
+  const k = eseg(t, s.start + 0.5, s.end - 1.6);
+  const n = Math.round(200000 * k);
+  $('#s3Count').innerHTML = n.toLocaleString('en-US') + '<span class="unit">行</span>';
+  const cards = [$('#s3C1'),$('#s3C2'),$('#s3C3')];
+  cards.forEach((c,i) => {
+    const kk = eseg(t, s.start + 0.30 + i*0.30, s.start + 0.95 + i*0.30);
+    c.style.opacity = kk; c.style.transform = 'translateX(' + mix(50,0,kk).toFixed(1) + 'px)';
+  });
+  const ff = eseg(t, s.start + 0.9, s.start + 1.5);
+  $('#s3Fps').style.opacity = ff;
+  const box = $('#s3Box');
+  box.style.opacity = eseg(t, s.start + 0.05, s.start + 0.6);
+  box.style.transform = 'translateY(' + mix(30,0,eseg(t, s.start + 0.05, s.start + 0.7)).toFixed(1) + 'px)';
+}
+
+/* ---------------- 场景 4：断帧 ---------------- */
+const FRAMES = [
+  ['AA','55','01','10','2F','0D','0A'],
+  ['AA','55','02','11','30','0D','0A'],
+  ['AA','55','03','12','31','0D','0A'],
+];
+const FRAME_MODES = ['分隔符断帧','空闲间隔断帧','不断帧'];
+(function(){
+  const strip = $('#s4Strip');
+  const flat = [];
+  FRAMES.forEach((f,fi) => f.forEach((b,bi) => flat.push({b, fi, bi})));
+  flat.forEach((x,idx) => {
+    const n = el('span','byte' + (x.b === '0D' || x.b === '0A' ? ' delim' : ''), x.b);
+    n.dataset.idx = idx;
+    n.style.display = 'inline-flex';
+    strip.appendChild(n);
+  });
+  // 括号与标签
+  const cuts = $('#s4Cuts');
+  const totalW = flat.length * 78;
+  const startX = (W - totalW) / 2 + 39;
+  for (let fi=0; fi<FRAMES.length; fi++){
+    const x0 = startX + fi * 7 * 78 - 39 + 3;
+    const w = 7 * 78 - 12;
+    const brace = el('div','brace');
+    brace.style.left = x0 + 'px'; brace.style.top = '500px'; brace.style.width = w + 'px';
+    brace.dataset.fi = fi;
+    cuts.appendChild(brace);
+    const lbl = el('div','framelbl','帧 ' + (fi+1));
+    lbl.style.left = (x0 + w/2 - 60) + 'px'; lbl.style.top = '542px'; lbl.style.width = '120px';
+    lbl.dataset.fi = fi;
+    cuts.appendChild(lbl);
+    if (fi < FRAMES.length - 1){
+      const cut = el('div','cut');
+      cut.style.left = (x0 + w + 6) + 'px'; cut.style.top = '398px'; cut.style.height = '84px';
+      cut.dataset.fi = fi;
+      cuts.appendChild(cut);
+    }
+  }
+  const chips = $('#s4Chips');
+  FRAME_MODES.forEach((m,i) => {
+    const n = el('span','tag', m);
+    n.style.margin = '0 10px'; n.style.fontSize = '22px'; n.style.padding = '12px 26px';
+    n.dataset.i = i;
+    chips.appendChild(n);
+  });
+})();
+function renderS4(t){
+  const s = SCENES[3], t0 = s.start + 0.5;
+  const bytes = $('#s4Strip').children;
+  for (let i=0;i<bytes.length;i++){
+    const k = eseg(t, t0 + i*0.055, t0 + 0.28 + i*0.055);
+    bytes[i].style.opacity = k;
+    bytes[i].style.transform = 'translateY(' + mix(-26,0,k).toFixed(1) + 'px) scale(' + mix(0.86,1,ease(k)).toFixed(3) + ')';
+  }
+  const bk = eseg(t, t0 + 1.55, t0 + 2.05);
+  $('#s4Cuts').style.opacity = bk;
+  const cuts = $('#s4Cuts').children;
+  for (const c of cuts){
+    const fi = +c.dataset.fi;
+    const k = eseg(t, t0 + 1.55 + fi*0.28, t0 + 2.05 + fi*0.28);
+    c.style.transform = 'translateY(' + mix(-22,0,k).toFixed(1) + 'px)';
+  }
+  $('#s4Note').style.opacity = eseg(t, t0 + 2.3, t0 + 2.8);
+  const chips = $('#s4Chips').children;
+  const chipIn = eseg(t, t0 + 3.0, t0 + 3.5);
+  let active = -1;
+  if (chipIn > 0.9) active = Math.floor((t - (t0 + 3.4)) / 1.15) % FRAME_MODES.length;
+  for (let i=0;i<chips.length;i++){
+    const on = (i === active);
+    chips[i].style.opacity = (chipIn * (active < 0 ? 0.55 : (on ? 1 : 0.5))).toFixed(3);
+    chips[i].style.borderColor = on ? 'rgba(47,155,240,.9)' : 'var(--line)';
+    chips[i].style.color = on ? '#eaf3fb' : 'var(--dim)';
+    chips[i].style.background = on ? 'rgba(47,155,240,.14)' : 'rgba(255,255,255,.03)';
+  }
+  $('#s4Note2').style.opacity = eseg(t, s.end - 1.3, s.end - 0.8);
+}
+
+/* ---------------- 场景 5：自动重连 ---------------- */
+const NODES = [
+  { x:0.035, t:0.30, label:'已打开', sub:'COM5 115200', color:'var(--ok)' },
+  { x:0.190, t:1.55, label:'设备断开', sub:'ERROR_ACCESS_DENIED', color:'var(--err)' },
+  { x:0.360, t:2.35, label:'重连 1/3', sub:'等待 1 s', color:'var(--warn)' },
+  { x:0.515, t:2.95, label:'重连 2/3', sub:'等待 2 s', color:'var(--warn)' },
+  { x:0.670, t:3.55, label:'重连 3/3', sub:'等待 4 s', color:'var(--warn)' },
+  { x:0.825, t:4.15, label:'退避 8 s', sub:'指数退避', color:'var(--warn)' },
+  { x:0.965, t:4.95, label:'已恢复', sub:'COM5 115200', color:'var(--ok)' },
+];
+(function(){
+  const host = $('#s5Nodes');
+  NODES.forEach(n => {
+    const node = el('div','node');
+    node.style.left = (150 + n.x * 1620) + 'px';
+    node.style.top = '520px';
+    node.innerHTML = '<div class="ndot" style="background:'+n.color+'"></div>' +
+      '<div class="nlabel">'+n.label+'</div><div class="nsub">'+n.sub+'</div>';
+    node.style.opacity = 0;
+    host.appendChild(node); n.node = node;
+    n.dot = node.querySelector('.ndot');
+  });
+})();
+function renderS5(t){
+  const s = SCENES[4], t0 = s.start;
+  const lastT = NODES[NODES.length-1].t;
+  const prog = seg(t, t0 + NODES[0].t, t0 + lastT);
+  $('#s5Fill').style.width = (prog * 1620).toFixed(1) + 'px';
+  NODES.forEach((n,i) => {
+    const k = eseg(t, t0 + n.t - 0.25, t0 + n.t + 0.2);
+    n.node.style.opacity = k;
+    n.node.style.transform = 'translate(-50%,-50%) translateY(' + mix(18,0,k).toFixed(1) + 'px) scale(' + mix(0.9,1,ease(k)).toFixed(3) + ')';
+    const pulse = (i >= 2 && i <= 5) ? (1 - seg(t, t0 + n.t, t0 + n.t + 0.7)) : 0;
+    n.dot.style.boxShadow = '0 0 0 ' + (6 + pulse * 11).toFixed(1) + 'px rgba(224,160,48,' +
+      (0.16 + 0.20 * pulse).toFixed(3) + ')';
+  });
+  // 重连时的日志
+  const strip = $('#s5Log');
+  const lines = [
+    [1.70, '<span style="color:#9aa3ae">10:15:31.204  --  </span>设备已拔出，停止接收'],
+    [3.00, '<span style="color:#9aa3ae">10:15:32.208  --  </span><span style="color:#e0a030">正在重连 COM5（第 2 次，等待 2 s）</span>'],
+    [5.00, '<span style="color:#9aa3ae">10:15:36.210  --  </span><span style="color:#4ec94e">已重新打开：COM5 115200,8,None,1</span>'],
+  ];
+  strip.innerHTML = lines.map(([dt, html]) => {
+    const k = eseg(t, t0 + dt, t0 + dt + 0.4);
+    return '<div style="opacity:' + k.toFixed(2) + '">' + html + '</div>';
+  }).join('');
+  strip.style.opacity = eseg(t, t0 + 1.6, t0 + 2.1);
+  const cap = $('#s5Caption');
+  const k = eseg(t, t0 + 5.4, t0 + 5.9);
+  cap.style.opacity = k;
+  cap.textContent = '重连成功后沿用原来的端口与断帧设置，日志接着写';
+}
+
+/* ---------------- 场景 6：查找与收藏 ---------------- */
+const SEARCH_LINES = [
+  ['10:15:24.573','--','串口已打开: COM5 115200,8,None,1'],
+  ['10:15:24.759','Tx','STATUS'],
+  ['10:15:25.226','Rx','boot: SeriTerm demo device v1.1.0'],
+  ['10:15:25.910','Rx','error: crc mismatch, expected 0x4B21 got 0x4A21'],
+  ['10:15:26.054','Rx','retry 1/3 ...'],
+  ['10:15:26.197','Rx','error: crc mismatch, expected 0x4B21 got 0x4A21'],
+  ['10:15:26.329','Rx','OK: frame accepted, seq=42'],
+  ['10:15:26.473','Rx','error: recovered after retry 2'],
+  ['10:15:26.750','Rx','error: none, link stable'],
+  ['10:15:27.121','Rx','sensor: temp=23.6C hum=41%'],
+  ['10:15:27.256','Tx','PING'],
+  ['10:15:27.261','Rx','PONG 0.8ms'],
+  ['10:15:27.404','Rx','hex: A5 5A 10 20 30 40 50 60 0D 0A'],
+  ['10:15:27.560','Rx','mqtt: publish ok topic=device/telemetry'],
+  ['10:15:27.702','Rx','wifi: rssi=-57 → -56'],
+  ['10:15:27.844','Rx','sensor: temp=23.7C hum=41%'],
+  ['10:15:27.988','Tx','STATUS'],
+  ['10:15:28.104','Rx','device: status=idle uptime=00:12:55'],
+  ['10:15:28.246','Rx','mqtt: publish ok topic=device/telemetry'],
+  ['10:15:28.390','Rx','OK: frame accepted, seq=58'],
+  ['10:15:28.534','Rx','hex: A5 5A 11 21 31 41 51 61 0D 0A'],
+  ['10:15:28.680','Rx','wifi: connected, ip=192.168.1.42 rssi=-56'],
+];
+const FAVS = ['error','OK','retry','boot'];
+(function(){
+  const body = $('#s6Body');
+  SEARCH_LINES.forEach(([ts,dir,msg]) => {
+    const cls = dir === 'Tx' ? 'tx' : 'rx';
+    const n = el('div','ln ' + cls, '<span class="ts">'+ts+'</span>  <span class="dir">'+dir+'</span>' + msg);
+    n.dataset.msg = msg; n.dataset.ts = ts; n.dataset.dir = dir;
+    body.appendChild(n);
+  });
+  const list = $('#s6FavList');
+  FAVS.forEach((f,i) => {
+    const row = el('div','', '<span class="mono" style="font-size:20px">'+f+'</span>' +
+      '<span style="float:right;color:#6d7681" data-x="1">×</span>');
+    row.style.cssText += 'height:52px;display:flex;align-items:center;padding:0 14px;border-radius:9px;' +
+      'border:1px solid #2c323b;background:#15181d;margin-bottom:10px';
+    row.dataset.i = i;
+    list.appendChild(row);
+  });
+})();
+function renderS6(t){
+  const s = SCENES[5], t0 = s.start;
+  const box = $('#s6Box'), find = $('#s6Find');
+  const bin = eseg(t, t0 + 0.05, t0 + 0.6);
+  box.style.opacity = bin; box.style.transform = 'translateY(' + mix(26,0,bin).toFixed(1) + 'px)';
+  find.style.opacity = bin;
+
+  // 打字
+  const typed = 'error'.slice(0, Math.floor(seg(t, t0 + 0.75, t0 + 1.55) * 5.01));
+  $('#s6Text').textContent = typed;
+  const caretOn = (Math.floor((t - t0) * 2.2) % 2) === 0 && typed.length < 5;
+  $('#s6Caret').style.opacity = caretOn ? 1 : 0;
+
+  const searching = typed.length === 5;
+  const cur = searching ? (1 + Math.floor(Math.max(0, t - (t0 + 1.75)) / 0.95)) % 4 : 0;
+  $('#s6Count').textContent = '第 ' + (searching ? cur + 1 : 0) + ' / 共 4 条';
+
+  // 字符级高亮
+  const rows = $('#s6Body').children;
+  let seen = -1;
+  for (const row of rows){
+    const raw = row.dataset.msg;
+    if (raw.indexOf('error') < 0) continue;
+    seen++;
+    const want = searching ? '1' : '0';
+    if (row.dataset.marked !== want){
+      row.innerHTML = '<span class="ts">'+row.dataset.ts+'</span>  <span class="dir">'+row.dataset.dir+'</span>' +
+        (searching ? raw.replace('error','<span class="mk">error</span>') : raw);
+      row.dataset.marked = want;
+    }
+    if (searching){
+      const mk = row.querySelector('.mk');
+      if (mk){ mk.style.background = (seen === cur) ? 'var(--hlcur)' : 'var(--hl)'; mk.style.borderRadius = '3px'; }
+    }
+    row.style.background = (searching && seen === cur) ? 'rgba(32,48,61,.85)' : '';
+  }
+  // 收藏面板
+  const fav = $('#s6Fav');
+  const fin = eseg(t, t0 + 3.2, t0 + 3.8);
+  fav.style.opacity = fin;
+  fav.style.transform = 'translateX(' + mix(60,0,fin).toFixed(1) + 'px)';
+  const rowsF = $('#s6FavList').children;
+  for (let i=0;i<rowsF.length;i++){
+    const k = eseg(t, t0 + 3.5 + i*0.13, t0 + 3.9 + i*0.13);
+    rowsF[i].style.opacity = k;
+    rowsF[i].style.transform = 'translateY(' + mix(12,0,k).toFixed(1) + 'px)';
+    const picked = (i === 0) && t > t0 + 5.1;
+    rowsF[i].style.borderColor = picked ? 'rgba(47,155,240,.85)' : '#2c323b';
+    rowsF[i].style.background = picked ? 'rgba(47,155,240,.12)' : '#15181d';
+    const x = rowsF[i].querySelector('[data-x]');
+    x.textContent = picked ? '★' : '×';
+    x.style.color = picked ? '#ffd479' : '#6d7681';
+  }
+  const hint = $('#s6Hint');
+  const hin = eseg(t, t0 + 5.0, t0 + 5.5);
+  hint.style.opacity = hin;
+  hint.innerHTML = '关键字收藏后浮层常驻；点一下即回填搜索框，<br>并直接跳到第一处命中。';
+}
+
+/* ---------------- 场景 7：MCP ---------------- */
+const CLIENTS = [
+  { name:'Claude Desktop', tag:'CD' },
+  { name:'Cursor',         tag:'CU' },
+  { name:'VS Code',        tag:'VS' },
+];
+const TOOLS_READ = [
+  ['serial_list_ports','列出串口'],
+  ['serial_get_status','读取会话状态'],
+  ['serial_read_frames','读取帧（带时间与方向）'],
+  ['serial_wait_for_pattern','阻塞等关键词'],
+];
+const TOOLS_WRITE = [
+  ['serial_open','打开串口'],
+  ['serial_close','关闭串口'],
+  ['serial_set_baud_rate','在线改波特率'],
+  ['serial_write','发送数据（≤4096 字节）'],
+];
+(function(){
+  const host = $('#s7Clients');
+  CLIENTS.forEach((c,i) => {
+    const n = el('div','client', '<div class="ci">'+c.tag+'</div><div class="cn">'+c.name+'</div>');
+    n.style.left = '64px'; n.style.top = (250 + i*104) + 'px';
+    n.dataset.i = i;
+    host.appendChild(n); c.node = n;
+  });
+  // 客户端汇流到界面进程
+  const bus = $('#s7Bus');
+  const vl = el('div');
+  vl.style.cssText = 'position:absolute;left:396px;top:287px;width:2px;height:208px;background:rgba(47,155,240,.30)';
+  bus.appendChild(vl);
+  [287,391,495].forEach(y => {
+    const s = el('div');
+    s.style.cssText = 'position:absolute;left:364px;top:'+(y-1)+'px;width:32px;height:2px;background:rgba(47,155,240,.30)';
+    bus.appendChild(s);
+  });
+  const hz = el('div','pipe');
+  hz.style.cssText += 'position:absolute;left:396px;top:390px;width:78px';
+  bus.appendChild(hz);
+  // 界面进程 → MCP 工具
+  const pipe = $('#s7Pipe');
+  const pz = el('div','pipe');
+  pz.style.cssText += 'position:absolute;left:770px;top:390px;width:160px';
+  pipe.appendChild(pz);
+  const pl = el('div','', 'MCP');
+  pl.style.cssText = 'position:absolute;left:770px;top:352px;width:160px;text-align:center;font-size:17px;color:#7fc4ff;letter-spacing:1px';
+  pipe.appendChild(pl);
+
+  const node = $('#s7Node');
+  node.innerHTML = '<img src="../../src/SeriTerm.App/Assets/seriterm.png" style="width:64px;height:64px">' +
+    '<div><div style="font-size:24px;font-weight:600">SeriTerm</div>' +
+    '<div style="font-size:17px;color:var(--dim);margin-top:6px">界面进程 · 持有串口</div></div>';
+  const tools = $('#s7Tools');
+  const mk = (arr, isWrite) => arr.forEach(([name,zh]) => {
+    const r = el('div','toolrow' + (isWrite ? ' w' : ''),
+      '<span class="td"></span><span class="tn">'+name+'</span><span class="tz">'+zh+'</span>');
+    r.dataset.write = isWrite ? '1' : '0';
+    tools.appendChild(r);
+  });
+  mk(TOOLS_READ,false); mk(TOOLS_WRITE,true);
+  $('#s7Toggle').innerHTML = '<span class="check"><span class="cbox" id="s7Cbox"></span>允许 AI 发送数据（完全权限）</span>';
+})();
+function renderS7(t){
+  const s = SCENES[6], t0 = s.start;
+  // 客户端逐个接入
+  CLIENTS.forEach((c,i) => {
+    const k = eseg(t, t0 + 0.45 + i*0.22, t0 + 0.95 + i*0.22);
+    c.node.style.opacity = k * 0.98;
+    c.node.style.transform = 'translateX(' + mix(-40,0,k).toFixed(1) + 'px)';
+  });
+  const nin = eseg(t, t0 + 0.9, t0 + 1.45);
+  const node = $('#s7Node');
+  node.style.opacity = nin;
+  node.style.transform = 'scale(' + mix(0.9,1,ease(nin)).toFixed(3) + ')';
+  // 连线
+  const bin = eseg(t, t0 + 1.15, t0 + 1.7);
+  const bus = $('#s7Bus');
+  bus.style.opacity = bin;
+  const pz = $('#s7Pipe');
+  pz.style.opacity = eseg(t, t0 + 1.35, t0 + 1.9);
+  const flow = (t * 0.55) % 1;
+  for (const p of document.querySelectorAll('#s7Bus .pipe, #s7Pipe .pipe')){
+    p.style.backgroundPosition = (-flow * 26).toFixed(1) + 'px 0';
+  }
+  $('#s7Arch').style.opacity = eseg(t, t0 + 1.6, t0 + 2.1) * 0.95;
+  // 工具清单
+  const panel = $('#s7Panel');
+  const panin = eseg(t, t0 + 1.55, t0 + 2.1);
+  panel.style.opacity = panin;
+  panel.style.transform = 'translateX(' + mix(40,0,panin).toFixed(1) + 'px)';
+  // 权限开关
+  const toggleOn = t > t0 + 4.55;
+  const tk = eseg(t, t0 + 4.0, t0 + 4.5);
+  $('#s7Toggle').style.opacity = tk;
+  $('#s7Toggle').style.transform = 'translateY(' + mix(14,0,tk).toFixed(1) + 'px)';
+  $('#s7Cbox').classList.toggle('on', toggleOn);
+  // 工具行
+  const rows = $('#s7Tools').children;
+  let readSeen = 0, writeSeen = 0;
+  for (const r of rows){
+    const isWrite = r.dataset.write === '1';
+    let k;
+    if (!isWrite){ k = eseg(t, t0 + 2.0 + readSeen*0.16, t0 + 2.4 + readSeen*0.16); readSeen++; }
+    else { k = toggleOn ? eseg(t, t0 + 4.7 + writeSeen*0.16, t0 + 5.1 + writeSeen*0.16) : 0; writeSeen++; }
+    r.style.opacity = k;
+    r.style.transform = 'translateX(' + mix(26,0,k).toFixed(1) + 'px)';
+  }
+  const shown = 4 + (toggleOn ? Math.min(4, Math.max(0, Math.floor((t - (t0+4.7)) / 0.16) + 1)) : 0);
+  $('#s7ToolCount').textContent = (toggleOn ? shown : 4) + ' / 8 个工具';
+  // 「复制配置」给出的内容
+  const cfg = $('#s7Config');
+  cfg.style.opacity = eseg(t, t0 + 5.4, t0 + 5.75);
+  const cfgLines = [
+    '<span style="color:#7d8794">界面上的「复制配置」给的就是这一段</span>',
+    '{',
+    '  "mcpServers": {',
+    '    "seriterm": {',
+    '      "command": "…\\SeriTerm.exe",',
+    '      "args": ["--mcp-stdio"] } } }',
+  ];
+  cfg.innerHTML = cfgLines.map((h,i) => {
+    const k = eseg(t, t0 + 5.75 + i*0.12, t0 + 6.05 + i*0.12);
+    return '<div style="opacity:' + (k * 0.95).toFixed(2) + '">' + h + '</div>';
+  }).join('');
+  // 审计
+  const a1 = eseg(t, t0 + 5.6, t0 + 6.0);
+  const a2 = eseg(t, t0 + 6.3, t0 + 6.7);
+  const a3 = eseg(t, t0 + 7.1, t0 + 7.5);
+  const aa = $('#s7Audit');
+  aa.style.opacity = Math.max(a1,a3);
+  aa.innerHTML =
+    '<div style="opacity:'+a1.toFixed(2)+';color:#9aa3ae">10:15:24.759  --  <span style="color:#7fc4ff">[AI] 已接入（权限：完全权限）。</span></div>' +
+    '<div style="opacity:'+a2.toFixed(2)+';color:#cfd6df">10:15:26.750  Tx  <span style="color:#7fc4ff">[AI] 发送 8 字节：STATUS</span></div>' +
+    '<div style="opacity:'+a3.toFixed(2)+';color:#7d8794">单次 ≤ 4096 字节 · 3 次/秒 · 随时可在界面收回权限</div>';
+}
+
+/* ---------------- 场景 8：收尾 ---------------- */
+const DOWNLOADS = [
+  { name:'SeriTerm-1.1.0-win-x64.exe', size:'3.8 MB',
+    d1:'推荐', d2:'不含 .NET 运行时；机器上没装会先问一句，同意后自动装好再启动' },
+  { name:'SeriTerm-1.1.0-win-x64-full.exe', size:'67 MB',
+    d1:'离线 / 内网', d2:'运行时整套打包在 exe 里，不联网、不装任何东西' },
+];
+(function(){
+  const host = $('#s8Cards');
+  DOWNLOADS.forEach((c,i) => {
+    const n = el('div','');
+    n.style.cssText = 'position:absolute;top:340px;width:660px;min-height:240px;background:linear-gradient(180deg,rgba(38,44,53,.95),rgba(22,26,31,.95));' +
+      'border:1px solid #333a44;border-radius:16px;padding:28px 30px';
+    n.style.left = (i === 0 ? 250 : 1010) + 'px';
+    n.innerHTML =
+      '<div style="font-size:19px;color:#7fc4ff;letter-spacing:2px">'+c.d1+'</div>' +
+      '<div class="mono" style="font-size:22px;margin-top:14px;color:#eaf0f7">'+c.name+'</div>' +
+      '<div style="font-size:44px;font-weight:700;margin-top:16px">'+c.size+'</div>' +
+      '<div style="font-size:19px;color:var(--dim);margin-top:16px;line-height:1.45">'+c.d2+'</div>';
+    n.dataset.i = i;
+    host.appendChild(n); c.node = n;
+  });
+})();
+function renderS8(t){
+  const s = SCENES[7], t0 = s.start;
+  const tailFade = 1 - eseg(t, s.end - 2.0, s.end - 1.0);
+  const lin = eseg(t, t0 + 0.15, t0 + 0.75);
+  const lock = $('#s8Lock');
+  lock.style.transform = 'translateY(' + mix(24,0,lin).toFixed(1) + 'px) scale(' + mix(1,1.05,seg(t, s.end-1.7, s.end-0.9)).toFixed(3) + ')';
+  lock.style.opacity = lin.toFixed(3);
+
+  const cards = $('#s8Cards').children;
+  for (let i=0;i<cards.length;i++){
+    const k = eseg(t, t0 + 0.7 + i*0.22, t0 + 1.3 + i*0.22);
+    cards[i].style.opacity = (k * tailFade).toFixed(3);
+    cards[i].style.transform = 'translateY(' + mix(30,0,k).toFixed(1) + 'px)';
+  }
+  const f = eseg(t, t0 + 1.5, t0 + 2.1) * tailFade;
+  const facts = $('#s8Facts');
+  facts.style.opacity = f.toFixed(3);
+  facts.innerHTML = '<span class="tag" style="margin:0 8px">单文件 · 双击即用</span>' +
+    '<span class="tag" style="margin:0 8px">Windows 10 1809+ / x64</span>' +
+    '<span class="tag" style="margin:0 8px">深 / 浅主题</span>' +
+    '<span class="tag" style="margin:0 8px">MIT 开源</span>';
+  const u = eseg(t, t0 + 1.9, t0 + 2.5) * tailFade;
+  $('#s8Url').style.opacity = u.toFixed(3);
+  $('#s8Url').style.transform = 'translateY(' + mix(18,0,u).toFixed(1) + 'px)';
+  $('#s8Tail').style.opacity = (eseg(t, t0 + 2.3, t0 + 2.9) * 0.95 * tailFade).toFixed(3);
+}
+
+/* ---------------- 渲染调度 ---------------- */
+const RENDERERS = [renderS1,renderS2,renderS3,renderS4,renderS5,renderS6,renderS7,renderS8];
+function renderAt(tSec){
+  drawBg(tSec);
+  for (let i=0;i<SCENES.length;i++){
+    const s = SCENES[i], root = document.getElementById(s.id);
+    const fi = eseg(tSec, s.start, s.start + FADE);
+    const fo = eseg(tSec, s.end - FADE, s.end);
+    const env = fi * (1 - fo);
+    const visible = env > 0.002;
+    root.style.opacity = visible ? env.toFixed(4) : 0;
+    root.style.visibility = visible ? 'visible' : 'hidden';
+    if (visible){
+      root.style.transform = 'translateY(' + (mix(26,0,fi) + mix(0,-26,fo)).toFixed(1) + 'px)';
+      RENDERERS[i](tSec);
+    }
+  }
+}
+window.seek = msec => renderAt(msec / 1000);
+window.__total = TOTAL;
+window.__fps = FPS;
+
+/* ---------------- 浏览器里预览用 ---------------- */
+function loop(){
+  const t = performance.now() / 1000;
+  if (t <= TOTAL + 0.6) renderAt(t % (TOTAL + 0.6));
+  requestAnimationFrame(loop);
+}
+const params = new URLSearchParams(location.search);
+function boot(){
+  if (params.has('t')) { renderAt(parseFloat(params.get('t'))); return; }
+  if (params.has('static')) { renderAt(0); return; }
+  loop();
+}
+window.addEventListener('load', () => {
+  const imgs = Array.from(document.images);
+  Promise.all(imgs.map(im => im.decode ? im.decode().catch(()=>{}) : Promise.resolve()))
+    .then(() => { boot(); window.__ready = true; });
+});
+</script>
+</body>
+</html>
