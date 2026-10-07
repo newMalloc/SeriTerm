@@ -6,7 +6,7 @@
 
 [简体中文](README.md) | **English**
 
-A serial port debugging assistant for Windows (C# / WPF / .NET 8) for receiving data, sending commands and capturing
+A serial port debugging assistant for Windows (C# / WPF / .NET) for receiving data, sending commands and capturing
 logs: no stutter over long sessions, a 200,000-line log cap, automatic reconnect, single-file build with no installer.
 It also ships a built-in MCP server, so an AI can read your device output directly.
 
@@ -19,10 +19,10 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 Download from [Releases](https://github.com/newMalloc/SeriTerm/releases). Both files behave the same and are win-x64
 single-file builds, no installer required:
 
-| File | Size | Runtime | Use case |
-|---|---|---|---|
-| `SeriTerm-<version>-win-x64.exe` | ~3.8 MB | Requires the .NET 8 desktop runtime (auto-installed from Microsoft if missing, ~56 MB) | General distribution (recommended) |
-| `SeriTerm-<version>-win-x64-full.exe` | ~67 MB | Bundled in the exe, no network access | Offline / air-gapped machines |
+| File | Runtime | Use case |
+|---|---|---|
+| `SeriTerm-<version>-win-x64.exe` | Requires the .NET desktop runtime, installed automatically if missing | General distribution (recommended) |
+| `SeriTerm-<version>-win-x64-full.exe` | Bundled in the exe, no network access | Offline / air-gapped machines |
 
 ## Features
 
@@ -81,8 +81,9 @@ single-file builds, no installer required:
 
 ## Requirements
 
-Windows 10 1809 or later (64-bit). The full build needs no runtime; the launcher requires the .NET 8 desktop runtime
-(installed automatically if missing). Building from source requires .NET SDK 8.0 or later.
+Windows 10 1809 or later (64-bit). The full build needs no runtime; the launcher requires the .NET desktop runtime
+(installed automatically if missing). Building from source requires the .NET SDK (see the `TargetFramework` in each
+csproj).
 
 ## Build and test
 
@@ -103,10 +104,10 @@ its guard rails; before a release, run `pwsh -File tools/mcp-smoke.ps1 -Exe <exe
 ## Packaging
 
 ```powershell
-pwsh -File tools/publish.ps1                     # launcher, ~3.8 MB (default, for distribution)
-pwsh -File tools/publish.ps1 -All                # launcher + self-contained full build (~67 MB)
+pwsh -File tools/publish.ps1                     # launcher (default, for distribution)
+pwsh -File tools/publish.ps1 -All                # launcher + self-contained full build
 pwsh -File tools/publish.ps1 -SelfContained      # self-contained full build only
-pwsh -File tools/publish.ps1 -FrameworkDependent # framework-dependent single file, ~1.7 MB (local dev)
+pwsh -File tools/publish.ps1 -FrameworkDependent # framework-dependent single file (local dev)
 ```
 
 The launcher is a native exe built with

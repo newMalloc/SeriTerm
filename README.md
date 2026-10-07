@@ -6,7 +6,7 @@
 
 [English](README.en.md) | **简体中文**
 
-Windows 串口调试助手（C# / WPF / .NET 8），用于接收数据、发送命令与记录日志：
+Windows 串口调试助手（C# / WPF / .NET），用于接收数据、发送命令与记录日志：
 长时运行不卡顿，日志上限 20 万行，断线自动重连，单文件免安装；内置 MCP，AI 可直接读取设备输出。
 
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
@@ -17,10 +17,10 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 从 [Releases](https://github.com/newMalloc/SeriTerm/releases) 下载。两个产物功能相同，均为 win-x64 单文件，无需安装：
 
-| 产物 | 大小 | 运行时 | 适用场景 |
-|---|---|---|---|
-| `SeriTerm-<版本>-win-x64.exe` | 约 3.8 MB | 需 .NET 8 桌面运行时（缺失时自动从微软官方安装，约 56 MB） | 常规分发（推荐） |
-| `SeriTerm-<版本>-win-x64-full.exe` | 约 67 MB | 随 exe 打包，不联网 | 离线 / 内网分发 |
+| 产物 | 运行时 | 适用场景 |
+|---|---|---|
+| `SeriTerm-<版本>-win-x64.exe` | 需 .NET 桌面运行时，缺失时自动安装 | 常规分发（推荐） |
+| `SeriTerm-<版本>-win-x64-full.exe` | 随 exe 打包，不联网 | 离线 / 内网分发 |
 
 ## 功能
 
@@ -76,8 +76,8 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 ## 环境要求
 
-Windows 10 1809 或更高版本（64 位）。完整版无需任何运行时；启动器需要 .NET 8 桌面运行时（缺失时自动安装）。
-从源码构建需要 .NET SDK 8.0 或更高版本。
+Windows 10 1809 或更高版本（64 位）。完整版无需任何运行时；启动器需要 .NET 桌面运行时（缺失时自动安装）。
+从源码构建需要 .NET SDK（目标框架见各项目 csproj）。
 
 ## 构建与测试
 
@@ -97,10 +97,10 @@ MCP 链路跨三个进程（AI 客户端 → `--mcp-stdio` 桥 → 界面进程�
 ## 发布
 
 ```powershell
-pwsh -File tools/publish.ps1                     # 启动器，约 3.8 MB（默认，分发用）
-pwsh -File tools/publish.ps1 -All                # 启动器 + 自包含完整版（约 67 MB）
+pwsh -File tools/publish.ps1                     # 启动器（默认，分发用）
+pwsh -File tools/publish.ps1 -All                # 启动器 + 自包含完整版
 pwsh -File tools/publish.ps1 -SelfContained      # 只出自包含完整版
-pwsh -File tools/publish.ps1 -FrameworkDependent # 框架依赖单文件，约 1.7 MB（开发自用）
+pwsh -File tools/publish.ps1 -FrameworkDependent # 框架依赖单文件（开发自用）
 ```
 
 启动器由 [NativeAOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/) 编译为原生 exe，
