@@ -1,8 +1,8 @@
 # SeriTerm 介绍动画（网页版）
 
 一支 56 秒的产品介绍动画：**一张网页**（`index.html`），画面由 JS 按时间轴逐帧算出来，
-用浏览器逐帧截图再编码成 mp4。成品（`SeriTerm-intro-1080p.mp4` / 720p）挂在
-[Releases](https://github.com/newMalloc/SeriTerm/releases) 上。
+用浏览器逐帧截图再编码成 mp4；背景音也是代码合成的（`music.mjs`），没用任何现成素材。
+成品挂在 [Releases](https://github.com/newMalloc/SeriTerm/releases) 上（`SeriTerm-intro-1080p.mp4` / 720p）。
 
 ## 在浏览器里看
 
@@ -40,8 +40,22 @@ cd docs/video
 pnpm install                                  # node_modules/ 已被 .gitignore 忽略
 node snap.mjs 7.0 16.0 37.5                   # 抽查这几秒，看图校对到 snap/
 node capture.mjs 0 56 30 frames 95            # 逐帧 1920x1080@30fps，约 90 秒
-pwsh -File build.ps1                          # 编码 out/*.mp4 并抽封面 out/poster.png
+pwsh -File build.ps1                          # 合成背景音 + 编码 out/*.mp4 + 抽封面
 node inline.mjs                               # 可选：图片内联成单文件 HTML
 ```
 
 `check-single.mjs` / `probe.mjs` 是排查用的：前者校验单文件 HTML，后者打印页面报错堆栈。
+
+## 背景音
+
+`music.mjs` 用代码合成 56 秒背景音（`out/theme.wav`），不引用任何现成素材，所以没有版权问题：
+120 BPM、Am7–Fmaj7–Cmaj7–G6 四小节一循环共 7 遍，铺底 pad + 低音 + 铃声 + 弱底鼓 + 气声踩镲，
+并在每个分段的起点（0 / 4.4 / 12.8 / 20.4 / 27.2 / 33.4 / 40.6 / 49.6 秒）叠一层噪声渐强做转场。
+`build.ps1` 会先跑它，再把音轨混进两个 mp4。想调风格就改 `music.mjs`：`KEYS` 是和弦与音区，
+`MASTER` 是整体电平（当前约 -17.6 LUFS，做背景音不抢戏），`BARS` 小节数。单独试听：
+
+```powershell
+node music.mjs out\theme.wav
+ffplay out\theme.wav
+```
+
