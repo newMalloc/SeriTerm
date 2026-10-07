@@ -15,7 +15,10 @@ Windows 串口调试助手（C# / WPF / .NET 8）。看数据、发命令、抓�
 > （`error` 命中 4 处、字符级高亮）与「查找收藏」；日志里的设备输出经 COM5 回环实发实收（`Tx`/`Rx` 成对），
 > `[AI] 发送 8 字节：STATUS` 是 AI 通过 MCP 发出的命令。图为完全权限档。
 
-▶ [在线看 56 秒介绍动画](https://newmalloc.github.io/SeriTerm/video/) · [下载 mp4](https://github.com/newMalloc/SeriTerm/releases)
+https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
+
+▶ 上面是 56 秒介绍动画（内嵌播放器）· [网页版](https://newmalloc.github.io/SeriTerm/video/)（文字是矢量的，最清晰）
+· [下载 mp4](https://github.com/newMalloc/SeriTerm/releases)
 
 ## 下载
 

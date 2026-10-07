@@ -8,10 +8,17 @@
 | 形式 | 地址 | 说明 |
 |---|---|---|
 | 网页版 | <https://newmalloc.github.io/SeriTerm/video/> | 由 GitHub Pages 发布 `docs/` 目录，点开即播，文字是矢量的 |
+| README 内嵌播放器 | [issue #1](https://github.com/newMalloc/SeriTerm/issues/1) 正文里的附件 | GitHub 只允许挂在 issue / PR / 评论上的附件在 Markdown 里渲染成播放器 |
 | mp4 1080p | [Release 附件](https://github.com/newMalloc/SeriTerm/releases) `SeriTerm-intro-1080p.mp4` | 约 11.9 MB，转发 / 投稿用 |
 | mp4 720p | 同上 `SeriTerm-intro-720p.mp4` | 约 5.0 MB，聊天工具里发更省事 |
 
-README 里只放一行链接，体积这类细节不占首屏。Pages 只发布 `docs/` 目录，所以页面引用的图
+**不要删 issue #1**：README 里那个播放器指向它的附件，issue 删了链接就失效。
+另外 GitHub 附件的体积上限是**图片 / GIF 10 MB、视频 Free 计划 10 MB（付费 100 MB）**，
+所以那个 issue 里挂的是压到 8.45 MB 的 `SeriTerm-intro-1080p-upload.mp4`（`crf 23` + 音频 96k），
+不是 Release 上 11.85 MB 的母版；需要换附件时用
+`gh issue comment 1 --repo newMalloc/SeriTerm --attach <文件>` 追加一条评论即可。
+
+README 里只放一行链接 + 一个播放器，体积这类细节不占首屏。Pages 只发布 `docs/` 目录，所以页面引用的图
 必须是 docs 里面的：界面截图用 `../images/main.png`，图标用 `../images/seriterm.png`
 （512px 派生图，由 `src/SeriTerm.App/Assets/seriterm.png` 缩出来）。
 
