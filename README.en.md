@@ -6,19 +6,17 @@
 
 [简体中文](README.md) | **English**
 
-A serial port debugging assistant for Windows (C# / WPF / .NET 8). It does the three daily jobs of hardware
-debugging — watching incoming data, sending commands, capturing logs — and is built to survive the boring parts:
-long captures without stutter, a 200,000-line display cap, automatic reconnect, and a single-file portable build.
-It also ships a built-in MCP server, so an AI can read your device directly.
+A serial port debugging assistant for Windows (C# / WPF / .NET 8) for receiving data, sending commands and capturing
+logs: no stutter over long sessions, a 200,000-line log cap, automatic reconnect, single-file build with no installer.
+It also ships a built-in MCP server, so an AI can read your device output directly.
 
 > The UI is currently Chinese only, so the screenshot shows Chinese labels.
 
 ![Main window](docs/images/main.png)
 
-> The screenshot above is a real full-screen capture: the "AI 接入" card shows one MCP client connected; top right
-> is the `Ctrl+F` live search (4 hits on `error`, character-level highlighting) with the favourites list. The device
-> output in the log was sent and received over a COM5 loopback (paired `Tx`/`Rx`); `[AI] 发送 8 字节：STATUS` is a
-> command the AI sent through MCP. The tier is full permission in this capture.
+> Real full-screen capture: one MCP client connected; `Ctrl+F` search for `error` with 4 hits and character-level
+> highlighting; log traffic sent and received over a COM5 loopback (paired `Tx`/`Rx`); `[AI] 发送 8 字节：STATUS` is a
+> command issued by the AI through MCP. Permission tier: full.
 
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
@@ -26,72 +24,67 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 ## Download
 
-Pick either file from [Releases](https://github.com/newMalloc/SeriTerm/releases) — they behave identically:
+Download from [Releases](https://github.com/newMalloc/SeriTerm/releases). Both files behave the same and are win-x64
+single-file builds, no installer required:
 
-| File | Size | Notes |
-|---|---|---|
-| `SeriTerm-<version>-win-x64.exe` | ~3.8 MB | **Recommended.** Contains no .NET runtime. Machines that already have the .NET 8/9/10 desktop runtime download only these few MB; if it is missing, the launcher asks once and then installs Microsoft's official runtime (~56 MB, once per machine, shared by every .NET app) before starting. |
-| `SeriTerm-<version>-win-x64-full.exe` | ~67 MB | The runtime is bundled inside. No network, no installs — for offline or locked-down machines. |
-
-Both are win-x64 single files: double-click to run, no installer.
+| File | Size | Runtime | Use case |
+|---|---|---|---|
+| `SeriTerm-<version>-win-x64.exe` | ~3.8 MB | Requires the .NET 8 desktop runtime (auto-installed from Microsoft if missing, ~56 MB) | General distribution (recommended) |
+| `SeriTerm-<version>-win-x64-full.exe` | ~67 MB | Bundled in the exe, no network access | Offline / air-gapped machines |
 
 ## Features
 
 **Connection**
 
-- Port enumeration with friendly device names (`COM5 (USB-SERIAL CH340)`), so you do not have to guess;
-- Baud rate / data bits / parity / stop bits / flow control, with named configuration presets;
-- Opens the last used port at startup; **automatic reconnect** with exponential backoff, so unplugging no longer
-  reports a bogus "port is in use by another program".
+- Port list shows friendly device names (`COM5 (USB-SERIAL CH340)`)
+- Baud rate / data bits / parity / stop bits / flow control; named presets can be saved and reused
+- Reopens the last used port at startup; reconnects automatically with exponential backoff
 
 **Receiving**
 
-- Text / HEX modes, multiple encodings (UTF-8, GB2312, ...) decoded statefully across chunk boundaries;
-- Framing by idle gap / delimiter / none, with a buffer cap, so frames are neither glued together nor half-displayed;
-- Virtualized log view capped at 200,000 lines, evicting the oldest in blocks; pause, clear, save;
-- Toggleable timestamps, word wrap, font size; **smart auto-scroll** pauses while you scroll up and offers a
-  "▸ N new lines" bar at the bottom.
+- Text / HEX modes; UTF-8, GB2312 and other encodings, decoded across chunk boundaries without corruption
+- Framing by idle gap / delimiter / none, with a configurable buffer cap; output is per frame, never glued or partial
+- Virtualized log view capped at 200,000 lines, evicting in blocks; pause, clear, save
+- Optional timestamps, word wrap and font size; auto-scroll pauses while you scroll up and shows the new line count
 
 **Sending**
 
-- Text / HEX with CR / LF / CRLF line endings;
-- Timed sending; chunked file sending (cancellable, with progress);
-- Terminal mode: send as you type, Enter / Backspace / `Ctrl+C` pass-through, local echo.
+- Text / HEX with CR / LF / CRLF line endings
+- Timed sending; chunked file sending (cancellable, with progress)
+- Terminal mode: send as you type, Enter / Backspace / `Ctrl+C` pass-through, local echo
 
 **Search and copy**
 
-- `Ctrl+F` live search with a match counter, next / previous navigation and **character-level highlighting**;
-- Bookmark keywords in an overlay over the log's top-right corner; one click refills the search box and jumps to the
-  first match;
-- Select log text **character by character**, within and across lines — `Ctrl+C` copies exactly what is highlighted.
+- `Ctrl+F` live search: match counter, next / previous, character-level highlighting
+- Bookmarked keywords in an overlay at the log's top-right corner; click to refill the search box and jump to the first match
+- Character-level selection within and across lines; `Ctrl+C` copies the selection
 
 **Log to disk**
 
-- Text log plus a **raw byte log** that can be replayed back into the log view, rolled over by size;
-- Background asynchronous write queue, so writing never blocks receiving.
+- Text log and a raw byte log (replayable into the log view), rolled over by size
+- Background asynchronous write queue; writing never blocks receiving
 
 **AI access (MCP)**
 
-- A built-in [MCP](https://modelcontextprotocol.io) server: models in Claude Desktop / Cursor / VS Code
-  **read your device's output directly** instead of you copy-pasting the log. Left panel → "AI 接入" → "复制配置";
-- **It can wait**: `serial_wait_for_pattern` blocks until the device prints the text you asked for
-  (the first line after a reboot, `OK`, `panic`);
-- **Frames, not raw bytes**: data arrives already split by your framing settings, with arrival time, direction and a
-  cursor that makes incremental reads neither duplicate nor miss;
-- **Read-only by default**: write tools do not appear in the tool list. To send, tick
-  "允许 AI 发送数据（完全权限）" in the UI; the status bar shows the current tier. Sends are capped at 4096 bytes
-  and 3/s, and every send leaves an `[AI]` audit line in the log;
-- Local named pipe only, current user only, no network port. See [docs/mcp.md](docs/mcp.md) (Chinese).
+- Built-in [MCP](https://modelcontextprotocol.io) server; Claude Desktop / Cursor / VS Code can read the device output
+  directly — left panel "AI 接入" → "复制配置" to connect
+- `serial_wait_for_pattern` blocks until the requested text appears (first line after a reboot, `OK`, `panic`) instead of polling
+- Reads return frames already split by your framing settings, with arrival time, direction and a cursor; incremental
+  reads neither duplicate nor miss
+- Read-only by default: write tools are absent from the tool list. Tick "允许 AI 发送数据（完全权限）" to enable sending;
+  the status bar shows the current tier
+- Sends are capped at 4096 bytes per call and 3 per second, and leave an `[AI]` audit line in the log
+- Local named pipe only, current user only, no network port; see [docs/mcp.md](docs/mcp.md) (Chinese)
 
 **UI**
 
-- Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be turned off);
-- About button in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links.
+- Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be disabled)
+- About in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links
 
 ## Requirements
 
-Windows 10 1809 or later (64-bit). The full build needs no runtime at all; the launcher needs the .NET 8 desktop
-runtime (installed automatically if missing). Building from source needs .NET SDK 8.0 or later.
+Windows 10 1809 or later (64-bit). The full build needs no runtime; the launcher requires the .NET 8 desktop runtime
+(installed automatically if missing). Building from source requires .NET SDK 8.0 or later.
 
 ## Build and test
 
@@ -101,13 +94,13 @@ dotnet run   --project src/SeriTerm.App
 dotnet test  SeriTerm.sln
 ```
 
-**354 automated tests** (346 pure logic unit tests + 8 loopback integration tests), green out of the box.
-The loopback group needs a USB-TTL adapter with **TX and RX shorted**; it uses `COM5` by default and the port can be
+**354 automated tests** (346 pure logic unit tests + 8 loopback integration tests); `dotnet test` runs them all.
+The loopback group needs a USB-TTL adapter with TX and RX shorted and uses `COM5` by default; the port can be
 overridden without touching the source (`$env:SERITERM_LOOPBACK_PORT = 'COM3'`). On a machine without loopback
-hardware the group is skipped rather than failed.
+hardware the group is skipped, not failed.
 
 The MCP path spans three processes (AI client → `--mcp-stdio` bridge → UI process). Unit tests cover the protocol and
-the guard rails; before a release, run `pwsh -File tools/mcp-smoke.ps1 -Exe <exe>` for an end-to-end pass.
+its guard rails; before a release, run `pwsh -File tools/mcp-smoke.ps1 -Exe <exe>` for an end-to-end pass.
 
 ## Packaging
 
@@ -118,15 +111,15 @@ pwsh -File tools/publish.ps1 -SelfContained      # self-contained full build onl
 pwsh -File tools/publish.ps1 -FrameworkDependent # framework-dependent single file, ~1.7 MB (local dev)
 ```
 
-The launcher is a **native exe** compiled with
-[NativeAOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/): it carries no .NET runtime itself, so it
-starts on a machine with nothing installed. The actual application (a framework-dependent single file) is Brotli
-compressed, embedded inside it, unpacked to `%LocalAppData%\SeriTerm\app\<version>\` on start, and older versions are
-cleaned up automatically.
+The launcher is a native exe built with
+[NativeAOT](https://learn.microsoft.com/dotnet/core/deploying/native-aot/): it carries no .NET runtime, so it starts on
+a machine with nothing installed. The application itself (a framework-dependent single file) is Brotli compressed,
+embedded inside it and unpacked to `%LocalAppData%\SeriTerm\app\<version>\` on start; older versions are removed
+automatically.
 
 Pushing a `v*` tag makes [release.yml](.github/workflows/release.yml) build with `-All` and attach both exes to the
-matching Release. The release body is taken from the corresponding version section in [CHANGELOG.md](CHANGELOG.md) —
-write it first, or the workflow fails instead of publishing.
+matching Release. The release body is taken from the corresponding section of [CHANGELOG.md](CHANGELOG.md); if that
+section is missing, the workflow fails instead of publishing.
 
 ## Configuration
 
@@ -135,20 +128,22 @@ write it first, or the workflow fails instead of publishing.
 
 ## Known limitations
 
-- **"Port in use" and "device unplugged" cannot be told apart at the Win32 level** (both are `ERROR_ACCESS_DENIED`):
-  the app reports "in use by another program" only when the port is still enumerated but cannot be opened.
-- **The background blur uses a blurred copy of the desktop wallpaper**, not live desktop content: when the window
-  covers only part of the desktop, desktop icons and other windows do not appear in it.
-- **The search overlay covers a small part of the log's top-right corner** — the price of not spending a log row on it;
-  with no search open it collapses and the log uses the full width.
-- The left settings column needs scrolling in a short window; the primary "Open port" action is always on the first
-  screen.
-- The self-contained single-file build extracts itself to a temporary directory on first launch, so that launch is
-  slightly slower; the launcher unpacks its 1.7 MB payload to `%LocalAppData%\SeriTerm\app\` once per version.
+- **"Port in use" and "device unplugged" are indistinguishable at the Win32 level**: both surface as
+  `ERROR_ACCESS_DENIED`. The app reports "in use by another program" only when the port is still enumerated but cannot
+  be opened; otherwise it treats the device as unplugged.
+- **The background blur uses a blurred copy of the desktop wallpaper**, not live desktop content: when the window covers
+  only part of the desktop, desktop icons and other windows do not appear in it.
+- **The search overlay covers a small part of the log's top-right corner**: the trade-off for not spending a log row on
+  it. With no search open it collapses and the log uses the full width.
+- In a short window the left settings column needs scrolling; "Open port" stays on the first screen.
+- **MCP requires the UI process**: SeriTerm must keep running for reads, otherwise tools return `[not_connected]`.
+  "复制配置" contains the path of the currently running exe, which changes on upgrade — copy it again.
+- The single-file build extracts itself to a temporary directory on first launch, so that launch is slightly slower.
 
 ## License
 
 [MIT](LICENSE)
 
-Design decisions, measured numbers and development scripts are documented in
-[the development spec](docs/development-plan.md) and [the verification log](docs/verification.md) (both in Chinese).
+Design decisions, measured numbers and development scripts: [development spec](docs/development-plan.md) and
+[verification log](docs/verification.md). AI access (MCP) usage and tool list: [docs/mcp.md](docs/mcp.md). All three
+documents are in Chinese.
