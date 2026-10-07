@@ -23,6 +23,8 @@ README 里只放一行链接，体积这类细节不占首屏。Pages 只发布 
 - `index.html?static=1` —— 只渲染第 0 帧（截图脚本用这个）
 
 整个动画没有构建步骤、没有运行时依赖：两张图都在仓库里，页面直接引用。
+舞台固定 1920×1080，但会按窗口等比缩放并居中（`fit()`），所以在 1280×720 或手机窄屏上
+也能看全，只是上下或左右会留黑边；1920×1080 时缩放系数正好是 1，逐帧截图不受影响。
 
 ## 画面结构
 
@@ -54,7 +56,14 @@ pwsh -File build.ps1                          # 合成背景音 + 编码 out/*.m
 node inline.mjs                               # 可选：图片内联成单文件 HTML
 ```
 
-`check-single.mjs` / `probe.mjs` 是排查用的：前者校验单文件 HTML，后者打印页面报错堆栈。
+`check-single.mjs` / `probe.mjs` / `check-pages.mjs` 是排查用的：第一个校验内联成单文件的 HTML，
+第二个打印页面报错堆栈，第三个拿浏览器打开指定地址（默认线上 Pages），检查有没有 4xx 资源、
+舞台有没有超出视口：
+
+```powershell
+node check-pages.mjs                                        # 线上
+node check-pages.mjs "file:///$PWD/index.html?static=1" 1280 720   # 本地，指定窗口大小
+```
 
 ## 背景音
 
