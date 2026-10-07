@@ -9,12 +9,6 @@
 Windows 串口调试助手（C# / WPF / .NET 8），用于接收数据、发送命令与记录日志：
 长时运行不卡顿，日志上限 20 万行，断线自动重连，单文件免安装；内置 MCP，AI 可直接读取设备输出。
 
-![主界面](docs/images/main.png)
-
-> 实拍（全屏运行）：MCP 已接入 1 个客户端；`Ctrl+F` 搜索 `error` 命中 4 处并字符级高亮；
-> 日志经 COM5 回环实发实收（`Tx`/`Rx` 成对）；`[AI] 发送 8 字节：STATUS` 为 AI 经 MCP 发出的命令。
-> 权限档位为完全权限。
-
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 [网页版](https://newmalloc.github.io/SeriTerm/video/)
@@ -71,6 +65,11 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 - 仅通过本机命名管道通信（限当前用户），不开放网络端口；详见 [AI 接入文档](docs/mcp.md)
 
 **界面**
+
+![主界面](docs/images/main.png)
+
+> 实拍（全屏运行）：MCP 已接入 1 个客户端；`Ctrl+F` 搜索 `error` 命中 4 处并字符级高亮；
+> 日志经 COM5 回环实发实收（`Tx`/`Rx` 成对）；`[AI]` 行为 AI 经 MCP 发出的命令。
 
 - 深 / 浅两套主题，运行中可切换；自绘标题栏；窗口背景模糊（可关闭）
 - 标题栏「关于」或 <kbd>F1</kbd>：版本号、提交号、运行时与仓库入口

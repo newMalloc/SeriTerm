@@ -10,14 +10,6 @@ A serial port debugging assistant for Windows (C# / WPF / .NET 8) for receiving 
 logs: no stutter over long sessions, a 200,000-line log cap, automatic reconnect, single-file build with no installer.
 It also ships a built-in MCP server, so an AI can read your device output directly.
 
-> The UI is currently Chinese only, so the screenshot shows Chinese labels.
-
-![Main window](docs/images/main.png)
-
-> Real full-screen capture: one MCP client connected; `Ctrl+F` search for `error` with 4 hits and character-level
-> highlighting; log traffic sent and received over a COM5 loopback (paired `Tx`/`Rx`); `[AI] 发送 8 字节：STATUS` is a
-> command issued by the AI through MCP. Permission tier: full.
-
 https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 [web version](https://newmalloc.github.io/SeriTerm/video/)
@@ -77,6 +69,12 @@ single-file builds, no installer required:
 - Local named pipe only, current user only, no network port; see [docs/mcp.md](docs/mcp.md) (Chinese)
 
 **UI**
+
+![Main window](docs/images/main.png)
+
+> Real full-screen capture (UI text is Chinese only): one MCP client connected; `Ctrl+F` search for `error` with 4 hits
+> and character-level highlighting; log traffic sent and received over a COM5 loopback (paired `Tx`/`Rx`); the `[AI]`
+> line is a command issued by the AI through MCP.
 
 - Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be disabled)
 - About in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links
