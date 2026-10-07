@@ -20,9 +20,7 @@ It also ships a built-in MCP server, so an AI can read your device directly.
 > output in the log was sent and received over a COM5 loopback (paired `Tx`/`Rx`); `[AI] 发送 8 字节：STATUS` is a
 > command the AI sent through MCP. The tier is full permission in this capture.
 
-▶ [56-second intro video](https://github.com/newMalloc/SeriTerm/releases/download/v1.1.0/SeriTerm-intro-1080p.mp4) (1080p / 11.9 MB)
-· [720p version](https://github.com/newMalloc/SeriTerm/releases/download/v1.1.0/SeriTerm-intro-720p.mp4) (5.0 MB)
-· the video is [made from a single web page](docs/video/README.md), so you can reword or recolour it and re-render
+▶ [Watch the 56-second intro](https://newmalloc.github.io/SeriTerm/video/) · [download the mp4](https://github.com/newMalloc/SeriTerm/releases)
 
 ## Download
 

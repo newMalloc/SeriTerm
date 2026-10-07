@@ -8,7 +8,7 @@ fs.mkdirSync(out, { recursive: true });
 
 const URI = {
   '../images/main.png': path.join(root, '..', 'images', 'main.png'),
-  '../../src/SeriTerm.App/Assets/seriterm.png': path.join(root, '..', '..', 'src', 'SeriTerm.App', 'Assets', 'seriterm.png'),
+  '../images/seriterm.png': path.join(root, '..', 'images', 'seriterm.png'),
 };
 
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');

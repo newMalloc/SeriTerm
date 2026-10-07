@@ -2,17 +2,27 @@
 
 一支 56 秒的产品介绍动画：**一张网页**（`index.html`），画面由 JS 按时间轴逐帧算出来，
 用浏览器逐帧截图再编码成 mp4；背景音也是代码合成的（`music.mjs`），没用任何现成素材。
-成品挂在 [Releases](https://github.com/newMalloc/SeriTerm/releases) 上（`SeriTerm-intro-1080p.mp4` / 720p）。
+
+## 在线看 / 下载
+
+| 形式 | 地址 | 说明 |
+|---|---|---|
+| 网页版 | <https://newmalloc.github.io/SeriTerm/video/> | 由 GitHub Pages 发布 `docs/` 目录，点开即播，文字是矢量的 |
+| mp4 1080p | [Release 附件](https://github.com/newMalloc/SeriTerm/releases) `SeriTerm-intro-1080p.mp4` | 约 11.9 MB，转发 / 投稿用 |
+| mp4 720p | 同上 `SeriTerm-intro-720p.mp4` | 约 5.0 MB，聊天工具里发更省事 |
+
+README 里只放一行链接，体积这类细节不占首屏。Pages 只发布 `docs/` 目录，所以页面引用的图
+必须是 docs 里面的：界面截图用 `../images/main.png`，图标用 `../images/seriterm.png`
+（512px 派生图，由 `src/SeriTerm.App/Assets/seriterm.png` 缩出来）。
 
 ## 在浏览器里看
 
-双击 `index.html` 即可播放（循环）。加参数：
+双击 `index.html` 即可播放（循环），也可以直接开上面那个 Pages 地址。加参数：
 
 - `index.html?t=23` —— 停在 23 秒那一帧
 - `index.html?static=1` —— 只渲染第 0 帧（截图脚本用这个）
 
-图片直接引用仓库里已有的文件，不另存一份：界面截图用 `docs/images/main.png`，
-图标用 `src/SeriTerm.App/Assets/seriterm.png`。所以整个动画没有构建步骤、没有依赖。
+整个动画没有构建步骤、没有运行时依赖：两张图都在仓库里，页面直接引用。
 
 ## 画面结构
 
