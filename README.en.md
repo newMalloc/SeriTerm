@@ -9,19 +9,16 @@
 A serial port debugging assistant for Windows (C# / WPF / .NET 8). It does the three daily jobs of hardware
 debugging — watching incoming data, sending commands, capturing logs — and is built to survive the boring parts:
 long captures without stutter, a 200,000-line display cap, automatic reconnect, and a single-file portable build.
-It also ships a built-in MCP server so **an AI can read your device directly** — read-only by default, sending
-requires your explicit consent.
+It also ships a built-in MCP server, so an AI can read your device directly.
 
 > The UI is currently Chinese only, so the screenshot shows Chinese labels.
 
 ![Main window](docs/images/main.png)
 
-> The screenshot above is a real full-screen capture: the "AI 接入" card in the left column shows one MCP client
-> connected and the status bar shows the current tier (`MCP: 完全权限`); top right is the `Ctrl+F` live search
-> (4 hits on `error`, character-level highlighting) together with the favourites list. The device output in the log
-> was really sent and received over a COM5 loopback (paired `Tx` / `Rx` lines); the `[AI] 发送 8 字节：STATUS`
-> lines are a command the AI actually sent through MCP. The capture switched the tier to full permission for the
-> demo — **the default is read-only**.
+> The screenshot above is a real full-screen capture: the "AI 接入" card shows one MCP client connected; top right
+> is the `Ctrl+F` live search (4 hits on `error`, character-level highlighting) with the favourites list. The device
+> output in the log was sent and received over a COM5 loopback (paired `Tx`/`Rx`); `[AI] 发送 8 字节：STATUS` is a
+> command the AI sent through MCP. The tier is full permission in this capture.
 
 ## Download
 
@@ -77,9 +74,9 @@ Both are win-x64 single files: double-click to run, no installer.
   (the first line after a reboot, `OK`, `panic`);
 - **Frames, not raw bytes**: data arrives already split by your framing settings, with arrival time, direction and a
   cursor that makes incremental reads neither duplicate nor miss;
-- **Read-only by default**: write tools are not even listed. Sending requires ticking
-  "允许 AI 发送数据（完全权限）" in the UI; the status bar always shows the current tier, sends are size- and
-  rate-limited, every send leaves an `[AI]` audit line in the log, and the permission can be revoked in one click;
+- **Read-only by default**: write tools do not appear in the tool list. To send, tick
+  "允许 AI 发送数据（完全权限）" in the UI; the status bar shows the current tier. Sends are capped at 4096 bytes
+  and 3/s, and every send leaves an `[AI]` audit line in the log;
 - Local named pipe only, current user only, no network port. See [docs/mcp.md](docs/mcp.md) (Chinese).
 
 **UI**
