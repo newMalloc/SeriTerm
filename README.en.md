@@ -9,6 +9,8 @@
 A serial port debugging assistant for Windows (C# / WPF / .NET 8). It does the three daily jobs of hardware
 debugging — watching incoming data, sending commands, capturing logs — and is built to survive the boring parts:
 long captures without stutter, a 200,000-line display cap, automatic reconnect, and a single-file portable build.
+It also ships a built-in MCP server so **an AI can read your device directly** — read-only by default, sending
+requires your explicit consent.
 
 > The UI is currently Chinese only, so the screenshot shows Chinese labels.
 
