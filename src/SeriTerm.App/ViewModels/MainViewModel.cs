@@ -49,6 +49,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>暂停显示期间最多缓冲的行数，超出部分丢弃（避免内存无上限增长）。</summary>
     private const int MaxPausedBufferLines = 10_000;
 
+    /// <summary>
+    /// 一次界面刷新最多搬多少行（见 <see cref="FlushPendingLines"/>）。
+    /// 600 行 × 约 30 次/秒 = 约 1.8 万行/秒的排空能力，远超任何真实串口速率下的行速率；
+    /// 而单个回调最多压住界面线程 600 行的搬运时间，输入不会再被一次几万行的搬运挡住。
+    /// </summary>
+    private const int MaxLinesPerFlush = 600;
+
     /// <summary>断帧方式下拉项。</summary>
     private static readonly (FramingMode Value, string Display)[] FramingModeOptions =
     [
@@ -1941,8 +1948,26 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
             if (_pendingLines.Count > 0)
             {
-                batch = [.. _pendingLines];
-                _pendingLines.Clear();
+                // 按块搬运，不要一次把整条积压搬完。
+                //
+                // 积压是"到达速率 > 界面搬运速率"造成的：原来这里 [.. _pendingLines] 会把积压全量
+                // 复制出来、再逐行走 Log.Append（每行一次集合通知 + 行容器生成 + 布局），
+                // 积压越多这一个回调就越久，点击与滚动被 DataBind 优先级压在后面：
+                // 实测 1 Mbps 连续数据下输入延迟 P95 能到 150 ms 以上（2026-10-08 基准）。
+                // 更糟的是它自我放大——回调期间新数据继续到达，下一轮积压更大。
+                // 切成定长块之后，单个回调的耗时有了上限；剩下的行不会丢，30 Hz 的界面定时器
+                // 与后续数据到达都会再触发本方法，把它排空。
+                var count = Math.Min(_pendingLines.Count, MaxLinesPerFlush);
+                batch = _pendingLines.GetRange(0, count);
+
+                if (count == _pendingLines.Count)
+                {
+                    _pendingLines.Clear();
+                }
+                else
+                {
+                    _pendingLines.RemoveRange(0, count);
+                }
             }
         }
 

@@ -474,6 +474,97 @@
         </Setter>
     </Style>
 
+    <!-- ============ 右键菜单 ============ -->
+    <!--
+        默认模板（Aero2）把"鼠标指向的那一项"刷成系统浅蓝底，文字却取
+        SystemColors.HighlightTextBrushKey —— 本主题把这个键覆盖成 #FFFFFF 给日志选中的白字用，
+        于是右键菜单就成了"浅蓝底 + 白字"（实机截图取色：底 #C3E0EE、字 #F5F5F5），一个字都看不清。
+        样式触发器压不过控件模板里的触发器，所以这里只能整套自绘：底色/边框/文字全走主题画刷，
+        不再引用任何系统色，浅色主题也一并跟着走。
+        注意模板里没有子菜单用的 Popup：全应用只有日志区那一个单层菜单（"复制"），
+        系统给文本框自动生成的右键菜单（剪切/复制/粘贴）也是单层。
+    -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="5"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
+                                              Opacity="0.35" Color="#000000" />
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ContentPresenter Grid.Column="0"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                            <!-- 快捷键说明：没有的（系统生成的文本框菜单就没填）整列收起，
+                                 不然每项右边都白白多出 16px -->
+                            <TextBlock Grid.Column="1"
+                                       Text="{TemplateBinding InputGestureText}"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock"
+                                           BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+                                        <Setter Property="Margin" Value="16,0,0,0" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                                         Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============ 面板 ============ -->
     <Style x:Key="SectionPanel" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />

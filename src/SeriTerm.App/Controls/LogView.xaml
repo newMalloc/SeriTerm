@@ -7,30 +7,34 @@
 
     <UserControl.Resources>
         <!--
-            日志行内容的只读文本框。
-            TextBlock 根本不支持选择，而"选中任意一段字符再复制"只有文本框能做；
-            所以内容列改用只读 TextBox：把边框、底色、最小高度、焦点框、右键菜单全部去掉，
-            外观和原来的 TextBlock 一致，多的只是能选字符。
-            （每行一个 TextBox 只在可见行上存在——列表是虚拟化的，开销与行高同一量级。）
+            时间列 / 方向列的静态文本。
+            这两列是为了"每行不留文本框"而改成 TextBlock 的第一批（2026-10-08）：
+            只读 TextBox 每个都自带 ScrollViewer + TextBoxView + TextEditor，还各自挂一套 TSF 文本服务，
+            而日志一屏约 34 行、每滚动一步这一屏全部回收重绑。实测把 3 个 TextBox 换成
+            "2 个 TextBlock + 1 个 TextBox"后，同一注入速率下进程 CPU 从 87~97% 降到 10~20%、
+            输入延迟 P95 从 146~157 ms 降到 30 ms；把最后一个也去掉（内容列）再降到 5~6%。
+            字符矩形不再依赖文本框：见 LogView.xaml.cs 的 PartCharRect（TextPointer.GetCharacterRect）。
         -->
-        <Style x:Key="LogLineText" TargetType="TextBox"
-               BasedOn="{StaticResource {x:Type TextBox}}">
-            <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
-            <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="ContextMenu" Value="{x:Null}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <!-- Stretch：让文本框铺满内容列，它和后面那层 Canvas 才是同一套坐标，
-                 命中高亮的方块才能对准字符 -->
-            <Setter Property="VerticalAlignment" Value="Stretch" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Style x:Key="LogColumnLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
+        </Style>
+
+        <!--
+            日志行内容的只读文本。
+            TextBlock 不支持选择，所以"选中任意一段字符再复制"由行内那层 Canvas 自己画：
+            跨行、行内、自动换行都走同一套字符矩形（TextPointer.GetCharacterRect，
+            正是文本框 GetRectFromCharacterIndex 内部用的东西），见 PartCharRect / ToCaret。
+            双击选词由 LogTextSelection.WordRange 补回（原来靠文本框原生能力）。
+        -->
+        <Style x:Key="LogLineText" TargetType="TextBlock">
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="Foreground" Value="{DynamicResource RxForegroundBrush}" />
-            <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+            <!-- 只按内容宽度占位，不拉伸到列宽：字符矩形是相对控件量的，控件越窄越省 -->
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Center" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Direction}" Value="{x:Static core:LineDirection.Tx}">
                     <Setter Property="Foreground" Value="{DynamicResource TxForegroundBrush}" />
@@ -43,31 +47,6 @@
                     <Setter Property="TextWrapping" Value="Wrap" />
                 </DataTrigger>
             </Style.Triggers>
-        </Style>
-
-        <!--
-            时间列 / 方向列的只读文本框。
-            用文本框而不是 TextBlock，是为了让"自由选择"量字符坐标时三个列走同一套 API
-            （TextBlock 量不出某个字符落在哪，跨到时间列的那一段就没法画选中底色）。
-            刻意不挂 LogLineText 上的那两个触发器：这两列必须永远单行（跟随"自动换行"会被撑成两行），
-            颜色也固定是淡灰，不跟数据方向走。
-        -->
-        <Style x:Key="LogColumnText" TargetType="TextBox"
-               BasedOn="{StaticResource {x:Type TextBox}}">
-            <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
-            <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="ContextMenu" Value="{x:Null}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="VerticalAlignment" Value="Stretch" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-            <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
-            <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
         </Style>
     </UserControl.Resources>
 
@@ -145,51 +124,55 @@
 
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border x:Name="Row" Padding="6,1" Background="Transparent">
-                        <!-- 用 Grid 而不是 StackPanel：内容列拿星号宽度，
-                             只读文本框才会在行宽内换行/裁剪，而不是把行撑宽 -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="104" />
-                                <ColumnDefinition Width="30" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                    <!-- 行根是 Grid 而不是那个带内边距的 Border：选择底色层必须能盖住**整行**。
+                         底色层要是放在 Border 里面，就被 Border 的上下各 1px 内边距裁掉一截，
+                         连续选中时行与行之间露出一道背景色黑缝——看上去就像"选区一行一行分开"。
+                         现在它垫在 Border 底下、按行高铺满（见 RepaintFreeSelection 的整行分支）。 -->
+                    <Grid>
+                        <!-- 自由选择的底色层：第一个子元素 = 最底层，所以它垫在三列文字之下。
+                             方块由各列自己量出来（列内按字符、跨列跨行都对得准），
+                             拖出可视区时容器被虚拟化回收也没关系：重新生成时会按当前选择重画一遍。 -->
+                        <Canvas x:Name="SelectionLayer" IsHitTestVisible="False" ClipToBounds="True" />
 
-                            <!-- 自由选择的底色层：第一个子元素 = 最底层，所以它垫在三列文字之下。
-                                 方块由各列文本框自己量出来（列内按字符、跨列跨行都对得准），
-                                 拖出可视区时容器被虚拟化回收也没关系：重新生成时会按当前选择重画一遍。 -->
-                            <Canvas x:Name="SelectionLayer" Grid.Column="0" Grid.ColumnSpan="3"
-                                    IsHitTestVisible="False" ClipToBounds="True" />
+                        <Border x:Name="Row" Padding="6,1" Background="Transparent">
+                            <!-- 用 Grid 而不是 StackPanel：内容列拿星号宽度，
+                                 只读文本框才会在行宽内换行/裁剪，而不是把行撑宽 -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="104" />
+                                    <ColumnDefinition Width="30" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
 
-                            <!-- 时间列（TextBox.Text 默认是 TwoWay 绑定，而 TimeText 是只读属性，
-                                 不写 Mode=OneWay 会在生成行容器时直接抛异常，界面一行都出不来） -->
-                            <TextBox x:Name="TimeColumn" Grid.Column="0"
-                                     Style="{StaticResource LogColumnText}"
-                                     Text="{Binding TimeText, Mode=OneWay}"
-                                     Margin="0,0,6,0"
-                                     Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
+                                <!-- 时间列（TextBlock：这两列不需要原生选字符，改成 TextBlock 后
+                                     同一注入速率下 CPU 只有原来的十分之一，见 LogColumnLabel 的注释） -->
+                                <TextBlock x:Name="TimeColumn" Grid.Column="0"
+                                           Style="{StaticResource LogColumnLabel}"
+                                           Text="{Binding TimeText, Mode=OneWay}"
+                                           Margin="0,0,6,0"
+                                           Visibility="{Binding DataContext.ShowTimestamp, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource BoolToVisibility}}" />
 
-                            <!-- 方向列 -->
-                            <TextBox x:Name="DirectionColumn" Grid.Column="1"
-                                     Style="{StaticResource LogColumnText}"
-                                     Text="{Binding DirectionText, Mode=OneWay}"
-                                     Margin="0,0,4,0" />
+                                <!-- 方向列 -->
+                                <TextBlock x:Name="DirectionColumn" Grid.Column="1"
+                                           Style="{StaticResource LogColumnLabel}"
+                                           Text="{Binding DirectionText, Mode=OneWay}"
+                                           Margin="0,0,4,0" />
 
-                            <!-- 内容列：只读文本框（鼠标可以选中任意一段字符再复制），
-                                 背后一层 Canvas 专门画"命中关键字"的高亮方块 -->
-                            <Grid Grid.Column="2">
-                                <Canvas x:Name="MatchLayer" IsHitTestVisible="False" ClipToBounds="True" />
+                                <!-- 内容列：只读文本（鼠标选中任意一段字符由"选择底色 Canvas"自己画），
+                                     背后一层 Canvas 专门画"命中关键字"的高亮方块 -->
+                                <Grid Grid.Column="2">
+                                    <Canvas x:Name="MatchLayer" IsHitTestVisible="False" ClipToBounds="True" />
 
-                                <TextBox x:Name="LineText"
-                                         Style="{StaticResource LogLineText}"
-                                         Text="{Binding Text, Mode=OneWay}"
-                                         SelectionChanged="OnLineTextSelectionChanged"
-                                         DataContextChanged="OnLineTextDataContextChanged"
-                                         SizeChanged="OnLineTextSizeChanged"
-                                         Loaded="OnLineTextLoaded" />
+                                    <TextBlock x:Name="LineText"
+                                               Style="{StaticResource LogLineText}"
+                                               Text="{Binding Text, Mode=OneWay}"
+                                               DataContextChanged="OnLineTextDataContextChanged"
+                                               SizeChanged="OnLineTextSizeChanged"
+                                               Loaded="OnLineTextLoaded" />
+                                </Grid>
                             </Grid>
-                        </Grid>
-                    </Border>
+                        </Border>
+                    </Grid>
 
                     <DataTemplate.Triggers>
                         <!-- 命中：整行底色（刻意做得极浅，只是提示"这行里有命中"，

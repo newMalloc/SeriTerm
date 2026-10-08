@@ -76,4 +76,21 @@ public class LogTextSelectionTests
 
         Assert.Equal("b\r\n\r\nc", text);
     }
+    [Theory]
+    [InlineData("14:27:52.276 Rx SeriTerm loopback test", 26, 25, 33)]    // loopback：光标落在词中间
+    [InlineData("14:27:52.276 Rx SeriTerm loopback test", 0, 0, 2)]       // 时间戳里的 14（与文本框原生行为一致：只取词字符）
+    [InlineData("温度=25.5 摄氏度", 8, 8, 11)]                           // 中文按"一个字"算，双击选到"摄氏度"整段
+    [InlineData("a b", 1, 1, 2)]                                         // 空格：只选它自己
+    [InlineData("SeriTerm", 8, 0, 8)]                                    // 光标在行尾：选最后一个词
+    public void WordRange_双击选词(string text, int index, int start, int end)
+    {
+        var (actualStart, actualEnd) = LogTextSelection.WordRange(text, index);
+
+        Assert.Equal(start, actualStart);
+        Assert.Equal(end, actualEnd);
+    }
+
+    [Fact]
+    public void WordRange_空文本不应抛异常()
+        => Assert.Equal((0, 0), LogTextSelection.WordRange(string.Empty, 5));
 }

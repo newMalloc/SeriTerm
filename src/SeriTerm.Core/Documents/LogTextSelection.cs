@@ -40,6 +40,53 @@ public static class LogTextSelection
     /// 首行之前、末行之后都不取；中间的行整行都取，并且用 <see cref="LineSeparator"/> 连接。
     /// 下标越界一律裁剪到行内（拖动时行会被虚拟化回收，端点可能落在已经不存在的行上）。
     /// </remarks>
+    /// <summary>
+    /// 双击选词：给出 <paramref name="text"/> 里第 <paramref name="index"/> 个字符所在的那一段词
+    /// （返回 [start, end)，就是可以喂给 <see cref="Extract"/> 的两个端点）。
+    ///
+    /// 词的构成：字母、数字、下划线，以及 CJK（中文/日文/韩文）——设备输出里的中文按"一个字"处理，
+    /// 否则双击一个中文词只会选中一个字母。光标落在非词字符上时就选中它自己那一个字符。
+    /// 原来这是只读文本框的原生能力，行里改成 TextBlock 后要自己补回来（见 LogView 的双击处理）。
+    /// </summary>
+    public static (int Start, int End) WordRange(string text, int index)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return (0, 0);
+        }
+
+        index = Math.Clamp(index, 0, text.Length);
+
+        if (index == text.Length)
+        {
+            index = text.Length - 1;
+        }
+
+        if (!IsWordChar(text[index]))
+        {
+            return (index, index + 1);
+        }
+
+        var start = index;
+
+        while (start > 0 && IsWordChar(text[start - 1]))
+        {
+            start--;
+        }
+
+        var end = index + 1;
+
+        while (end < text.Length && IsWordChar(text[end]))
+        {
+            end++;
+        }
+
+        return (start, end);
+    }
+
+    private static bool IsWordChar(char value)
+        => char.IsLetterOrDigit(value) || value == '_';
+
     public static string Extract(IReadOnlyList<string> rows, int startChar, int endChar)
     {
         if (rows.Count == 0)

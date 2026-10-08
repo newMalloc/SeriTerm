@@ -1119,6 +1119,59 @@ FAV|点收藏行后：搜索框值='loopba'                       ← 点一下�
 - 行容器被虚拟化回收后要重画：和命中高亮一样排到 `DispatcherPriority.Loaded`
   （`DataContextChanged` 时量字符坐标会撞"正在进行内容生成"的保护，见 11.27/11.28）。
 
+**2026-10-08 修订（性能）：时间列 / 方向列改回 `TextBlock`**
+
+使用者反馈"接收量到几十 KB、几千行之后日志列表明显卡顿"。量下来卡的根源不是累计行数
+（虚拟化实测 16 万行只生成 33~44 个行容器），而是**每行的界面开销 × 到达速率**，
+现状（3 个只读 `TextBox` + 2 层 `Canvas`）在 2000 行/秒的注入下只能吃下约 430~530 行/秒、
+进程 CPU 87~97%、输入延迟 P95 146~157 ms。
+
+- 上面那条"三列都用 `TextBox` 才能量字符坐标"的结论改用另一种做法满足：**时间列 / 方向列是等宽字体、
+  且永远单行、且 `HorizontalAlignment=Left`（宽度就是文本宽度）**，所以"控件宽度 ÷ 字符数"就是字符步进
+  （实测 7.147 px，与同一条 `TextBox` 的 `GetRectFromCharacterIndex` 量出来的完全一致）。
+  于是这两列不需要 `TextBox`，`RowPart` 抽象里加一个 TextBlock 分支即可（`PartCharRect` / `ToCaret`）。
+- **内容列第一轮仍是只读 `TextBox`**：先把"固定宽度、只用来显示、不需要选字符"的两列换掉，
+  行内拖动选字符、双击选词继续用原生能力。效果：同注入速率下 CPU 87~97% → 10~20%、
+  输入延迟 P95 146~157 ms → 30 ms、吃下的行数 434~530 → 618~626 行/秒。
+- 两层 `Canvas` 也占约三成开销（3 个 `TextBox` 时 97% → 68%），但配合 `TextBlock` 化之后占比很小
+  （10~20% vs 5~6%），保留它们换"跨行自绘选择"这个功能是划算的。
+- 追加一侧同时限流：单次界面刷新最多搬 600 行（`MaxLinesPerFlush`）。原来一次把整条积压搬完，
+  积压越大这一个回调越久，而回调期间新数据还在到——会自我放大。
+
+**2026-10-08 第二次修订：整行不再有 `TextBox`（内容列也换掉），选择全部自绘**
+
+第一轮之后使用者仍报"只有几千行、**关掉串口拖滚动条一样卡**"。这次趁使用者本人拖滚动条时在真机上采样
+（`dotnet-counters collect` + `dotnet-trace --providers Microsoft-DotNetCore-SampleProfiler`）：
+分配速率 **28~70 MB/s**（空闲 0~2 MB/s）、每秒 **16~42 ms 停在 GC**、gen0 4~9 次/秒、
+进程 CPU 峰值 **6.36%（约一个核跑满）**；热点栈集中在 TSF 文本服务
+（`TextStore.OnTextContainerChange`、`TextServicesDisplayAttributePropertyRanges.OnEndEdit`）、
+UIA 事件（`AutomationInteropProvider.RaiseStructureChangedEvent`）与 `CriticalHandle.Finalize`
+——全是 `TextBox` 那条路径。每滚动一步这一屏（约 34 行）容器全部回收重绑，
+每行约 0.3 ms CPU + 30~45 KB 垃圾，于是"一步 20~40 ms"，拖动条自然跟不上手；
+这与日志总量无关（所以几千行也卡、关串口也卡）。
+
+- **内容列也换成 `TextBlock`**：字符坐标改 `TextPointer.GetCharacterRect`（文本框的
+  `GetRectFromCharacterIndex` 内部用的就是这一套）。取法是"第 i 个字符之后"往回看拿字形盒，
+  宽度取"下一个字符的左边缘 − 本字符左边缘"——字形盒宽度不等于步进，末字符还常带行尾富余；
+  反向（往前看）在 `TextBlock` 上返回的是空矩形，不能用。
+- **行内选择改成自绘**（原来靠文本框原生能力）：`_anchorText` 从 `TextBox` 换成 `FrameworkElement`，
+  原生的 `SelectionChanged` 分支、`_textSelectionBox`、"同一个文本框就早退"这些路径全部删掉；
+  行内拖动、跨行拖动、点一下选整行、右键与 `Ctrl+C` 都走同一套 `(行号, 字符下标)` 端点。
+- **双击选词用 `LogTextSelection.WordRange` 补回**：字母/数字/下划线算一个词，
+  非单词字符选中它自己（与文本框原生行为一致：时间戳里双击 `17:46:55.205` 只选 `17`）。
+- **选中底色铺满整行**：底色层从带内边距的 `Border` 里挪到行根 `Grid`（`Border` 的 `Padding="6,1"`
+  会把它裁掉上下各 1px）。实机截图逐像素量到缝在 y=135/136、152、169/170、186/187、203/204
+  （颜色 = 日志底色 `#1B1B1B`，每行实画 15 px、行距 17 px）；现在探针实测层高 = 行高 = 行容器高 = 17.2 px，
+  不换行的行纵向按整行铺，换行的行按视觉行铺（字符矩形的高度就是视觉行高度，行内相邻两块天然贴着）。
+- 结果（同构工装，2000 行/秒注入）：**638 行/秒（工装注入上限）、输入延迟 P95 29 ms、CPU 5~6%**；
+  每滚动 10 行的分配量 254 KB（改前 339 KB、中间态 424 KB）。
+
+同一次修订里还顺手修了右键菜单：默认 Aero2 模板给"鼠标指向的那一项"用系统浅蓝 `#C3E0EE` 作底，
+文字却取 `SystemColors.HighlightTextBrushKey`，而本主题为了日志选中的白字把这个键覆盖成了 `#FFFFFF`
+——于是那块菜单项是"浅蓝底 + 白字"（截图取色，对比度 1.1:1）。样式触发器压不过控件模板里的触发器，
+只能在 `Themes/Shared.xaml` 里整套自绘 `ContextMenu` / `MenuItem`（底色/边框/文字/悬停全走主题画刷）。
+
+
 **两个字符下标的坑（都靠探针量出来的，靠想当然必翻车）**
 
 1. `GetRectFromCharacterIndex(i)` 给的是这个字符**左边缘的零宽矩形**（实测宽度恒为 0），
