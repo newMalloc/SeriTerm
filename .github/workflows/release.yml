@@ -52,6 +52,8 @@ jobs:
 
           # 发布说明正文直接取自 CHANGELOG.md 里本版本那一节：
           # 版本变更属于"人写的文档"，不该靠工作流从提交记录里猜；缺这一节就失败，宁可不发。
+          # 这一节要精简（用户视角、10 行以内）——写法要求写在 CHANGELOG.md 开头，
+          # 测量表格/采样数字/探针断言/测试数字留在 docs/verification.md，别搬进发布说明。
           $lines = Get-Content CHANGELOG.md
           $start = (0..($lines.Count - 1) | Where-Object { $lines[$_] -match "^## v$([regex]::Escape($version))(\s|$)" } |
             Select-Object -First 1)
