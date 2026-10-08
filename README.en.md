@@ -93,7 +93,7 @@ dotnet run   --project src/SeriTerm.App
 dotnet test  SeriTerm.sln
 ```
 
-**354 automated tests** (346 pure logic unit tests + 8 loopback integration tests); `dotnet test` runs them all.
+**360 automated tests** (352 pure logic unit tests + 8 loopback integration tests); `dotnet test` runs them all.
 The loopback group needs a USB-TTL adapter with TX and RX shorted and uses `COM5` by default; the port can be
 overridden without touching the source (`$env:SERITERM_LOOPBACK_PORT = 'COM3'`). On a machine without loopback
 hardware the group is skipped, not failed.

@@ -113,7 +113,12 @@ public partial class MainViewModel : IMcpSession
                 },
             };
 
-            return config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            // 必须用带 TypeInfoResolver 的共享选项：JsonNode.ToJsonString 会把传入的 options
+            // 标记为只读，而只读时 TypeInfoResolver 仍为空的话，运行时会直接抛
+            // "JsonSerializerOptions instance must specify a TypeInfoResolver setting before being marked as read-only."。
+            // 这里以前当场 new 了一个只设 WriteIndented 的实例，点「复制配置」必崩。
+            // McpProtocol.PrettyJson 天然满足（缩进 + camelCase + 解析器），不要再新造实例。
+            return config.ToJsonString(McpProtocol.PrettyJson);
         }
     }
 
@@ -285,10 +290,13 @@ public partial class MainViewModel : IMcpSession
             {
                 scanned++;
 
-                var payload = frame.Payload;
-                var text = matcher.NeedsText ? McpPatternMatcher.Decode(payload, encoding) : string.Empty;
+                // frame.Payload 是 ReadOnlySpan<byte>（ref struct）。这里不能再把它存进局部变量：
+                // 该变量的作用域会跨过本方法后面的 await，而"async 里跨 await 用 ref struct 局部变量"
+                // 至今仍是预览特性（CS8652），一旦启用，正式语言版本下整个项目都编不过。
+                // 直接把属性作为实参内联即可——不引入 ref struct 局部变量，合法且无额外分配。
+                var text = matcher.NeedsText ? McpPatternMatcher.Decode(frame.Payload, encoding) : string.Empty;
 
-                if (matcher.IsMatch(payload, text))
+                if (matcher.IsMatch(frame.Payload, text))
                 {
                     // 命中前的上下文帧：方便模型理解"这条消息前面发生了什么"
                     foreach (var item in context)

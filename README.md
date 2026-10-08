@@ -87,7 +87,7 @@ dotnet run   --project src/SeriTerm.App
 dotnet test  SeriTerm.sln
 ```
 
-**354 个自动化测试**（346 纯逻辑单测 + 8 回环集成），`dotnet test` 一次跑完。
+**360 个自动化测试**（352 纯逻辑单测 + 8 回环集成），`dotnet test` 一次跑完。
 回环测试需要把 USB-TTL 的 TX 与 RX 短接，默认使用 `COM5`；换端口不必改源码
 （`$env:SERITERM_LOOPBACK_PORT = 'COM3'`）。机器上没有回环硬件时，该组测试自动跳过，不会失败。
 

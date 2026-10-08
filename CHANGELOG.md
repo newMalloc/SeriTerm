@@ -7,6 +7,25 @@
 打标签之前请先在下面补好该版本一节——`release.yml` 会**直接把这一节当作 GitHub Release 的说明正文**，
 找不到就报错退出（宁可发不出去，也不要发一个没有说明的 Release）。
 
+## v1.1.1 — 2026-10-08
+
+**修复**
+
+- **「复制配置」必弹错误框**：点「AI 接入」里的「复制配置」会抛 `InvalidOperationException`
+  （`JsonSerializerOptions instance must specify a TypeInfoResolver setting before being marked as read-only.`），
+  配置片段根本复制不出来。原因是该处当场 new 了一个只设 `WriteIndented` 的 `JsonSerializerOptions` 交给
+  `JsonNode.ToJsonString`——而 `ToJsonString` 会把传入的选项标记为只读，只读时若 `TypeInfoResolver` 仍为空，
+  System.Text.Json 8 直接抛异常。改为复用已带解析器的 `McpProtocol.PrettyJson`（缩进 + camelCase）。
+
+**测试**
+
+- 新增 **6** 个回归用例（`McpClientConfigTests`）：钉住共享 JSON 选项可安全喂给 `JsonNode.ToJsonString`，
+  并主动复现"漏配解析器确实会崩"，避免这几条断言被当成空转；
+- `dotnet build` 0 警告 0 错误；`dotnet test` **360/360**（352 纯逻辑 + 8 回环集成）。
+
+> 该异常只在 .NET 8 上出现：同样写法在 .NET 10 运行时不再抛（实测 `.NET 10.0.12` 上各种形状都不抛），
+> 所以复现与验证必须跑在 `net8.0` 上，拿桌面上的 `pwsh`（.NET 10）去验会得到假阴性。
+
 ## v1.1.0 — 2026-10-07
 
 **新增**
