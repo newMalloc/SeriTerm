@@ -462,6 +462,12 @@ dotnet publish src/SeriTerm.App -c Release -r win-x64 --self-contained false -p:
 - 用户滚动判定：只有 `ExtentHeightChange == 0 && VerticalChange != 0` 才是拖动/滚轮；
   追加或淘汰数据导致的偏移变化必须忽略。
 - 判定"在底部"留 8 px 容差，避免浮点误差导致永远判不到底部。
+- **跟随不能只靠派发队列**：把"滚到底"排进 `Background` 优先级，数据持续到达时会被饿死——
+  追加行是 `DataBind`、布局是 `Render`，两者都比它高（实测每批 600 行 + 自动换行时视口全程不动，
+  离底 55 万像素）。跟随要在"内容高度变化"的 `ScrollChanged` 里就地做（`ScrollToBottom`）：
+  这条事件由布局自己派发，不参与那条优先级链。用 `_followPending` 记"这批新行还没被跟随"，
+  保证该分支只可能由追加/淘汰触发（用户滚动不改变内容高度），不会抢用户的手；
+  排进队列的那条请求保留，用于"内容高度不变"的补滚（恢复跟随时已经贴底，不需要它兜底）。
 
 ### 11.3 日志区的性能三条
 

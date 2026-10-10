@@ -17,6 +17,15 @@
 - 不放采样数据、文件与类名清单、命令行、断言条数与测试数字；每个问题最多跟一个能定方向的关键数字，
   细节留在 `docs/verification.md`（数字与证据）和 `docs/development-plan.md`（取舍原因）。
 
+## v1.1.3 — 2026-10-10
+
+- **修：数据持续高速到达时日志区不再自动滚动**。跟随请求原来排进 `DispatcherPriority.Background`，
+  比追加行的 `DataBind` 与布局的 `Render` 都低，数据一密集就永远轮不到它——视口会一路停在原处
+  （离底 55 万像素），看上去就是"自动滚动失灵"。改为在内容高度变化的 `ScrollChanged` 里就地滚到底：
+  这条事件由布局自己派发，不参与那条优先级链，跟随滞后的上限也不再是"一整批"。
+
+详见 [验证记录](https://github.com/newMalloc/SeriTerm/blob/main/docs/verification.md)。
+
 ## v1.1.2 — 2026-10-08
 
 - **修：日志区卡顿**。日志到几千行或拖动滚动条时，每滚一步都在回收重绑一屏只读 `TextBox`

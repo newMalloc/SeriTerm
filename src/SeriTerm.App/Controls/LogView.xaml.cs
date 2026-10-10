@@ -51,6 +51,12 @@ public partial class LogView : UserControl
     private bool _suppressScrollClassification;
     private bool _scrollToEndQueued;
 
+    /// <summary>
+    /// 有新行到达、且当前处于跟随状态：等布局把新行的高度算出来之后，就地钉到底部。
+    /// 见 <see cref="OnScrollChanged"/> 里为什么不能只靠排进派发队列的滚动请求。
+    /// </summary>
+    private bool _followPending;
+
     /// <summary>按下左键时的位置，用来区分"点一下"和"拖动"。</summary>
     private Point _mouseDownPosition;
 
@@ -187,6 +193,7 @@ public partial class LogView : UserControl
         _selAnchorRow = -1;
         _selEndRow = -1;
         _anchorText = null;
+        _followPending = false;
         _viewModel = null;
     }
 
@@ -206,6 +213,7 @@ public partial class LogView : UserControl
         }
 
         // 集合刚变化时布局还没走完，直接滚会滚到旧的末尾位置
+        _followPending = true;
         QueueScrollToEnd();
     }
 
@@ -1538,12 +1546,31 @@ public partial class LogView : UserControl
     {
         var viewModel = _viewModel;
 
-        if (viewModel is null || _suppressScrollClassification)
+        if (viewModel is null || e.OriginalSource is not ScrollViewer viewer)
         {
             return;
         }
 
-        if (e.OriginalSource is not ScrollViewer viewer || Math.Abs(e.VerticalChange) < 0.001)
+        // 新行到达后内容变高：就地钉到底部，**不能**只靠 QueueScrollToEnd 那个排进派发队列的请求。
+        //
+        // 追加行是 DataBind 优先级、布局是 Render 优先级，两者都比那个请求用的 Background 高；
+        // 数据持续到达时 Background 里的请求会被一直压住（实测：自动换行开启、每批 600 行、
+        // 12000 行/秒，27 秒里一次都没派发，视口停在最顶部，离底 55 万像素，看上去就是"自动滚动失灵"）。
+        // 而 ScrollChanged 是布局自己派发的，不受这条优先级链影响；在这里就地滚一步才跟得住。
+        // 用户滚动永远不改变内容高度，所以这个分支只可能由追加/淘汰触发，不会抢用户的手。
+        if (_followPending && Math.Abs(e.ExtentHeightChange) > 0.001 && viewModel.AutoScroll)
+        {
+            _followPending = false;
+            viewer.ScrollToBottom();
+            return;
+        }
+
+        if (_suppressScrollClassification)
+        {
+            return;
+        }
+
+        if (Math.Abs(e.VerticalChange) < 0.001)
         {
             return;
         }
