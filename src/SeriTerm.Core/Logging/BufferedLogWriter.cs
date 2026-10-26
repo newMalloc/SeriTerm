@@ -17,13 +17,15 @@ public sealed class BufferedLogWriter : IAsyncDisposable
 {
     private const int FlushThresholdBytes = 32 * 1024;
 
-    private readonly Channel<byte[]> _channel;
+    private sealed record WriteRequest(byte[]? Data, TaskCompletionSource? Completion = null);
+    private readonly Channel<WriteRequest> _channel;
     private readonly Task _consumer;
     private readonly string _directory;
     private readonly string _prefix;
     private readonly string _extension;
     private readonly long _maxFileBytes;
     private readonly TimeProvider _timeProvider;
+    private readonly string _sessionId = Guid.NewGuid().ToString("N")[..8];
 
     private FileStream? _stream;
     private int _fileIndex;
@@ -52,7 +54,7 @@ public sealed class BufferedLogWriter : IAsyncDisposable
 
         Directory.CreateDirectory(directory);
 
-        _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(queueCapacity)
+        _channel = Channel.CreateBounded<WriteRequest>(new BoundedChannelOptions(queueCapacity)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -84,7 +86,7 @@ public sealed class BufferedLogWriter : IAsyncDisposable
             return;
         }
 
-        if (!_channel.Writer.TryWrite(data.ToArray()))
+        if (!_channel.Writer.TryWrite(new WriteRequest(data.ToArray())))
         {
             Interlocked.Add(ref _droppedBytes, data.Length);
             Interlocked.Increment(ref _droppedRecords);
@@ -94,17 +96,19 @@ public sealed class BufferedLogWriter : IAsyncDisposable
     /// <summary>等待队列里的内容全部落盘。</summary>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
-        // 排空队列：等到队列计数为 0 且消费者空闲
-        while (_channel.Reader.Count > 0)
+        if (_disposed) { await _consumer.WaitAsync(cancellationToken).ConfigureAwait(false); return; }
+        // A queued barrier runs on the sole writer. An empty queue alone does not
+        // mean the final WriteAsync has completed, and flushing that stream from
+        // a second thread races both writes and file rotation.
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
         {
-            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+            await _channel.Writer.WriteAsync(new WriteRequest(null, completion), cancellationToken).ConfigureAwait(false);
+            await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        var stream = _stream;
-
-        if (stream is not null)
+        catch (ChannelClosedException)
         {
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _consumer.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -137,8 +141,19 @@ public sealed class BufferedLogWriter : IAsyncDisposable
 
         while (await reader.WaitToReadAsync().ConfigureAwait(false))
         {
-            while (reader.TryRead(out var chunk))
+            while (reader.TryRead(out var request))
             {
+                if (request.Completion is { } completion)
+                {
+                    try
+                    {
+                        if (_stream is not null) await _stream.FlushAsync().ConfigureAwait(false);
+                        completion.TrySetResult();
+                    }
+                    catch (Exception ex) { completion.TrySetException(ex); }
+                    continue;
+                }
+                var chunk = request.Data!;
                 try
                 {
                     if (_stream is null)
@@ -170,18 +185,24 @@ public sealed class BufferedLogWriter : IAsyncDisposable
                     Interlocked.Increment(ref _droppedRecords);
                 }
             }
+            // A short message must also reach disk while the session remains open.
+            if (_stream is not null && sinceFlush > 0)
+            {
+                try { await _stream.FlushAsync().ConfigureAwait(false); sinceFlush = 0; }
+                catch (Exception) { /* A subsequent write/explicit flush reports the failure. */ }
+            }
         }
     }
 
     private async Task OpenStreamAsync()
     {
         var name = _fileIndex == 0
-            ? $"{_prefix}_{_timeProvider.GetLocalNow():yyyyMMdd_HHmmss}.{_extension}"
-            : $"{_prefix}_{_timeProvider.GetLocalNow():yyyyMMdd_HHmmss}_{_fileIndex:000}.{_extension}";
+            ? $"{_prefix}_{_timeProvider.GetLocalNow():yyyyMMdd_HHmmss}_{_sessionId}.{_extension}"
+            : $"{_prefix}_{_timeProvider.GetLocalNow():yyyyMMdd_HHmmss}_{_sessionId}_{_fileIndex:000}.{_extension}";
 
         var path = Path.Combine(_directory, name);
 
-        _stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 64 * 1024, useAsync: true);
+        _stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 64 * 1024, useAsync: true);
         await Task.CompletedTask.ConfigureAwait(false);
     }
 

@@ -109,6 +109,14 @@ public sealed class ReceiveProcessor
         Materialize(_frames, LineDirection.Rx, wallClock, now, output);
     }
 
+    /// <summary>Finish an incomplete frame at a connection/session boundary.</summary>
+    public void FlushAll(DateTime wallClock, List<DisplayLine> output)
+    {
+        _frames.Clear();
+        _splitter.FlushAll(_frames);
+        Materialize(_frames, LineDirection.Rx, wallClock, Stopwatch.GetTimestamp(), output);
+    }
+
     /// <summary>记录一行发送数据（不参与断帧，立即成行）。</summary>
     public void ProcessTransmitted(ReadOnlySpan<byte> data, DateTime wallClock, List<DisplayLine> output)
     {
@@ -138,6 +146,8 @@ public sealed class ReceiveProcessor
     public string Reformat(DisplayLine line)
     {
         ArgumentNullException.ThrowIfNull(line);
+
+        if (line.Direction == LineDirection.System) return line.Text;
 
         var payload = line.DisplayBytes;
 

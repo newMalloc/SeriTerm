@@ -58,15 +58,15 @@ public sealed class SessionLogger : IAsyncDisposable
 
         var payload = line.DisplayBytes;
 
-        if (_rawWriter is not null && payload.Length > 0)
+        if (_rawWriter is not null && line.Raw.Length > 0)
         {
             if (_options.RawFormat == RawLogFormat.Framed)
             {
-                _rawWriter.Write(BuildRecord(line, payload));
+                _rawWriter.Write(BuildRecord(line, line.Raw));
             }
             else
             {
-                _rawWriter.Write(payload);
+                _rawWriter.Write(line.Raw);
             }
         }
 

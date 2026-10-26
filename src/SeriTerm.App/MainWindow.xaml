@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:SeriTerm.App.Controls"
         Title="SeriTerm 串口调试助手"
         Icon="Assets/seriterm.ico"
-        Height="800" Width="1280" MinHeight="520" MinWidth="920"
+        Height="800" Width="1280" MinHeight="600" MinWidth="920"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
@@ -16,29 +16,15 @@
         FontSize="13"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
-
-    <!--
-        自绘标题栏。Windows 10 上 DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)
-        会被接受（返回 S_OK、读回也是 1）但对 Win32 窗口的标题栏毫无视觉效果，
-        所以系统标题栏永远是一块白条，切主题时只有客户区变色。这里改用 WindowChrome
-        自己画标题栏：颜色走 DynamicResource，切主题即时生效，也才能让标题栏参与背景模糊。
-        CaptionHeight 必须与下面标题栏的高度一致，否则拖动/双击最大化会失灵。
-    -->
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="34"
+        <WindowChrome CaptionHeight="40"
                       ResizeBorderThickness="6"
                       CornerRadius="0"
                       GlassFrameThickness="0"
                       UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
-
     <Border BorderBrush="{DynamicResource WindowBorderBrush}" BorderThickness="1">
     <Grid>
-        <!--
-            背景模糊层：一块被大幅降采样+模糊过的桌面壁纸，按"屏幕坐标"对齐窗口，
-            所以窗口移动时背景跟着桌面走，看起来像真的透出桌面（详见 DesktopBackdrop）。
-            关掉"模糊背景"时这两层整体折叠，窗口回到不透明的纯色背景。
-        -->
         <Rectangle x:Name="BackdropLayer" Visibility="Collapsed"
                    RenderOptions.BitmapScalingMode="HighQuality">
             <Rectangle.Fill>
@@ -50,33 +36,17 @@
         </Rectangle>
         <Rectangle x:Name="BackdropTint" Visibility="Collapsed"
                    Fill="{DynamicResource BackdropTintBrush}" />
-
     <DockPanel>
-
-        <!-- ================= 标题栏 ================= -->
-        <!--
-            外观开关（模糊背景 / 深浅主题）放在标题栏，而不是单独占一行工具栏：
-            原来的顶部工具栏里一半是重复项（自动滚动在侧栏还有一份）、
-            两个死按钮（⚙/?)和一个与标题重复的 "SeriTerm" 字样，整行其实是多余的。
-        -->
-        <!--
-            标题栏自己**不画底色**：画了就会在"模糊背景"打开时多叠一层半透明的窗口底色，
-            顶部于是比四周的留白深一截，又变成一条看得见的色带。
-            不画底色时：不透明模式透出窗口自己的 WindowBackgroundBrush（和四周同色），
-            模糊模式直接透出壁纸 + 蒙版（和卡片之间的留白同色），两种模式顶部都是一片底色。
-        -->
-        <Border DockPanel.Dock="Top" Height="34" Background="Transparent">
-            <!-- LastChildFill=False：否则最后那个"靠右"的按钮组会被当成填充元素，
-                 结果窗口按钮跑到标题文字后面，而不是贴在右上角。 -->
+        <Border DockPanel.Dock="Top" Height="40" Background="Transparent">
             <DockPanel LastChildFill="False">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left"
                             Margin="10,0,0,0" VerticalAlignment="Center">
                     <Image Source="Assets/seriterm.ico" Width="16" Height="16"
                            RenderOptions.BitmapScalingMode="HighQuality" />
-                    <TextBlock Text="SeriTerm 串口调试助手" Margin="8,0,0,0" FontSize="12.5" />
+                    <TextBlock Text="SeriTerm" Margin="10,0,0,0" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="串口工作台" Margin="12,0,0,0" Foreground="{DynamicResource SubtleForegroundBrush}" FontSize="12" />
                 </StackPanel>
-
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <ToggleButton Style="{StaticResource TitleBarToggle}" IsChecked="{Binding Topmost, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="窗口置顶（Ctrl+Shift+T）" AutomationProperties.Name="窗口置顶"><Path Width="14" Height="14" Data="M 4,1 L 10,1 M 5,1 L 5,6 L 2,9 L 12,9 L 9,6 L 9,1 M 7,9 L 7,14" StrokeThickness="1.2" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" /></ToggleButton>
                     <ToggleButton x:Name="BlurBackdropToggle" Style="{StaticResource TitleBarToggle}"
                                   IsChecked="{Binding BlurBackground}"
                                   IsEnabled="{Binding BackdropAvailable}"
@@ -89,13 +59,11 @@
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
                         </Grid>
                     </ToggleButton>
-
                     <Button Style="{StaticResource CaptionButton}"
                             Command="{Binding ToggleThemeCommand}"
                             AutomationProperties.Name="{Binding ThemeButtonText}"
                             ToolTip="{Binding ThemeButtonText}">
                         <Grid Width="14" Height="14">
-                            <!-- 浅色主题下显示月亮（点一下切到深色） -->
                             <Grid>
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -110,8 +78,6 @@
                                 <Path Data="{StaticResource IconMoon}"
                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
                             </Grid>
-
-                            <!-- 深色主题下显示太阳 -->
                             <Grid>
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -130,12 +96,6 @@
                             </Grid>
                         </Grid>
                     </Button>
-
-                    <!-- 「关于」夹在主题按钮与分隔线之间：分隔线的作用是把右边三个窗口按钮
-                         圈成一组，必须紧挨着它们；"这个程序自己是谁"的入口留在左边一组。
-                         图标而不是文字：和旁边的主题按钮一样是 14x14 的几何，ⓘ 是"关于/信息"
-                         的通用形状，标题栏这一排全是图标，混一个文字按钮会显得突兀。
-                         无障碍名称仍是"关于"，读屏和自动化跟以前一样能找到它。 -->
                     <Button Style="{StaticResource CaptionButton}" Click="OnAboutClick"
                             AutomationProperties.Name="关于"
                             ToolTip="关于 SeriTerm：版本号、提交、运行时与 GitHub 仓库（F1）">
@@ -146,10 +106,8 @@
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
                         </Grid>
                     </Button>
-
                     <Border Width="1" Height="16" Margin="6,0,8,0" VerticalAlignment="Center"
                             Background="{DynamicResource PanelBorderBrush}" />
-
                     <Button Style="{StaticResource CaptionButton}" Click="OnMinimizeClick"
                             AutomationProperties.Name="最小化" ToolTip="最小化">
                         <Path Data="M 0,0 H 10" StrokeThickness="1"
@@ -181,11 +139,6 @@
                 </StackPanel>
             </DockPanel>
         </Border>
-
-        <!-- ================= 底部状态栏 ================= -->
-        <!-- 用 Grid 而不是 DockPanel+StackPanel：详情文字放在星号列里，
-             过长时按窗口宽度自动省略，不再需要写死 MaxWidth。
-             搜索命中数只在搜索条里显示一次，这里不再重复。 -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource PanelBackgroundBrush}"
                 BorderBrush="{DynamicResource PanelBorderBrush}"
@@ -198,7 +151,6 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
                 <Ellipse Grid.Column="0" Width="9" Height="9" Margin="0,0,7,0">
                     <Ellipse.Style>
                         <Style TargetType="Ellipse">
@@ -217,21 +169,16 @@
                         </Style>
                     </Ellipse.Style>
                 </Ellipse>
-
                 <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold"
                            Margin="0,0,10,0" />
                 <TextBlock Grid.Column="2" Text="{Binding StatusDetail}"
                            Foreground="{DynamicResource SubtleForegroundBrush}"
                            TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
-
                 <StackPanel Grid.Column="3" Orientation="Horizontal">
                     <TextBlock Text="Rx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
-                    <TextBlock Text="{Binding RxText}" Margin="0,0,16,0" />
+                    <TextBlock Text="{Binding RxText}" Margin="0,0,8,0" ToolTip="{Binding RxRateText}" /><TextBlock Text="{Binding RxRateText}" Margin="0,0,16,0" Foreground="{DynamicResource SubtleForegroundBrush}" />
                     <TextBlock Text="Tx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
-                    <TextBlock Text="{Binding TxText}" Margin="0,0,16,0" />
-
-                    <!-- AI 权限档位常驻状态栏：切到完全权限是一件"要一直记得"的事，
-                         不能只在左栏那张卡片里看得到 -->
+                    <TextBlock Text="{Binding TxText}" Margin="0,0,8,0" ToolTip="{Binding TxRateText}" /><Button Content="复位" Command="{Binding ResetCountersCommand}" Style="{StaticResource SmallButton}" Margin="0,-3,12,-3" ToolTip="仅归零收发计数，不清空日志" />
                     <TextBlock Text="MCP:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0"
                                Visibility="{Binding McpEnabled, Converter={StaticResource BoolToVisibility}}" />
                     <TextBlock Text="{Binding McpPermissionText}"
@@ -253,501 +200,273 @@
             </Grid>
         </Border>
 
-        <!-- ================= 主体：左侧设置 / 右侧日志+发送 ================= -->
-        <Grid>
+        <Grid Margin="12,8,12,12">
             <Grid.ColumnDefinitions>
-                <!-- 360 而不是 306：左栏改成"一行两个"后要放得下"None（无校验）""软件（XOn/XOff）"
-                     这类长值（实测 101.3 / 115.3 DIP，加内边距与箭头约 135 / 149）。
-                     MinWidth 也从 248 提到 330：再窄下去一行两个根本放不下，
-                     预设框会被压成 0 宽（实测过），不是"挤一点"而是坏了。
-                     330 这一档长值会退化成省略号、三个复选框那行会折行，都还算能看。 -->
-                <ColumnDefinition Width="360" MinWidth="330" />
-                <ColumnDefinition Width="4" />
-                <ColumnDefinition Width="*" MinWidth="360" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="290" />
+                <ColumnDefinition Width="10" />
+                <ColumnDefinition Width="*" MinWidth="540" />
             </Grid.ColumnDefinitions>
 
-            <!-- ===== 左：设置面板 ===== -->
-            <!-- 不显示竖向滚动条（Hidden 而不是 Disabled）：左栏内容比窗口高时还要能滚动，
-                 滚轮照样管用；滚动条本身在卡片右侧的空隙里就是一道多余竖线。
-                 Hidden 不占宽度，卡片因此会宽出滚动条那十几个像素。 -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Hidden" Padding="10,10,8,10">
+            <!-- 固定列宽，不为滚动条预留空间；长设置页仍可用滚轮与键盘访问。 -->
+            <ScrollViewer x:Name="SidebarScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-
-                    <!-- 端口设置 -->
-                    <Border Style="{StaticResource SectionPanel}">
+                    <Border Style="{StaticResource SectionPanel}" Padding="16">
                         <StackPanel>
-                            <!-- 本段的"管理"动作用放在标题行右侧：挤在表单行里会把
-                                 预设名/端口名压到只剩几十像素，只能显示成 "COM5 100…"。 -->
-                            <Grid Margin="0,0,0,7">
-                                <TextBlock Text="端口设置" Style="{StaticResource SectionHeader}" Margin="0" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SmallButton}" Content="刷新"
-                                            Command="{Binding RefreshPortsCommand}"
-                                            ToolTip="刷新串口列表（插拔 USB 转串口后点这里）" />
-                                    <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0" Content="保存预设"
-                                            Command="{Binding SavePresetCommand}"
-                                            ToolTip="把当前配置保存为预设（同名覆盖）" />
-                                    <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0" Content="删除预设"
-                                            Command="{Binding DeletePresetCommand}"
-                                            ToolTip="删除选中的预设" />
+                            <DockPanel Margin="0,0,0,14">
+                                <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Content="刷新" Style="{StaticResource SmallButton}" Command="{Binding RefreshPortsCommand}" ToolTip="重新检测串口和设备名称" />
+                                <TextBlock Text="设备连接" FontSize="16" FontWeight="SemiBold" />
+                            </DockPanel>
+                            <TextBlock Text="串口设备" Style="{StaticResource HintText}" Margin="0,0,0,6" />
+                            <ComboBox x:Name="PortCombo" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}"
+                                      IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="串口设备" MinHeight="34">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" /></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Text="{Binding PortHint}" Style="{StaticResource HintText}" Margin="0,7,0,12" />
+                            <TextBlock Text="波特率" Style="{StaticResource HintText}" Margin="0,0,0,6" />
+                            <ComboBox x:Name="BaudRateCombo" IsEditable="True" ItemsSource="{Binding BaudRateOptions}"
+                                      Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditBaudRate}"
+                                      SelectionChanged="OnBaudRateSelectionChanged" AutomationProperties.Name="波特率"
+                                      ToolTip="支持自定义波特率；已连接时修改会立即生效" MinHeight="34" />
+                            <Button Content="{Binding OpenButtonText}" Command="{Binding ToggleOpenCommand}" Style="{StaticResource PrimaryButton}"
+                                    Height="38" Margin="0,14,0,10" ToolTip="打开或关闭当前串口（F5）" />
+                            <CheckBox Content="断线自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,8" />
+                            <DockPanel Visibility="{Binding HasReconnectStatus, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" Content="停止重连" Command="{Binding StopReconnectCommand}" Style="{StaticResource SmallButton}" />
+                                <TextBlock Text="{Binding ReconnectStatusText}" Style="{StaticResource HintText}" />
+                            </DockPanel>
+                            <Expander Header="高级连接参数">
+                                <StackPanel Margin="0,12,0,0">
+                                    <UniformGrid Columns="2">
+                                        <StackPanel Margin="0,0,6,10">
+                                            <TextBlock Text="数据位" Style="{StaticResource HintText}" Margin="0,0,0,5" />
+                                            <ComboBox ItemsSource="{Binding DataBitOptions}" SelectedItem="{Binding DataBits}" IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="数据位" />
+                                        </StackPanel>
+                                        <StackPanel Margin="6,0,0,10">
+                                            <TextBlock Text="停止位" Style="{StaticResource HintText}" Margin="0,0,0,5" />
+                                            <ComboBox ItemsSource="{Binding StopBitsOptions}" SelectedItem="{Binding SelectedStopBits}" IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="停止位" />
+                                        </StackPanel>
+                                    </UniformGrid>
+                                    <TextBlock Text="校验 / 流控" Style="{StaticResource HintText}" Margin="0,0,0,5" />
+                                    <ComboBox ItemsSource="{Binding ParityOptions}" SelectedItem="{Binding SelectedParity}" IsEnabled="{Binding CanEditSettings}" Margin="0,0,0,8" AutomationProperties.Name="校验" />
+                                    <ComboBox ItemsSource="{Binding HandshakeOptions}" SelectedItem="{Binding SelectedHandshake}" IsEnabled="{Binding CanEditSettings}" Margin="0,0,0,10" AutomationProperties.Name="流控" />
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <CheckBox Content="DTR" IsChecked="{Binding DtrEnable}" IsEnabled="{Binding CanEditSettings}" Margin="0,0,20,0" />
+                                        <CheckBox Content="RTS" IsChecked="{Binding RtsEnable}" IsEnabled="{Binding CanEditSettings}" />
+                                    </WrapPanel>
+                                    <CheckBox Content="启动时自动打开上次串口" IsChecked="{Binding AutoOpenOnStartup}" />
                                 </StackPanel>
-                            </Grid>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
 
-                            <!--
-                                端口名单独占第一行（最上面）：先选口再谈参数。下面几行一律"一行两个"，
-                                左半列是固定宽度（单值控件，够用就行），右半列吃剩余宽度（值长的那几个）。
-                                这些宽度是拿真实字体量出来的，不是估的：13 号 Microsoft YaHei UI 下
-                                "校验位:"=43.3、"流控:"=30.0、"None（无校验）"=101.3、"软件（XOn/XOff）"=115.3，
-                                非可编辑下拉框的文字区约等于 宽度-26（7 左右内边距 + 右侧箭头 17）。
-                                左侧列宽同步从 306 调到 360，否则右半列放不下这两个长值。
-                            -->
-                            <Grid Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="端口名:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding Ports}"
-                                          SelectedItem="{Binding SelectedPort}"
-                                          IsEnabled="{Binding CanEditSettings}">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
+                    <Border Style="{StaticResource SectionPanel}" Padding="16,12">
+                        <Expander Header="连接预设">
+                            <StackPanel Margin="0,12,0,0">
+                                <ComboBox x:Name="PresetCombo" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}" IsEnabled="{Binding CanEditSettings}"
+                                          AutomationProperties.Name="连接预设" ToolTip="选择后回填连接和显示参数">
+                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" /></DataTemplate></ComboBox.ItemTemplate>
                                 </ComboBox>
-                            </Grid>
-
-                            <!-- 波特率 | 预设 -->
-                            <Grid Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="98" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="波特率:" Style="{StaticResource FieldLabel}" />
-                                <!-- 列表最后一项是"自定义输入…"：选中它由代码后置清空此框并把光标交给用户 -->
-                                <!-- 这个框在串口打开时也能改（CanEditBaudRate）：改的是已打开的端口本身，
-                                     停止输入 400 ms 后立即生效，不用关掉重开 -->
-                                <ComboBox x:Name="BaudRateCombo" Grid.Column="1" IsEditable="True"
-                                          ItemsSource="{Binding BaudRateOptions}"
-                                          Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}"
-                                          IsEnabled="{Binding CanEditBaudRate}"
-                                          SelectionChanged="OnBaudRateSelectionChanged"
-                                          ToolTip="下拉选常用波特率；选「自定义输入…」后可填任意正整数，例如 1000000。串口已打开时改这里立即生效，不必重新打开" />
-                                <TextBlock Grid.Column="3" Text="预设:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="PresetCombo" Grid.Column="4"
-                                          ItemsSource="{Binding Presets}"
-                                          SelectedItem="{Binding SelectedPreset}"
-                                          ToolTip="选择即套用该预设的连接与显示配置">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <!-- 未选中时占位提示：不然下拉框是空白的，看着像坏了 -->
-                                <TextBlock Grid.Column="4" Text="未选择预设" IsHitTestVisible="False"
-                                           Foreground="{DynamicResource DisabledForegroundBrush}"
-                                           Margin="9,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedPreset}" Value="{x:Null}">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-
-                            <!-- 数据位 | 校验位 -->
-                            <Grid Margin="0,0,0,5">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="48" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="数据位:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding DataBitOptions}"
-                                          SelectedItem="{Binding DataBits}"
-                                          IsEnabled="{Binding CanEditSettings}" />
-                                <TextBlock Grid.Column="3" Text="校验位:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="4"
-                                          ItemsSource="{Binding ParityOptions}"
-                                          SelectedItem="{Binding SelectedParity}"
-                                          IsEnabled="{Binding CanEditSettings}"
-                                          ToolTip="None 无校验；Odd 奇校验；Even 偶校验；Mark 标记；Space 空格">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </Grid>
-
-                            <!-- 停止位 | 流控 -->
-                            <Grid Margin="0,0,0,7">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="48" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="停止位:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding StopBitsOptions}"
-                                          SelectedItem="{Binding SelectedStopBits}"
-                                          IsEnabled="{Binding CanEditSettings}" />
-                                <TextBlock Grid.Column="3" Text="流控:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="4"
-                                          ItemsSource="{Binding HandshakeOptions}"
-                                          SelectedItem="{Binding SelectedHandshake}"
-                                          IsEnabled="{Binding CanEditSettings}"
-                                          ToolTip="软件（XOn/XOff）靠 XON/XOFF 字符控制；硬件（RTS/CTS）靠 RTS、CTS 信号线控制">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </Grid>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <CheckBox Content="DTR" IsChecked="{Binding DtrEnable}"
-                                          IsEnabled="{Binding CanEditSettings}" Margin="0,0,14,0"
-                                          ToolTip="DTR 信号线状态（部分设备用它复位/进入下载模式）" />
-                                <CheckBox Content="RTS" IsChecked="{Binding RtsEnable}"
-                                          IsEnabled="{Binding CanEditSettings}"
-                                          ToolTip="RTS 信号线状态；使用硬件流控时由驱动接管" />
+                                <UniformGrid Columns="2" Margin="0,8,0,0">
+                                    <Button Content="保存当前配置" Command="{Binding SavePresetCommand}" Margin="0,0,4,0" />
+                                    <Button Content="删除预设" Command="{Binding DeletePresetCommand}" Margin="4,0,0,0" />
+                                </UniformGrid>
                             </StackPanel>
-
-                            <!-- 一行两个；面板被拖窄时 WrapPanel 自动折成两行，不会把文字挤出画面 -->
-                            <WrapPanel Margin="0,0,0,6">
-                                <CheckBox Content="自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,14,4"
-                                          ToolTip="链路中断后按 1/2/4/8/10 秒退避自动重连，设备插回来自动恢复" />
-                                <CheckBox Content="启动时自动打开串口" IsChecked="{Binding AutoOpenOnStartup}"
-                                          Margin="0,0,0,4"
-                                          ToolTip="下次启动时自动打开上次使用的串口" />
-                            </WrapPanel>
-
-                            <TextBlock Text="{Binding ReconnectStatusText}" Style="{StaticResource HintText}"
-                                       Margin="0,0,0,6"
-                                       Visibility="{Binding HasReconnectStatus, Converter={StaticResource BoolToVisibility}}" />
-
-                            <Button Style="{StaticResource PrimaryButton}"
-                                    Command="{Binding ToggleOpenCommand}"
-                                    Content="{Binding OpenButtonText}"
-                                    Height="32" />
-                        </StackPanel>
+                        </Expander>
                     </Border>
 
-                    <!-- 接收设置 -->
-                    <Border Style="{StaticResource SectionPanel}">
-                        <StackPanel>
-                            <TextBlock Text="接收设置" Style="{StaticResource SectionHeader}" />
-
-                            <!-- 显示时间戳 | 十六进制显示：一行两个 -->
-                            <WrapPanel Margin="0,0,0,6">
-                                <CheckBox Content="显示时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,14,4"
-                                          ToolTip="每行前面显示接收时刻" />
-                                <CheckBox x:Name="HexDisplayCheck" Content="十六进制显示"
-                                          IsChecked="{Binding HexDisplay}" Margin="0,0,0,4"
-                                          ToolTip="按字节显示接收内容。文本模式下回车换行会显示成空格，避免一行被拆成多行；原始字节始终保留，随时切回十六进制可查。" />
-                            </WrapPanel>
-
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="编码:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding EncodingOptions}"
-                                          SelectedItem="{Binding SelectedEncodingName}"
-                                          ToolTip="文本显示使用的编码；中文设备常用 GB2312" />
-                            </Grid>
-
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="断帧:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding FramingOptions}"
-                                          SelectedItem="{Binding SelectedFraming}"
-                                          ToolTip="空闲间隔断帧按时间切分；分隔符断帧按 CRLF 等字符切分，报文间隔再长也准确" />
-                            </Grid>
-
-                            <!-- 间隔 | 分隔符：一行两个 -->
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="74" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="间隔:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="1"
-                                         Text="{Binding AutoFrameGapText}"
-                                         IsEnabled="{Binding IsGapFraming}"
-                                         ToolTip="空闲超过该毫秒数即认为一帧结束" />
-                                <TextBlock Grid.Column="2" Text="ms" Style="{StaticResource FieldLabel}"
-                                           Margin="4,0,0,0" />
-                                <TextBlock Grid.Column="4" Text="分隔符:" Style="{StaticResource FieldLabel}" />
-                                <TextBox Grid.Column="5"
-                                         Text="{Binding DelimiterText}"
-                                         IsEnabled="{Binding IsDelimiterFraming}"
-                                         ToolTip="支持 \r \n \t \xNN 转义，或 hex:0D 0A；也可直接写普通文本如 OK" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 日志显示 -->
-                    <Border Style="{StaticResource SectionPanel}">
-                        <StackPanel>
-                            <!-- 「查找」只是打开搜索的入口，按钮留在这里（和"暂停显示"一起属于显示类动作）；
-                                 查找框与收藏栏本身叠在日志右上角，见 LogView.xaml -->
-                            <Grid Margin="0,0,0,7">
-                                <TextBlock Text="日志显示" Style="{StaticResource SectionHeader}" Margin="0" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SmallButton}" Content="查找"
-                                            Command="{Binding OpenSearchCommand}"
-                                            ToolTip="实时搜索日志（Ctrl+F）；查找框与收藏栏会叠在日志右上角" />
-                                    <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0"
-                                            Content="{Binding PauseButtonText}"
-                                            Command="{Binding TogglePauseCommand}"
-                                            ToolTip="暂停只是停止刷新显示，串口数据仍在接收" />
+                    <Border Style="{StaticResource SectionPanel}" Padding="16,12">
+                        <Expander x:Name="ReceiveDisplayExpander" Header="接收与显示" IsExpanded="True">
+                            <StackPanel Margin="0,12,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                    <CheckBox x:Name="HexDisplayCheck" Content="HEX 显示" IsChecked="{Binding HexDisplay}" Margin="0,0,18,0" />
+                                    <CheckBox x:Name="AutoScrollToggle" Content="跟随最新" IsChecked="{Binding AutoScroll}" ToolTip="上翻日志时自动停止跟随" />
                                 </StackPanel>
-                            </Grid>
-
-                            <!-- 自动滚动 | 自动换行 | 字号：一行三个。
-                                 布尔选项一律用复选框（侧栏里样式统一），面板拖窄时整组折行。 -->
-                            <WrapPanel Margin="0,0,0,6">
-                                <CheckBox x:Name="AutoScrollToggle" Content="自动滚动"
-                                          IsChecked="{Binding AutoScroll}" Margin="0,0,14,4"
-                                          ToolTip="跟随最新数据。滚离底部会自动停止，拉回底部会自动恢复" />
-                                <CheckBox Content="自动换行" IsChecked="{Binding LineWrap}" Margin="0,0,14,4"
-                                          ToolTip="日志内容自动换行" />
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="字号:" Style="{StaticResource FieldLabel}" />
-                                    <ComboBox x:Name="FontSizeCombo" Width="60"
-                                              ItemsSource="{Binding FontSizeOptions}"
-                                              SelectedItem="{Binding LogFontSize}"
-                                              ToolTip="日志区字号（只影响显示，不影响落盘内容）" />
-                                </StackPanel>
-                            </WrapPanel>
-
-                            <!-- 保存 / 清空作用在"当前显示的内容"上，跟着日志设置一起留在左栏；
-                                 右栏因此不再需要日志工具条那一行，日志区多回一行高度 -->
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Button Content="保存" Margin="0,0,3,0"
-                                        Command="{Binding SaveLogCommand}"
-                                        ToolTip="把当前显示内容保存为文本日志（Ctrl+S）" />
-                                <Button Grid.Column="1" Content="清空" Margin="3,0,0,0"
-                                        Command="{Binding ClearLogCommand}"
-                                        ToolTip="清空显示内容（Ctrl+K）" />
-                            </Grid>
-                        </StackPanel>
+                                <TextBlock Text="文本编码（收发共用）" Style="{StaticResource HintText}" Margin="0,0,0,5" />
+                                <ComboBox ItemsSource="{Binding EncodingOptions}" SelectedItem="{Binding SelectedEncodingName}" AutomationProperties.Name="文本编码" />
+                                <TextBlock Text="断帧方式" Style="{StaticResource HintText}" Margin="0,12,0,5" />
+                                <ComboBox ItemsSource="{Binding FramingOptions}" SelectedItem="{Binding SelectedFraming}" AutomationProperties.Name="断帧方式" />
+                                <DockPanel Margin="0,8,0,0" Visibility="{Binding IsGapFraming, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock DockPanel.Dock="Right" Text="ms" Margin="8,0,0,0" Style="{StaticResource HintText}" />
+                                    <TextBox Text="{Binding AutoFrameGapText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="断帧间隔" ToolTip="空闲超过指定时间即结束当前帧（1～2000 ms）" />
+                                </DockPanel>
+                                <TextBox Text="{Binding DelimiterText, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0" AutomationProperties.Name="分隔符"
+                                         Visibility="{Binding IsDelimiterFraming, Converter={StaticResource BoolToVisibility}}" ToolTip="支持 \r \n \t \xNN 或 hex:0D 0A" />
+                                <TextBlock Text="{Binding ReceiveValidationText}" Foreground="{DynamicResource ErrorBrush}" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,0">
+                                    <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers>
+                                        <DataTrigger Binding="{Binding ReceiveValidationText}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                                    </Style.Triggers></Style></TextBlock.Style>
+                                </TextBlock>
+                                <WrapPanel Margin="0,12,0,4">
+                                    <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp}" Margin="0,0,18,6" />
+                                    <CheckBox Content="自动换行" IsChecked="{Binding LineWrap}" Margin="0,0,0,6" />
+                                </WrapPanel>
+                                <DockPanel>
+                                    <TextBlock x:Name="LogFontSizeLabel" Text="日志字号" Style="{StaticResource HintText}" Margin="0,0,12,0" />
+                                    <ComboBox x:Name="LogFontSizeCombo" ItemsSource="{Binding FontSizeOptions}" SelectedItem="{Binding LogFontSize}" AutomationProperties.Name="日志字号" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Expander>
                     </Border>
 
-                    <!-- 日志保存 -->
-                    <Border Style="{StaticResource SectionPanel}">
-                        <StackPanel>
-                            <!-- 目录操作放标题行，路径就能占满整行完整显示，
-                                 而不是被两个按钮挤成 "C:\Users\New\Documents\…" -->
-                            <Grid Margin="0,0,0,7">
-                                <TextBlock Text="日志保存" Style="{StaticResource SectionHeader}" Margin="0" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SmallButton}" Content="选择目录"
-                                            Command="{Binding ChooseLogDirectoryCommand}"
-                                            ToolTip="更改日志保存目录" />
-                                    <Button Style="{StaticResource SmallButton}" Margin="4,0,0,0" Content="打开目录"
-                                            Command="{Binding OpenLogDirectoryCommand}"
-                                            ToolTip="在资源管理器中打开日志目录" />
-                                </StackPanel>
-                            </Grid>
-
-                            <CheckBox x:Name="SaveLogCheck" Content="将接收保存到文件"
-                                      IsChecked="{Binding SaveLogToFile}" Margin="0,0,0,4"
-                                      ToolTip="实时写入文本日志；中文按当前编码解码" />
-                            <!-- 与上一个复选框是并列关系：只勾这一个也能单独存 .bin -->
-                            <CheckBox Content="同时保存原始字节（可重放）"
-                                      IsChecked="{Binding SaveRawLog}" Margin="0,0,0,6"
-                                      ToolTip="写入 .bin，含方向与时间戳，可用 RawLogReader 读回重放" />
-
-                            <TextBlock Text="{Binding LogDirectory}" Style="{StaticResource HintText}"
-                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding LogDirectory}" />
-
-                            <TextBlock Text="{Binding LogStatusText}" Style="{StaticResource HintText}"
-                                       Margin="0,6,0,0"
-                                       Visibility="{Binding IsLoggingEnabled, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
+                    <Border Style="{StaticResource SectionPanel}" Padding="16,12">
+                        <Expander Header="日志文件">
+                            <StackPanel Margin="0,12,0,0">
+                                <CheckBox x:Name="SaveLogCheck" Content="实时保存文本日志" IsChecked="{Binding SaveLogToFile}" Margin="0,0,0,10" />
+                                <CheckBox Content="保存原始字节日志" IsChecked="{Binding SaveRawLog}" Margin="0,0,0,10" />
+                                <TextBlock Text="暂停显示时仍持续记录。原始日志可离线打开查看。" Style="{StaticResource HintText}" Margin="0,0,0,10" />
+                                <TextBlock Text="{Binding LogDirectory}" Style="{StaticResource HintText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding LogDirectory}" />
+                                <UniformGrid Columns="2" Margin="0,10,0,0">
+                                    <Button Content="选择目录" Command="{Binding ChooseLogDirectoryCommand}" Margin="0,0,4,0" />
+                                    <Button Content="打开目录" Command="{Binding OpenLogDirectoryCommand}" Margin="4,0,0,0" />
+                                </UniformGrid>
+                                <Button Content="打开原始日志…" Command="{Binding ImportRawLogCommand}" Margin="0,8,0,0" ToolTip="仅在界面查看历史记录，不向串口发送" />
+                                <TextBlock Text="{Binding LogStatusText}" Style="{StaticResource HintText}" Margin="0,10,0,0"
+                                           Visibility="{Binding IsLoggingEnabled, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </Expander>
                     </Border>
 
-                    <!-- AI 接入（MCP） -->
-                    <Border Style="{StaticResource SectionPanel}">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,7">
-                                <TextBlock Text="AI 接入" Style="{StaticResource SectionHeader}" Margin="0" />
-                                <Button Style="{StaticResource SmallButton}" HorizontalAlignment="Right" Content="复制配置"
-                                        Command="{Binding CopyMcpConfigCommand}"
-                                        ToolTip="把这段配置粘进 Claude Desktop / Cursor / VS Code 的 MCP 设置里，AI 就能读到本程序收到的数据" />
-                            </Grid>
-
-                            <CheckBox Content="启用 MCP 服务" IsChecked="{Binding McpEnabled}" Margin="0,0,0,4"
-                                      ToolTip="{Binding McpPipeName, StringFormat=让本机的 AI 客户端连上本程序（仅当前用户可连）。管道：{0}}" />
-
-                            <!-- 判定权限只看这一个复选框：不勾＝只读（默认） -->
-                            <CheckBox Content="允许 AI 发送数据（完全权限）" IsChecked="{Binding McpFullPermission}" Margin="0,0,0,6"
-                                      ToolTip="不勾＝只读：AI 只能列端口、读帧、等关键词。勾上后 AI 还能打开/关闭串口、改波特率、发送数据；每次发送都会在日志里留下带 [AI] 的审计行，随时可以取消勾选收回权限。" />
-
-                            <TextBlock Text="{Binding McpServiceStateText}" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding McpClientText}" Style="{StaticResource HintText}"
-                                       Margin="0,4,0,0" TextWrapping="Wrap" />
-                        </StackPanel>
+                    <Border Style="{StaticResource SectionPanel}" Padding="16,12">
+                        <Expander Header="AI 接入 · MCP">
+                            <StackPanel Margin="0,12,0,0">
+                                <CheckBox Content="启用 MCP 服务" IsChecked="{Binding McpEnabled}" Margin="0,0,0,10" />
+                                <CheckBox Content="允许 AI 控制与发送" IsChecked="{Binding McpFullPermission}" Margin="0,0,0,10"
+                                          ToolTip="开启后 AI 可开关串口、修改波特率和发送数据；默认只读" />
+                                <TextBlock Text="{Binding McpServiceStateText}" Style="{StaticResource HintText}" />
+                                <TextBlock Text="{Binding McpClientText}" Style="{StaticResource HintText}" Margin="0,4,0,10" />
+                                <Button Content="复制客户端配置" Command="{Binding CopyMcpConfigCommand}" />
+                            </StackPanel>
+                        </Expander>
                     </Border>
-
+                    <TextBlock Text="F5 连接 / 断开   ·   F1 关于&#10;Ctrl+F 查找   ·   Ctrl+S 保存日志" Style="{StaticResource HintText}" Margin="10,6,0,6" LineHeight="22" />
                 </StackPanel>
             </ScrollViewer>
 
-            <GridSplitter Grid.Column="1" />
-
-            <!-- ===== 右：日志 + 发送。发送区固定在日志下方，永远不用滚动去找"发送" ===== -->
-            <!-- 日志上方不再有工具条那一行：显示设置、保存/清空、查找收藏都在左栏，
-                 右键菜单与 Ctrl+C 负责复制选中的行 -->
-            <!-- 右栏和左栏用同一套"留白 + 卡片"的排版：上下左右都让出和左栏一样的内边距
-                 （左栏是 ScrollViewer 的 Padding="10,10,8,10"，这里上 10 / 右 8，
-                 下边不留——发送卡片要贴着状态栏，和左栏最后一张卡片贴着窗口底一样）。
-                 以前日志是铺满整块右栏的，圆角、边框都没有，只有发送区孤零零一条贴在下面。 -->
-            <Grid Grid.Column="2" Margin="0,10,8,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <!-- 日志卡片：和左栏的 SectionPanel 同样的圆角 + 1px 边框，
-                     底色画在这张卡上（LogView 自己的根 Grid 已经改成透明），
-                     否则方角的 Grid 会把圆角盖住 -->
-                <Border x:Name="LogCard" Grid.Row="0"
-                        Background="{DynamicResource LogBackgroundBrush}"
-                        BorderBrush="{DynamicResource PanelBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="5"
-                        SizeChanged="OnLogCardSizeChanged">
-                    <controls:LogView x:Name="LogViewControl" />
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions><RowDefinition Height="*" MinHeight="120" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Border x:Name="LogCard" CornerRadius="8" Background="{DynamicResource LogBackgroundBrush}"
+                        BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="1" SizeChanged="OnLogCardSizeChanged">
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Border x:Name="LogToolbar" Padding="12,7" BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,0,0,1" Background="{DynamicResource PanelBackgroundBrush}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="查找" Command="{Binding OpenSearchCommand}" Style="{StaticResource ToolbarButton}" ToolTip="查找日志（Ctrl+F）" />
+                                    <Button Content="{Binding PauseButtonText}" Command="{Binding TogglePauseCommand}" Style="{StaticResource ToolbarButton}" />
+                                    <Button Content="保存" Command="{Binding SaveLogCommand}" Style="{StaticResource ToolbarButton}" ToolTip="保存显示内容（Ctrl+S）" />
+                                    <Button Content="清空" Command="{Binding ClearLogCommand}" Style="{StaticResource ToolbarButton}" ToolTip="清空显示内容（Ctrl+K）" />
+                                </StackPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="接收工作区" FontWeight="SemiBold" FontSize="15" />
+                                <TextBlock Text="{Binding BufferStatusText}" Style="{StaticResource HintText}" Margin="12,0,8,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                            </DockPanel>
+                        </Border>
+                        <controls:LogView x:Name="LogViewControl" Grid.Row="1" />
+                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360" Margin="20,8" IsHitTestVisible="False">
+                            <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
+                                <DataTrigger Binding="{Binding Log.Lines.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                            </Style.Triggers></Style></StackPanel.Style>
+                            <Border Width="40" Height="40" CornerRadius="12" Background="{DynamicResource ControlHoverBrush}" Margin="0,0,0,10">
+                                <Path Width="26" Height="22" Stretch="Uniform" Data="M 2,4 L 10,11 L 2,18 M 13,18 L 24,18" Stroke="{DynamicResource AccentTextBrush}" StrokeThickness="2" />
+                            </Border>
+                            <TextBlock Text="{Binding EmptyLogTitle}" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                            <TextBlock Text="{Binding EmptyLogHint}" Foreground="{DynamicResource SubtleForegroundBrush}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="23" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
-                <!-- ===== 发送区 ===== -->
-                <!-- 发送区是另一张卡片：和日志之间留 8 DIP 的窗口底色缝隙，
-                     缝隙宽度和左栏两张 SectionPanel 之间的间距一致。
-                     之前它只是日志下面一条贴着底边的横条、只有一根 1px 分隔线，
-                     和日志糊成一整块；拉开之后"日志"和"发送"是两个层次分明的区域。 -->
-                <Border Grid.Row="1"
-                        Style="{StaticResource SectionPanel}"
-                        Margin="0,8,0,0"
-                        Padding="10,8">
+                <Border x:Name="SendCard" Grid.Row="1" Style="{StaticResource SectionPanel}" Margin="0,6,0,0" Padding="10,7">
                     <StackPanel>
-                        <!-- 选项行用 WrapPanel：窗口窄的时候自动折行，不会把按钮挤出画面。
-                             这里不要设 ItemHeight：它把每个子控件的排布高度锁成固定值。定时输入框
-                             内部是 ScrollViewer，行高（微软雅黑 13 号 ≈ 16.5 + 内边距 6 + 边框 2 ≈ 24.7 DIP）
-                             本来就比 26 大，被压到 26 后 ScrollViewer 的 Extent 18 > Viewport 11.33，
-                             于是单行 TextBox 在内部悄悄竖向滚动（滚动条是隐藏的）——表现为数字被切掉
-                             上半截、输入时上下滑动（实测 ScrollableHeight 6.67 DIP）。
-                             不设就让行高跟着本行最高的子控件走，实测 ScrollableHeight 变 0。 -->
-                        <WrapPanel Margin="0,0,0,6">
-                            <CheckBox x:Name="TerminalModeCheck" Content="终端模式"
-                                      IsChecked="{Binding TerminalMode}" Margin="0,0,14,0"
-                                      ToolTip="键盘输入直接进串口：可打印字符立即发送，回车按行尾设置发送，退格与 Ctrl+C 透传；焦点在输入框时不生效" />
-                            <CheckBox Content="本地回显" IsChecked="{Binding TerminalLocalEcho}"
-                                      Margin="0,0,14,0"
-                                      Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}"
-                                      ToolTip="终端模式下按行记录发送内容；设备本身会回显时可关掉以免重复" />
-                            <CheckBox Content="退格发 0x7F" IsChecked="{Binding TerminalBackspaceSendsDel}"
-                                      Margin="0,0,14,0"
-                                      Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}"
-                                      ToolTip="取消勾选则发送 0x08(BS)；有些 CLI 只认其中一种" />
-
-                            <CheckBox x:Name="SendHexCheck" Content="十六进制发送"
-                                      IsChecked="{Binding SendHex}" Margin="0,0,14,0"
-                                      ToolTip="勾选后按十六进制解析输入（宽容格式：空格、逗号、0x 前缀都可）" />
-
-                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
-                                <TextBlock Text="行尾:" Style="{StaticResource FieldLabel}" />
-                                <ComboBox Width="126"
-                                          ItemsSource="{Binding LineEndingOptions}"
-                                          SelectedItem="{Binding SelectedLineEnding}"
-                                          ToolTip="文本发送时自动附加的换行符；发二进制帧时选“无”" />
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
-                                <TextBlock Text="定时:" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="TimedIntervalBox" Width="54" Text="{Binding TimedSendIntervalText}"
-                                         ToolTip="定时发送间隔（秒），最小 0.05" />
-                                <TextBlock Text="秒" Style="{StaticResource FieldLabel}" Margin="4,0,0,0" />
-                            </StackPanel>
-
-                            <Button Content="{Binding TimedSendButtonText}" Margin="0,0,6,0"
-                                    Command="{Binding ToggleTimedSendCommand}"
-                                    ToolTip="按设定间隔循环发送当前内容" />
-                            <Button Content="{Binding SendFileButtonText}"
-                                    Command="{Binding SendFileCommand}"
-                                    ToolTip="把文件内容分块写入串口；发送中可点击取消" />
-                        </WrapPanel>
-
-                        <Grid>
+                        <Grid x:Name="SendToolbar">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="SendTextBox"
-                                     Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
-                                     MinHeight="54" MaxHeight="110"
-                                     TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                                     VerticalContentAlignment="Top"
-                                     ToolTip="十六进制发送时填写 01 02 FF 这类内容；未打开串口时也可以先准备好内容" />
-                            <Button Grid.Column="1" Width="90" Margin="8,0,0,0"
-                                    Style="{StaticResource PrimaryButton}"
-                                    Command="{Binding SendCommand}" Content="发送"
-                                    IsEnabled="{Binding IsOpen}"
-                                    VerticalAlignment="Stretch"
-                                    ToolTip="把输入内容写入串口（文本按当前编码转字节，HEX 按十六进制解析）" />
-                        </Grid>
-
-                        <!-- 状态行：进度、文件发送、定时发送、终端当前输入，谁有内容谁占位置 -->
-                        <StackPanel Orientation="Horizontal">
-                            <ProgressBar Width="160" Height="6" Margin="0,7,10,0" VerticalAlignment="Center"
-                                         Value="{Binding SendFileProgress}" Minimum="0" Maximum="100"
-                                         Visibility="{Binding IsSendingFile, Converter={StaticResource BoolToVisibility}}" />
-                            <TextBlock Text="{Binding SendFileStatusText}" Style="{StaticResource HintText}"
-                                       Margin="0,7,14,0"
-                                       Visibility="{Binding HasSendFileStatus, Converter={StaticResource BoolToVisibility}}" />
-                            <TextBlock Text="{Binding TimedSendStatusText}" Style="{StaticResource HintText}"
-                                       Margin="0,7,14,0"
-                                       Visibility="{Binding TimedSendEnabled, Converter={StaticResource BoolToVisibility}}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,7,0,0"
-                                        Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="当前输入：" Style="{StaticResource HintText}" />
-                                <TextBlock Text="{Binding TerminalEchoText, Mode=OneWay}" Style="{StaticResource HintText}" />
+                            <TextBox x:Name="SendTextBox" Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" MinHeight="32" MaxHeight="96" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top" FontFamily="Consolas, Microsoft YaHei UI" Padding="8,5"
+                                     AutomationProperties.Name="发送内容">
+                                <TextBox.ToolTip>
+                                    <StackPanel MaxWidth="360">
+                                        <TextBlock Text="{Binding SendValidationText}" />
+                                        <TextBlock Text="{Binding SendPreviewText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        <TextBlock Text="Ctrl+Enter 发送 · Enter 换行" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </TextBox.ToolTip>
+                            </TextBox>
+                            <TextBlock Text="输入内容 · Ctrl+Enter 发送" Foreground="{DynamicResource DisabledForegroundBrush}" Margin="10,0"
+                                       TextTrimming="CharacterEllipsis" IsHitTestVisible="False">
+                                <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
+                                    <DataTrigger Binding="{Binding SendText}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                </Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <CheckBox x:Name="SendHexCheck" Grid.Column="1" Content="HEX" IsChecked="{Binding SendHex}" Margin="10,0"
+                                      VerticalAlignment="Center" ToolTip="以十六进制字节发送" AutomationProperties.Name="HEX 发送" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="LineEndingLabel" Text="行尾" Style="{StaticResource HintText}" Margin="0,0,6,0" />
+                                <ComboBox x:Name="LineEndingCombo" Width="110" Height="32" ItemsSource="{Binding LineEndingOptions}" SelectedItem="{Binding SelectedLineEnding}"
+                                          AutomationProperties.Name="发送行尾" ToolTip="行尾也会附加到 HEX 数据；二进制协议通常选“无”" />
                             </StackPanel>
-                        </StackPanel>
+                            <Button x:Name="SendButton" Grid.Column="3" Content="发送" Width="60" Height="32" VerticalAlignment="Center"
+                                    Command="{Binding SendCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" ToolTip="发送当前内容（Ctrl+Enter）；Enter 换行" />
+                            <ToggleButton x:Name="SendOptionsToggle" Grid.Column="4" Content="更多" Width="48" Height="32" VerticalAlignment="Center"
+                                          Style="{StaticResource CompactToggleButton}" Margin="6,0,0,0" AutomationProperties.Name="更多发送选项"
+                                          ToolTip="发送历史、字节预览、定时发送、文件发送与终端设置" />
+                        </Grid>
+                        <TextBlock Text="{Binding SendValidationText}" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                                   Visibility="{Binding HasSendError, Converter={StaticResource BoolToVisibility}}" />
+                        <Border x:Name="SendOptionsPanel" BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,8,0,0"
+                                Visibility="{Binding IsChecked, ElementName=SendOptionsToggle, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding SendValidationText}" ToolTip="{Binding SendPreviewText}" Style="{StaticResource HintText}"
+                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="200" Margin="12,0,0,0" />
+                                    <TextBlock DockPanel.Dock="Left" Text="最近发送" Style="{StaticResource HintText}" Margin="0,0,8,0" />
+                                    <Grid Width="180" HorizontalAlignment="Left">
+                                        <ComboBox ItemsSource="{Binding SendHistory}" SelectedItem="{Binding SelectedSendHistory}"
+                                                  AutomationProperties.Name="最近发送记录" ToolTip="最近 30 条成功发送记录；选择后仅回填">
+                                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        <TextBlock Text="选择记录回填" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="8,0,28,0" IsHitTestVisible="False">
+                                            <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedSendHistory}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                            </Style.Triggers></Style></TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </DockPanel>
+                                <WrapPanel Margin="0,0,0,3">
+                                    <TextBlock Text="间隔" Style="{StaticResource HintText}" Margin="0,0,8,5" />
+                                    <TextBox x:Name="TimedIntervalBox" Text="{Binding TimedSendIntervalText, UpdateSourceTrigger=LostFocus}" Width="62" Margin="0,0,0,5"
+                                             AutomationProperties.Name="定时发送间隔" ToolTip="0.05～86400 秒，使用小数点" />
+                                    <TextBlock Text="秒" Style="{StaticResource HintText}" Margin="6,0,12,5" />
+                                    <Button Content="{Binding TimedSendButtonText}" Command="{Binding ToggleTimedSendCommand}" Margin="0,0,8,5" />
+                                    <Button x:Name="SendFileButton" Content="发送文件…" Command="{Binding SendFileCommand}" Margin="0,0,0,5" />
+                                </WrapPanel>
+                                <WrapPanel>
+                                    <CheckBox x:Name="TerminalModeCheck" Content="终端模式" IsChecked="{Binding TerminalMode}" Margin="0,0,16,4"
+                                              ToolTip="焦点离开发送框后，键盘输入直接发往串口" />
+                                    <CheckBox Content="本地回显" IsChecked="{Binding TerminalLocalEcho}" Margin="0,0,16,4" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}" />
+                                    <CheckBox Content="退格 DEL" IsChecked="{Binding TerminalBackspaceSendsDel}" Margin="0,0,0,4" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <!-- 活跃任务的停止入口常驻，不随“更多”折叠。 -->
+                        <DockPanel Margin="0,5,0,0" Visibility="{Binding TimedSendEnabled, Converter={StaticResource BoolToVisibility}}">
+                            <Button x:Name="StopTimedSendButton" DockPanel.Dock="Right" Content="停止定时" Command="{Binding ToggleTimedSendCommand}" Margin="12,0,0,0" />
+                            <TextBlock Text="{Binding TimedSendStatusText}" Style="{StaticResource HintText}" />
+                        </DockPanel>
+                        <DockPanel Margin="0,5,0,0" Visibility="{Binding HasSendFileStatus, Converter={StaticResource BoolToVisibility}}">
+                            <Button x:Name="CancelFileSendButton" DockPanel.Dock="Right" Content="取消发送" Command="{Binding CancelFileSendCommand}" Margin="12,0,0,0"
+                                    Visibility="{Binding IsSendingFile, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{Binding SendFileStatusText}" Style="{StaticResource HintText}" />
+                        </DockPanel>
+                        <ProgressBar Height="3" Margin="0,5,0,0" Value="{Binding SendFileProgress}" Maximum="100" Visibility="{Binding IsSendingFile, Converter={StaticResource BoolToVisibility}}" />
+                        <DockPanel Margin="0,5,0,0" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}">
+                            <CheckBox x:Name="ActiveTerminalModeCheck" DockPanel.Dock="Right" Content="终端模式已开启" IsChecked="{Binding TerminalMode}" Margin="12,0,0,0" ToolTip="取消勾选即可退出逐键发送" />
+                            <TextBlock Text="{Binding TerminalEchoText, StringFormat=终端当前输入：{0}}" Style="{StaticResource HintText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                        </DockPanel>
                     </StackPanel>
                 </Border>
             </Grid>

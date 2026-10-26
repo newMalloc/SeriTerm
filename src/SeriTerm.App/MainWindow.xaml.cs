@@ -23,6 +23,8 @@ public partial class MainWindow : Window
 
     private IntPtr _savedImeContext;
     private bool _imeDetached;
+    private bool _closing;
+    private bool _shutdownCompleted;
 
     public MainWindow(MainViewModel viewModel, IThemeService themeService)
     {
@@ -99,6 +101,16 @@ public partial class MainWindow : Window
 
         switch (key)
         {
+            case Key.Enter when control && SendTextBox.IsKeyboardFocusWithin:
+                if (_viewModel.SendCommand.CanExecute(null)) _viewModel.SendCommand.Execute(null);
+                e.Handled = true;
+                return;
+
+            case Key.F5:
+                if (_viewModel.ToggleOpenCommand.CanExecute(null)) _viewModel.ToggleOpenCommand.Execute(null);
+                e.Handled = true;
+                return;
+
             case Key.F when control:
                 LogViewControl.FocusSearch();
                 e.Handled = true;
@@ -581,12 +593,12 @@ public partial class MainWindow : Window
 
         if (settings.WindowWidth >= 640)
         {
-            Width = settings.WindowWidth;
+            Width = Math.Max(MinWidth, Math.Min(settings.WindowWidth, SystemParameters.WorkArea.Width));
         }
 
         if (settings.WindowHeight >= 420)
         {
-            Height = settings.WindowHeight;
+            Height = Math.Max(MinHeight, Math.Min(settings.WindowHeight, SystemParameters.WorkArea.Height));
         }
 
         if (settings.WindowMaximized)
@@ -595,8 +607,17 @@ public partial class MainWindow : Window
         }
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    protected override async void OnClosing(CancelEventArgs e)
     {
+        if (_shutdownCompleted)
+        {
+            base.OnClosing(e);
+            return;
+        }
+        e.Cancel = true;
+        base.OnClosing(e);
+        if (_closing) return;
+        _closing = true;
         // 记录窗口尺寸供下次启动恢复（最大化时用 RestoreBounds 记住还原后的尺寸）
         var settings = _viewModel.Settings;
         var bounds = WindowState == WindowState.Normal
@@ -607,6 +628,18 @@ public partial class MainWindow : Window
         settings.WindowHeight = bounds.Height;
         settings.WindowMaximized = WindowState == WindowState.Maximized;
 
-        base.OnClosing(e);
+        // Keep the dispatcher alive while stopping sends and flushing log queues.
+        // Blocking in Application.OnExit can strand workers waiting for this thread.
+        IsEnabled = false;
+        try
+        {
+            _viewModel.PersistSettings();
+            await _viewModel.DisposeAsync();
+        }
+        finally
+        {
+            _shutdownCompleted = true;
+            Close();
+        }
     }
 }

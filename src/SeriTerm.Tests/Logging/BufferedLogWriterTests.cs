@@ -5,6 +5,45 @@ namespace SeriTerm.Tests.Logging;
 
 public class BufferedLogWriterTests : IDisposable
 {
+    private sealed class FixedClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 10, 26, 0, 0, 0, TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task SessionsStartedInSameSecondNeverOverwriteEachOther()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            await using var writer = new BufferedLogWriter(_directory, "session", "log", timeProvider: new FixedClock());
+            writer.Write(Encoding.UTF8.GetBytes($"session-{i}"));
+        }
+        var contents = Directory.GetFiles(_directory).Select(File.ReadAllText).Order().ToArray();
+        Assert.Equal(new[] { "session-0", "session-1", "session-2" }, contents);
+    }
+
+    [Fact]
+    public async Task FlushBarrierIncludesFinalInFlightWriteBeforeReturning()
+    {
+        await using var writer = new BufferedLogWriter(_directory, "barrier", "bin", maxFileBytes: 4096);
+        for (var i = 0; i < 20; i++)
+        {
+            writer.Write(new byte[3072]);
+            await writer.FlushAsync();
+            Assert.Equal((i + 1L) * 3072, await TotalWrittenAsync());
+        }
+    }
+
+    [Fact]
+    public async Task ShortMessagesReachDiskWithoutClosingSession()
+    {
+        await using var writer = new BufferedLogWriter(_directory, "live", "log");
+        writer.Write(Encoding.UTF8.GetBytes("short message"));
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (await TotalWrittenAsync() == 0 && DateTime.UtcNow < deadline) await Task.Delay(10);
+        Assert.Equal(13, await TotalWrittenAsync());
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "SeriTermTests", Guid.NewGuid().ToString("N"));
 
     public void Dispose()
@@ -107,7 +146,8 @@ public class BufferedLogWriterTests : IDisposable
 
         foreach (var file in Directory.GetFiles(_directory))
         {
-            total += (await File.ReadAllBytesAsync(file)).Length;
+            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            total += stream.Length;
         }
 
         return total;

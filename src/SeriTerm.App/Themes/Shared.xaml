@@ -11,14 +11,14 @@
 
     <!-- ============ 默认文本 ============ -->
     <Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <!-- 继承窗口或控件的前景色，避免覆盖主按钮、菜单和禁用状态的文字颜色。 -->
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
     <!-- 分组标题（"端口设置:" 之类） -->
-    <Style x:Key="SectionHeader" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Margin" Value="0,0,0,6" />
@@ -32,7 +32,7 @@
     </Style>
 
     <!-- 次要说明文字 -->
-    <Style x:Key="HintText" TargetType="TextBlock">
+    <Style x:Key="HintText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
         <Setter Property="Foreground" Value="{DynamicResource SubtleForegroundBrush}" />
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="TextWrapping" Value="Wrap" />
@@ -81,6 +81,43 @@
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="PrimaryBorder" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PrimaryBorder" Property="Opacity" Value="0.86" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="PrimaryBorder" Property="Opacity" Value="0.7" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CompactToggleButton" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" /></Trigger>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlPressedBrush}" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- 日志区上方的小按钮：日志右上角浮层里的 收藏 / ▲ / ▼ / ✕ -->
@@ -120,7 +157,7 @@
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="Width" Value="44" />
-        <Setter Property="Height" Value="32" />
+        <Setter Property="Height" Value="38" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
         <Setter Property="Template">
@@ -570,12 +607,47 @@
         <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="10,8" />
         <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
 
     <!-- ============ 滚动条（细身、贴合主题） ============ -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <StackPanel>
+                        <ToggleButton x:Name="ExpanderToggle" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                      HorizontalContentAlignment="Stretch" Foreground="{TemplateBinding Foreground}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border Background="Transparent" Padding="0,4">
+                                        <DockPanel>
+                                            <Path x:Name="Chevron" DockPanel.Dock="Right" Width="10" Height="6" Margin="10,0,2,0" VerticalAlignment="Center"
+                                                  Data="M 1,1 L 5,5 L 9,1" Stroke="{DynamicResource SubtleForegroundBrush}" StrokeThickness="1.4" RenderTransformOrigin="0.5,0.5" />
+                                            <ContentPresenter VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chevron" Property="RenderTransform"><Setter.Value><RotateTransform Angle="180" /></Setter.Value></Setter></Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" /></Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                            <ContentPresenter Content="{TemplateBinding Header}" TextElement.FontWeight="SemiBold" />
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ExpandedContent" Visibility="Collapsed" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True"><Setter TargetName="ExpandedContent" Property="Visibility" Value="Visible" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="ScrollThumb" TargetType="Thumb">
         <Setter Property="IsTabStop" Value="False" />
         <Setter Property="Template">

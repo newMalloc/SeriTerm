@@ -4,6 +4,21 @@ namespace SeriTerm.Tests.Logging;
 
 public class RawLogReaderTests
 {
+    [Fact]
+    public void IntegerOverflowInLengthCannotEscapeBoundsCheck()
+    {
+        var broken = BuildRecord(DateTime.UtcNow.Ticks, 0, []);
+        BitConverter.TryWriteBytes(broken.AsSpan(9, 4), int.MaxValue);
+        Assert.Empty(RawLogReader.Read(broken));
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(long.MaxValue, 0)]
+    [InlineData(0, 255)]
+    public void InvalidHeadersDoNotThrow(long ticks, byte direction)
+        => Assert.Empty(RawLogReader.Read(BuildRecord(ticks, direction, [1])));
+
     private static byte[] BuildRecord(long ticksUtc, byte direction, byte[] payload)
     {
         var record = new byte[13 + payload.Length];

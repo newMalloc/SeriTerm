@@ -44,6 +44,10 @@ public sealed class AppSettings
     /// <summary>发送时是否按十六进制解析输入（M4）。</summary>
     public bool SendHex { get; set; }
 
+    public string SendDraft { get; set; } = string.Empty;
+
+    public List<SendHistoryEntry> SendHistory { get; set; } = [];
+
     /// <summary>发送内容末尾附加的换行符（M4）。</summary>
     public LineEnding SendLineEnding { get; set; } = LineEnding.CrLf;
 
@@ -87,13 +91,36 @@ public sealed class AppSettings
     public double LogFontSize { get; set; } = 13;
 
     /// <summary>窗口背景亚克力模糊（透出被模糊的桌面壁纸）。</summary>
-    public bool BlurBackground { get; set; } = true;
+    public bool BlurBackground { get; set; }
 
     /// <summary>AI（MCP）接入总开关。默认开：只读档下没有写入能力，开着才方便用户直接接入。</summary>
     public bool McpEnabled { get; set; } = true;
 
     /// <summary>AI 权限档位。<b>默认只读</b>：要发送数据必须由用户在界面上显式切换。</summary>
     public McpPermission McpPermission { get; set; } = McpPermission.ReadOnly;
+
+    public AppSettings Normalize()
+    {
+        LastSerial ??= new SerialSettings();
+        if (LastSerial.BaudRate <= 0) LastSerial = LastSerial with { BaudRate = 115200 };
+        EncodingName ??= "UTF-8";
+        DelimiterText ??= "\\r\\n";
+        SendDraft ??= string.Empty;
+        if (SendDraft.Length > 65536) SendDraft = SendDraft[..65536];
+        SendHistory = (SendHistory ?? []).Where(h => h is not null && h.Text is not null && h.Text.Length <= 8192)
+            .Distinct().Take(30).ToList();
+        Presets = (Presets ?? []).Where(p => p is not null && p.Serial is not null && !string.IsNullOrWhiteSpace(p.Name)).ToList();
+        SearchFavorites ??= [];
+        LogFontSize = double.IsFinite(LogFontSize) ? Math.Clamp(LogFontSize, 9, 24) : 13;
+        WindowWidth = double.IsFinite(WindowWidth) ? Math.Clamp(WindowWidth, 920, 7680) : 1280;
+        WindowHeight = double.IsFinite(WindowHeight) ? Math.Clamp(WindowHeight, 600, 4320) : 800;
+        AutoFrameGapMilliseconds = Math.Clamp(AutoFrameGapMilliseconds, 1, 2000);
+        if (!double.IsFinite(TimedSendIntervalSeconds) || TimedSendIntervalSeconds < 0.05 || TimedSendIntervalSeconds > 86400)
+            TimedSendIntervalSeconds = 1;
+        if (!Enum.IsDefined(Theme)) Theme = ThemeMode.Dark;
+        if (!Enum.IsDefined(McpPermission)) McpPermission = McpPermission.ReadOnly;
+        return this;
+    }
 }
 
 public interface ISettingsStore
@@ -119,12 +146,12 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     public string FilePath { get; }
 
-    public JsonSettingsStore()
+    public JsonSettingsStore() : this(File.Exists(Path.Combine(AppContext.BaseDirectory, "SeriTerm.portable"))
+        ? Path.Combine(AppContext.BaseDirectory, "data")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SeriTerm")) { }
+
+    public JsonSettingsStore(string directory)
     {
-        var directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SeriTerm");
-        Directory.CreateDirectory(directory);
         FilePath = Path.Combine(directory, "settings.json");
     }
 
@@ -138,7 +165,7 @@ public sealed class JsonSettingsStore : ISettingsStore
             }
 
             var json = File.ReadAllText(FilePath);
-            return JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
+            return (JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings()).Normalize();
         }
         catch (Exception)
         {
@@ -150,8 +177,9 @@ public sealed class JsonSettingsStore : ISettingsStore
     {
         try
         {
-            var temporary = FilePath + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(settings, SerializerOptions));
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            var temporary = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(temporary, JsonSerializer.Serialize(settings.Normalize(), SerializerOptions));
             File.Move(temporary, FilePath, overwrite: true);
         }
         catch (Exception)

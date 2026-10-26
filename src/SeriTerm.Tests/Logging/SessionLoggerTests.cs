@@ -6,6 +6,19 @@ namespace SeriTerm.Tests.Logging;
 
 public class SessionLoggerTests : IDisposable
 {
+    [Fact]
+    public async Task RawLogPreservesDelimiterBytesExcludedFromDisplay()
+    {
+        await using var logger = new SessionLogger(new LogSessionOptions
+        {
+            Directory = _directory, RawEnabled = true, TextEnabled = false,
+        });
+        logger.Log(new DisplayLine(1, DateTime.Now, LineDirection.Rx, [0x41, 0x0D, 0x0A], "A", displayLength: 1));
+        await logger.FlushAsync();
+        var records = RawLogReader.ReadFile(logger.RawFilePath!);
+        Assert.Equal(new byte[] { 0x41, 0x0D, 0x0A }, Assert.Single(records).Payload);
+    }
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "SeriTermTests", Guid.NewGuid().ToString("N"));
 
     public void Dispose()

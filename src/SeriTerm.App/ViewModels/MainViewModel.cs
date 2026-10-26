@@ -87,6 +87,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>当前日志落盘会话（M7）；未开启时为 null。</summary>
     private SessionLogger? _sessionLogger;
+    private readonly List<Task> _closingLoggers = [];
 
     /// <summary>断帧间隔/分隔符输入防抖：避免每敲一个字符就重建断帧器并把挂起数据吐出来。</summary>
     private readonly DispatcherTimer _receiveOptionsDebounce;
@@ -220,6 +221,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         StatusText = State.ToDisplayText();
         UpdateThemeButtonText();
         UpdateSearchStatus();
+        InitializeWorkspace();
     }
 
     /// <summary>请求把某一行滚入视野（由日志视图处理）。</summary>
@@ -337,7 +339,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ---------- 发送设置 ----------
 
     [ObservableProperty]
-    private string _sendText = "SeriTerm loopback test";
+    private string _sendText = string.Empty;
 
     [ObservableProperty]
     private bool _sendHex;
@@ -420,7 +422,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <see cref="BackdropAvailable"/> 为 false，界面上这个开关会直接禁用。
     /// </summary>
     [ObservableProperty]
-    private bool _blurBackground = true;
+    private bool _blurBackground;
 
     /// <summary>当前系统能不能做背景模糊（能读到桌面壁纸才行）。</summary>
     public bool BackdropAvailable => DesktopBackdrop.IsAvailable;
@@ -657,7 +659,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     public bool CanEditBaudRate => State != TransportState.Opening;
 
-    public string OpenButtonText => IsOpen ? "关闭串口" : "打开串口";
+    public string OpenButtonText => State == TransportState.Opening ? "正在连接…" : IsOpen ? "关闭串口" : "打开串口";
 
     public string PauseButtonText => IsPaused ? "继续显示" : "暂停显示";
 
@@ -680,6 +682,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task InitializeCoreAsync()
     {
         await RefreshPortsAsync().ConfigureAwait(true);
+        if (_disposed) return;
+        _portRefreshTimer.Start();
 
         if (AutoOpenOnStartup && CanEditSettings && SelectedPort is not null)
         {
@@ -691,32 +695,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task RefreshPortsAsync()
     {
-        _friendlyNames.Invalidate();
-
-        var names = await Task.Run(PortEnumerator.GetPortNames).ConfigureAwait(true);
-        var friendly = await _friendlyNames.GetAsync().ConfigureAwait(true);
-
-        var previousPort = SelectedPort?.PortName;
-
-        Ports.Clear();
-        foreach (var name in names)
-        {
-            Ports.Add(new PortItem(name, friendly.TryGetValue(name, out var display) ? display : name));
-        }
-
-        SelectedPort =
-            Ports.FirstOrDefault(p => string.Equals(p.PortName, previousPort, StringComparison.OrdinalIgnoreCase))
-            ?? Ports.FirstOrDefault(p => string.Equals(p.PortName, _settings.LastSerial.PortName, StringComparison.OrdinalIgnoreCase))
-            ?? Ports.FirstOrDefault();
-
-        StatusDetail = Ports.Count == 0
-            ? "未检测到串口设备，请检查 USB 转串口是否插好。"
-            : $"检测到 {Ports.Count} 个串口。";
-
-        _logger.LogInformation("刷新串口列表：{Count} 个", Ports.Count);
+        await UpdatePortsAsync(force: true).ConfigureAwait(true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanToggleConnection))]
     private async Task ToggleOpenAsync()
     {
         if (IsOpen)
@@ -820,6 +802,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         Log.Clear();
         PendingNewLines = 0;
         _pausedBuffer.Clear();
+        _pausedBytes = 0;
+        _pausedDroppedLines = 0;
         PausedHintText = string.Empty;
 
         lock (_pipelineLock)
@@ -853,21 +837,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            var builder = new StringBuilder();
-            foreach (var line in Log.Lines)
+            var snapshot = Log.Lines.Select(line => (line.TimeText, line.DirectionText, line.Text)).ToArray();
+            StatusDetail = $"正在保存 {snapshot.Length:N0} 行…";
+            await Task.Run(async () =>
             {
-                builder.Append(line.TimeText)
-                    .Append(" [")
-                    .Append(line.DirectionText)
-                    .Append("] ")
-                    .AppendLine(line.Text);
-            }
+                await using var writer = new StreamWriter(path, append: false, new UTF8Encoding(true));
+                foreach (var line in snapshot)
+                    await writer.WriteLineAsync($"{line.TimeText} [{line.DirectionText}] {line.Text}").ConfigureAwait(false);
+            }).ConfigureAwait(true);
 
-            // 带 BOM 的 UTF-8：记事本/Excel 打开中文不乱码
-            await File.WriteAllTextAsync(path, builder.ToString(), new UTF8Encoding(true)).ConfigureAwait(true);
-
-            StatusDetail = $"已保存 {Log.Lines.Count} 行到 {path}";
-            _notifier.ShowInfo("保存完成", $"已保存 {Log.Lines.Count} 行到：\n{path}");
+            StatusDetail = $"已保存 {snapshot.Length:N0} 行到 {path}";
         }
         catch (Exception ex)
         {
@@ -887,8 +866,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_pausedBuffer.Count > 0)
             {
                 var buffered = _pausedBuffer.Count;
-                AppendToLog([.. _pausedBuffer]);
+                foreach (var line in _pausedBuffer) line.Text = _processor.Reformat(line);
+                AppendToLog([.. _pausedBuffer], record: false);
                 _pausedBuffer.Clear();
+                _pausedBytes = 0;
                 AddSystemLine($"已恢复显示（补显示暂停期间的 {buffered} 行）。");
             }
 
@@ -896,6 +877,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         IsPaused = true;
+        _pausedDroppedLines = 0;
         PausedHintText = "已暂停显示（数据仍在接收，恢复后补显示）";
     }
 
@@ -1177,7 +1159,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnSaveRawLogChanged(bool value) => RestartLogging();
 
-    partial void OnAutoReconnectChanged(bool value) => _reconnect.Enabled = value;
+    partial void OnAutoReconnectChanged(bool value)
+    {
+        _reconnect.Enabled = value;
+        if (!value) _ = _reconnect.StopAsync();
+    }
 
     private void RestartLogging()
     {
@@ -1223,15 +1209,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         // 释放会等待队列落盘，放到后台完成，避免界面卡住
-        _ = logger.DisposeAsync().AsTask().ContinueWith(
-            task => _ = task.Exception,
-            TaskScheduler.Default);
+        _closingLoggers.RemoveAll(task => task.IsCompleted);
+        _closingLoggers.Add(logger.DisposeAsync().AsTask());
     }
 
     private void OnReconnectStatusChanged(object? sender, ReconnectEventArgs e)
     {
         _dispatcher.InvokeAsync(() =>
         {
+            if (_disposed) return;
             ReconnectStatusText = e.State == ReconnectState.Idle ? string.Empty : e.Message;
 
             if (!string.IsNullOrWhiteSpace(e.Message))
@@ -1389,7 +1375,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---------- 发送 ----------
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
         if (!TryBuildSendPayload(out var payload, out var error))
@@ -1406,15 +1392,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
+            var draft = CurrentSendDraft();
             await WriteAndRecordAsync(payload).ConfigureAwait(true);
+            RememberSend(draft);
         }
-        catch (SerialLinkException ex)
+        catch (Exception ex)
         {
             _notifier.ShowError("发送失败", ex.Message);
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanToggleTimedSend))]
     private void ToggleTimedSend()
     {
         if (!TimedSendEnabled)
@@ -1443,6 +1431,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnTimedSendEnabledChanged(bool value)
     {
+        _timedSendRevision++;
+        NotifySendAvailability();
         if (value)
         {
             _timedSender.Interval = TimeSpan.FromSeconds(GetTimedSendSeconds());
@@ -1468,12 +1458,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task RestartTimedSendAsync(double seconds)
     {
+        var revision = ++_timedSendRevision;
         await _timedSender.StopAsync().ConfigureAwait(true);
+        if (_disposed || !TimedSendEnabled || !IsOpen || revision != _timedSendRevision) return;
         _timedSender.Interval = TimeSpan.FromSeconds(seconds);
         _timedSender.Start();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartFileSend))]
     private async Task SendFileAsync()
     {
         if (IsSendingFile)
@@ -1507,6 +1499,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
             var progress = new Progress<double>(ratio =>
             {
+                if (!IsSendingFile) return;
                 SendFileProgress = ratio * 100;
                 SendFileStatusText = $"正在发送 {fileName}… {ratio * 100:0}%";
             });
@@ -1544,10 +1537,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>定时发送的发送动作（在后台线程执行，写日志时会自动切回界面线程）。</summary>
     private async ValueTask SendCurrentPayloadAsync(CancellationToken cancellationToken)
     {
-        if (!TryBuildSendPayload(out var payload, out var error))
+        // Take a consistent snapshot on the UI thread: mode, content and encoding
+        // may all be edited while the timer is running on a worker thread.
+        var payload = await _dispatcher.InvokeAsync(() =>
         {
-            throw new InvalidOperationException(error);
-        }
+            if (!TryBuildSendPayload(out var bytes, out var error)) throw new InvalidOperationException(error);
+            return bytes;
+        });
 
         await WriteAndRecordAsync(payload, cancellationToken).ConfigureAwait(false);
     }
@@ -1588,16 +1584,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         error = string.Empty;
 
-        if (!double.TryParse(TimedSendIntervalText?.Trim(), out seconds) || seconds <= 0)
+        if (!SendInterval.TryParse(TimedSendIntervalText?.Trim(), out seconds))
         {
             seconds = 0;
-            error = "间隔必须是大于 0 的数字（秒）。";
+            error = "间隔须为 0.05～86400 秒的有限数字，使用小数点。";
             return false;
-        }
-
-        if (seconds < 0.05)
-        {
-            seconds = 0.05;
         }
 
         return true;
@@ -1608,8 +1599,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnTimedSendFailed(object? sender, Exception exception)
     {
+        var revision = _timedSendRevision;
         _dispatcher.InvokeAsync(() =>
         {
+            if (_disposed || revision != _timedSendRevision) return;
             if (TimedSendEnabled)
             {
                 TimedSendEnabled = false;
@@ -1632,7 +1625,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnDelimiterTextChanged(string value) => ScheduleReceiveOptionsApply();
 
-    partial void OnSelectedEncodingNameChanged(string value) => ApplyReceiveOptions();
+    partial void OnSelectedEncodingNameChanged(string value)
+    {
+        ApplyReceiveOptions();
+        UpdateSendPreview();
+    }
 
     private void ScheduleReceiveOptionsApply()
     {
@@ -1654,11 +1651,18 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ApplyReceiveOptions()
     {
         var options = BuildReceiveOptions();
+        ReceiveValidationText = string.Empty;
+        if (options.Framing == FramingMode.Gap && (!int.TryParse(AutoFrameGapText, out var gap) || gap < 1 || gap > 2000))
+        {
+            ReceiveValidationText = "间隔须为 1～2000 ms 的整数，当前继续使用上次有效设置。";
+            return;
+        }
 
         if (options.Framing == FramingMode.Delimiter
             && !BytePatternParser.TryParse(options.DelimiterText, out _, out var delimiterError))
         {
-            StatusDetail = $"分隔符写法无效（{delimiterError}）已临时按空闲间隔断帧。";
+            ReceiveValidationText = $"{delimiterError} 当前继续使用上次有效设置。";
+            return;
         }
 
         List<DisplayLine>? flushed = null;
@@ -1676,7 +1680,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (flushed is not null)
         {
-            AppendToLog(flushed);
+            if (IsPaused) BufferWhilePaused(flushed);
+            else AppendToLog(flushed);
         }
 
         // 只有显示方式变化才需要重刷历史行；断帧参数变化不影响已有内容
@@ -1744,6 +1749,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.AutoFrameGapMilliseconds = int.TryParse(AutoFrameGapText?.Trim(), out var gap) ? gap : 20;
         _settings.DelimiterText = DelimiterText;
         _settings.SendHex = SendHex;
+        _settings.SendDraft = SendText;
+        _settings.SendHistory = [.. SendHistory];
         _settings.SendLineEnding = SelectedLineEnding?.Value ?? LineEnding.CrLf;
         _settings.TimedSendIntervalSeconds = GetTimedSendSeconds();
         _settings.ShowTimestamp = ShowTimestamp;
@@ -1794,6 +1801,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         LogFontSize = settings.LogFontSize < 9 ? 13 : settings.LogFontSize;
 
         SendHex = settings.SendHex;
+        SendText = settings.SendDraft;
+        foreach (var item in settings.SendHistory) SendHistory.Add(item);
         SelectedLineEnding = LineEndingOptions.FirstOrDefault(o => o.Value == settings.SendLineEnding) ?? LineEndingOptions[0];
         TimedSendIntervalText = settings.TimedSendIntervalSeconds.ToString("0.##", CultureInfo.InvariantCulture);
 
@@ -1853,8 +1862,23 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _dispatcher.InvokeAsync(() =>
         {
+            if (_disposed) return;
             State = e.NewState;
             StatusText = e.NewState.ToDisplayText();
+            if (e.NewState != TransportState.Open)
+            {
+                if (TimedSendEnabled) TimedSendEnabled = false;
+                _sendFileCts?.Cancel();
+            }
+            if (e.NewState is TransportState.Closed or TransportState.Faulted)
+            {
+                lock (_pipelineLock)
+                {
+                    _processor.FlushAll(DateTime.Now, _pendingLines);
+                    _processor.Reset();
+                }
+                FlushPendingLines();
+            }
 
             if (!string.IsNullOrWhiteSpace(e.Message))
             {
@@ -1906,6 +1930,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     private void RequestFlush()
     {
+        if (_disposed) return;
         lock (_pipelineLock)
         {
             if (_flushQueued)
@@ -1932,6 +1957,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     private void FlushPendingLines()
     {
+        if (_disposed) return;
         List<DisplayLine>? batch = null;
 
         lock (_pipelineLock)
@@ -1995,7 +2021,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _gapFlush.Stop();
 
-        if (_processor.Options.Framing != FramingMode.Gap)
+        if (_disposed || _processor.Options.Framing != FramingMode.Gap || _processor.PendingByteCount == 0)
         {
             return;
         }
@@ -2008,6 +2034,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnUiRefresh()
     {
         FlushPendingLines();
+        UpdateTrafficRates();
 
         RxText = ByteSize.Format(Interlocked.Read(ref _rxBytes));
         TxText = ByteSize.Format(Interlocked.Read(ref _txBytes));
@@ -2030,27 +2057,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void AppendToLog(List<DisplayLine> lines)
+    private void AppendToLog(List<DisplayLine> lines, bool record = true)
     {
         if (lines.Count == 0)
         {
             return;
         }
 
-        // AI 读的是这份副本：它与界面显示同一来源，但不受"暂停显示"和日志淘汰的影响
-        PublishToJournal(lines);
-
+        if (record) RecordLines(lines);
         Log.Append(lines);
-
-        var logger = _sessionLogger;
-
-        if (logger is not null)
-        {
-            foreach (var line in lines)
-            {
-                logger.Log(line);
-            }
-        }
 
         if (!AutoScroll)
         {
@@ -2060,20 +2075,31 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void BufferWhilePaused(List<DisplayLine> lines)
     {
-        // 暂停显示是给人看的功能：AI 这边照收不误，否则"暂停一下"会让模型以为设备哑了
-        PublishToJournal(lines);
+        // Persist immediately, even if the bounded display buffer later evicts data.
+        RecordLines(lines);
 
         _pausedBuffer.AddRange(lines);
+        _pausedBytes += lines.Sum(line => (long)line.ByteLength);
 
-        if (_pausedBuffer.Count > MaxPausedBufferLines)
+        var overflow = 0;
+        while (_pausedBuffer.Count - overflow > MaxPausedBufferLines || _pausedBytes > 16L * 1024 * 1024)
         {
-            var overflow = _pausedBuffer.Count - MaxPausedBufferLines;
+            _pausedBytes -= _pausedBuffer[overflow++].ByteLength;
+        }
+        if (overflow > 0)
+        {
             _pausedBuffer.RemoveRange(0, overflow);
-            PausedHintText = $"已暂停显示（缓冲已满，最早的 {overflow} 行被丢弃）";
-            return;
+            _pausedDroppedLines += overflow;
         }
 
-        PausedHintText = $"已暂停显示（{_pausedBuffer.Count} 行待显示）";
+        PausedHintText = $"已暂停显示 · {_pausedBuffer.Count:N0} 行待显示"
+            + (_pausedDroppedLines > 0 ? $" · 显示缓冲已淘汰 {_pausedDroppedLines:N0} 行" : string.Empty);
+    }
+
+    private void RecordLines(List<DisplayLine> lines)
+    {
+        PublishToJournal(lines);
+        foreach (var line in lines) _sessionLogger?.Log(line);
     }
 
     private void RecordTransmitted(byte[] payload, DateTime sentAt)
@@ -2129,21 +2155,41 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _portRefreshTimer.Stop();
         _uiTimer.Stop();
         _gapFlush.Stop();
         _receiveOptionsDebounce.Stop();
         _baudRateDebounce.Stop();
         _sendFileCts?.Cancel();
-        _sendFileCts?.Dispose();
 
         // 先关控制面：退出过程中不该还有新的 AI 请求进来碰已经释放的传输层
-        await ShutdownMcpAsync().ConfigureAwait(false);
+        await ShutdownMcpAsync().ConfigureAwait(true);
 
         _timedSender.SendFailed -= OnTimedSendFailed;
-        await _timedSender.DisposeAsync().ConfigureAwait(false);
+        await _timedSender.DisposeAsync().ConfigureAwait(true);
+        if (SendFileCommand.ExecutionTask is { IsCompleted: false } sendingFile)
+            await sendingFile.ConfigureAwait(true);
+        if (SendCommand.ExecutionTask is { IsCompleted: false } sending)
+            await sending.ConfigureAwait(true);
+        if (SaveLogCommand.ExecutionTask is { IsCompleted: false } saving)
+            await saving.ConfigureAwait(true);
 
         _reconnect.StatusChanged -= OnReconnectStatusChanged;
-        await _reconnect.DisposeAsync().ConfigureAwait(false);
+        await _reconnect.DisposeAsync().ConfigureAwait(true);
+
+        _transport.StateChanged -= OnTransportStateChanged;
+        await _transport.CloseAsync().ConfigureAwait(true);
+        _transport.BytesReceived -= OnBytesReceived;
+        List<DisplayLine> finalLines;
+        lock (_pipelineLock)
+        {
+            _processor.FlushAll(DateTime.Now, _pendingLines);
+            finalLines = [.. _pendingLines];
+            _pendingLines.Clear();
+        }
+        RecordLines(finalLines);
 
         var logger = _sessionLogger;
         _sessionLogger = null;
@@ -2152,9 +2198,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await logger.DisposeAsync().ConfigureAwait(false);
         }
+        await Task.WhenAll(_closingLoggers).ConfigureAwait(false);
 
-        _transport.StateChanged -= OnTransportStateChanged;
-        _transport.BytesReceived -= OnBytesReceived;
         await _transport.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }

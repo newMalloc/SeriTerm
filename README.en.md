@@ -1,5 +1,11 @@
 # SeriTerm
 
+Version 1.2 adds a reorganized serial workspace, collapsible settings, multiline sending with Ctrl+Enter, byte previews and inline HEX validation, a 30-entry send history, hot-plug port refresh, traffic rates, and an independent file-send cancel action. Search now uses its own row without covering received data. Raw logs can be opened for offline viewing without transmitting or republishing historical frames.
+
+Version 1.2.2 pairs charcoal-and-gray surfaces with blue action accents and uses a fixed-width sidebar with no visible scrollbar; wheel and keyboard scrolling remain available. HEX display and follow-latest controls are in the sidebar. Sending uses one row by default, with an editor that grows for multiline content. History, timed sending, file sending, and terminal settings are under “更多” (More). Active stop, cancel, and terminal-exit controls remain visible when options are collapsed.
+
+Logging continues while display is paused. The release also fixes timer restart races, log-file name collisions, flush synchronization, and final-frame draining on shutdown. Place an empty `SeriTerm.portable` file next to the executable to keep settings in `data/settings.json` beside it. See [verification](docs/verification.md) for current test results and hardware-validation limits.
+
 [![CI](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/newMalloc/SeriTerm?label=release)](https://github.com/newMalloc/SeriTerm/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -70,11 +76,9 @@ single-file builds, no installer required:
 
 **UI**
 
-![Main window](docs/images/main.png)
+![Dark workspace with compact sending](docs/images/workspace-dark.png)
 
-> Real full-screen capture (UI text is Chinese only): one MCP client connected; `Ctrl+F` search for `error` with 4 hits
-> and character-level highlighting; log traffic sent and received over a COM5 loopback (paired `Tx`/`Rx`); the `[AI]`
-> line is a command issued by the AI through MCP.
+> Version 1.2.2 WPF offscreen layout preview (UI text is Chinese only). See [verification](docs/verification.md) for the scope of theme, small-window, and search checks.
 
 - Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be disabled)
 - About in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links

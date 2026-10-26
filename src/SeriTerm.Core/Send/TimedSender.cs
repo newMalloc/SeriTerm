@@ -39,8 +39,19 @@ public sealed class TimedSender : IAsyncDisposable
             return;
         }
 
-        _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => LoopAsync(_cts.Token));
+        // Capture this run's values. StopAsync clears the fields before the worker
+        // necessarily starts; capturing _cts itself could dereference null.
+        var interval = Interval;
+        if (interval <= TimeSpan.Zero || interval.TotalMilliseconds > uint.MaxValue - 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(Interval));
+        }
+
+        var cts = new CancellationTokenSource();
+        var token = cts.Token;
+        var sendImmediately = SendImmediately;
+        _cts = cts;
+        _loop = Task.Run(() => LoopAsync(token, interval, sendImmediately));
     }
 
     public async Task StopAsync()
@@ -75,16 +86,17 @@ public sealed class TimedSender : IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
 
-    private async Task LoopAsync(CancellationToken cancellationToken)
+    private async Task LoopAsync(CancellationToken cancellationToken, TimeSpan interval, bool sendImmediately)
     {
         try
         {
-            if (SendImmediately)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (sendImmediately)
             {
                 await SendOnceAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            using var timer = new PeriodicTimer(Interval);
+            using var timer = new PeriodicTimer(interval);
 
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {

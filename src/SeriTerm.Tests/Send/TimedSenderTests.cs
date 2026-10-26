@@ -5,6 +5,29 @@ namespace SeriTerm.Tests.Send;
 public class TimedSenderTests
 {
     [Fact]
+    public async Task RapidStartStopDoesNotDereferenceClearedCancellationSource()
+    {
+        await using var sender = new TimedSender(_ => ValueTask.CompletedTask);
+        for (var i = 0; i < 500; i++)
+        {
+            sender.Start();
+            await sender.StopAsync();
+        }
+        Assert.False(sender.IsRunning);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(5000000000)]
+    public async Task InvalidTimerIntervalFailsBeforeStartingWorker(double milliseconds)
+    {
+        await using var sender = new TimedSender(_ => ValueTask.CompletedTask) { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+        Assert.Throws<ArgumentOutOfRangeException>(() => sender.Start());
+        Assert.False(sender.IsRunning);
+    }
+
+    [Fact]
     public async Task 启动后应立即发送并按间隔重复()
     {
         var count = 0;

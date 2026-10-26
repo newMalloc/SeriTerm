@@ -51,15 +51,18 @@
     </UserControl.Resources>
 
     <!--
-        单行单列：日志铺满整块区域，查找框与收藏栏叠在右上角。
-        刻意不给搜索条留一行高度——查找是临时动作、收藏只是偶尔点一下，
-        让日志长期为此让出一整条（约 40px）不划算，所以改成浮层。
+        搜索和暂停提示各占一行，避免遮住接收内容；关闭时自动收回高度。
         底色不在这里：日志现在是宿主（MainWindow）里的一张圆角卡片，
         底色画在卡片的 Border 上，这里的根 Grid 保持透明，方角才不会盖住卡片的圆角。
         Transparent 而不是不写 Background：空白处的命中测试要靠它。
     -->
     <Grid Background="Transparent">
-        <ListBox x:Name="LogList"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ListBox x:Name="LogList" Grid.Row="1"
                  ItemsSource="{Binding Log.Lines}"
                  Background="Transparent"
                  BorderThickness="0"
@@ -96,7 +99,7 @@
 
             <!-- 选中反馈：整行底色 + 行首一道强调色竖条。
                  竖条宽度恒定，选中与否都不会让文字左右跳动；
-                 命中行自带蓝底，所以选中态在命中行上只靠竖条体现，两者互不遮挡。 -->
+                 命中行自带主题底色，所以选中态在命中行上只靠竖条体现，两者互不遮挡。 -->
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Padding" Value="0" />
@@ -199,7 +202,8 @@
         </ListBox>
 
         <!-- ===== 暂停自动滚动时的"新数据"提示条 ===== -->
-        <Button x:Name="NewDataBar"
+        <Button x:Name="NewDataBar" Grid.Row="1"
+                Style="{StaticResource PrimaryButton}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Bottom"
                 Margin="0,0,0,14"
@@ -219,8 +223,8 @@
                 Padding="12,5"
                 CornerRadius="4"
                 Background="{DynamicResource WarnBrush}"
-                Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock Text="{Binding PausedHintText}" Foreground="#101010" FontWeight="SemiBold" />
+                Grid.Row="2" Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding PausedHintText}" Foreground="#101010" FontWeight="SemiBold" TextWrapping="Wrap" />
         </Border>
 
         <!--
@@ -230,23 +234,17 @@
             收藏栏是查找框下面的一段，按 Esc 关掉查找就得一起收起来，
             不能因为"还存着收藏"就继续浮在日志上挡字。
         -->
-        <Border x:Name="SearchOverlay"
-                HorizontalAlignment="Right"
+        <Border x:Name="SearchOverlay" Grid.Row="0"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
-                Margin="0,8,22,0"
-                MinWidth="330"
-                MaxWidth="470"
+                Margin="0"
                 Background="{DynamicResource PanelBackgroundBrush}"
                 BorderBrush="{DynamicResource PanelBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="5"
+                BorderThickness="0,0,0,1"
+                CornerRadius="0"
                 Visibility="{Binding ShowSearchOverlay, Converter={StaticResource BoolToVisibility}}">
             <!-- 浮层压在日志文字上，必须有阴影和实心底色才分得清层次
                  （半透明会让底下的等宽字体透上来，反而看不清） -->
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270"
-                                  Opacity="0.3" Color="#000000" />
-            </Border.Effect>
 
             <StackPanel>
                 <!-- 查找框。整块浮层已经在"查找开着"时才可见，这里不必再判一次 SearchVisible -->
@@ -303,13 +301,13 @@
 
                 <!-- 收藏栏：有收藏时才出现，且只在查找开着时（浮层本身可见）才有意义。
                      上面永远有查找框，所以这条分隔线固定画出来。 -->
-                <StackPanel Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
+                <Expander Header="查找收藏" Margin="10,0,10,6" Visibility="{Binding HasSearchFavorites, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
                     <Border BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0" />
 
-                    <TextBlock Text="查找收藏" Style="{StaticResource FieldLabel}" Margin="9,6,9,5" />
 
                     <!-- 一屏放不下就自己滚：浮层高度不能被收藏数量拖着长 -->
-                    <ScrollViewer MaxHeight="176" VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
+                    <ScrollViewer MaxHeight="80" VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
                         <ItemsControl ItemsSource="{Binding SearchFavorites}" Margin="6,0,6,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -344,7 +342,8 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                </StackPanel>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </Border>
     </Grid>

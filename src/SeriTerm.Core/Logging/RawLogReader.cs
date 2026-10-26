@@ -10,8 +10,31 @@ public static class RawLogReader
     public static IReadOnlyList<RawLogRecord> ReadFile(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return Read(File.ReadAllBytes(path));
+        return EnumerateFile(path).ToArray();
     }
+
+    /// <summary>Stream records so a large log can be reviewed with bounded memory.</summary>
+    public static IEnumerable<RawLogRecord> EnumerateFile(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var snapshotLength = stream.Length;
+        var header = new byte[HeaderSize];
+        while (snapshotLength - stream.Position >= HeaderSize)
+        {
+            if (stream.ReadAtLeast(header, HeaderSize, throwOnEndOfStream: false) != HeaderSize) yield break;
+            var ticks = BitConverter.ToInt64(header, 0);
+            var direction = header[8];
+            var length = BitConverter.ToInt32(header, 9);
+            if (!IsValidHeader(ticks, direction, length) || length > snapshotLength - stream.Position) yield break;
+            var payload = new byte[length];
+            if (stream.ReadAtLeast(payload, length, throwOnEndOfStream: false) != length) yield break;
+            yield return new RawLogRecord(new DateTime(ticks, DateTimeKind.Utc), direction, payload);
+        }
+    }
+
+    private static bool IsValidHeader(long ticks, byte direction, int length)
+        => ticks >= DateTime.MinValue.Ticks && ticks <= DateTime.MaxValue.Ticks
+            && direction <= 2 && length >= 0 && length <= 64 * 1024 * 1024;
 
     /// <summary>
     /// 解析成帧记录。遇到半截记录（写入过程中崩溃）就停止，不抛异常——
@@ -28,7 +51,7 @@ public static class RawLogReader
             var direction = data[offset + 8];
             var length = BitConverter.ToInt32(data[(offset + 9)..(offset + 13)]);
 
-            if (length < 0 || offset + HeaderSize + length > data.Length)
+            if (!IsValidHeader(ticks, direction, length) || length > data.Length - offset - HeaderSize)
             {
                 break;
             }

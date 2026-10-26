@@ -266,6 +266,10 @@ public sealed class SerialPortTransport : ISerialTransport
         {
             throw;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             var message = SerialErrorTranslator.DescribeWriteFailure(ex, CurrentSettings);
