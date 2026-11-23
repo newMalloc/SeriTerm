@@ -1,10 +1,6 @@
-﻿# 日志区"选择与复制"回归探针：真实鼠标事件拖一遍，读回 UIA 选中行数、行内选中字符与剪贴板内容。
+﻿# 日志区选择与复制回归探针：真实鼠标拖选，并比较 UIA 选中文本和剪贴板。
 #
-# 期望（2026-10 改为"跨行按字符自由选择"之后）：
-#   1) 单击某行            → 选中行数=1（整行复制这个粒度仍在）
-#   2) 从第 1 行内容中间拖到第 3 行内容中间
-#                         → 选中行数=0，复制出来的是"那一段字符"（含 CRLF，首行不是完整一行）
-#   3) 在同一行内拖一小段   → 选中行数=0，文本框原生选中那一段，Ctrl+C 只复制那几个字
+# 单击只移动光标。跨行和行内拖动都按字符连续选择。
 #
 # 需要真实串口（用发送按钮灌数据），所以要求 COM5 空闲：跑之前先关掉正在运行的 SeriTerm。
 # 不需要串口的同类验证是 C# 探针（直接往 LogDocument 灌行 + 真实鼠标），见开发规格 11.30。
@@ -66,9 +62,16 @@ function Invoke-El { param($Element, [string]$What)
     $Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 }
 
-function Get-SelectedCount { param($List)
-    $pattern = $List.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern)
-    return $pattern.Current.GetSelection().Count
+function Get-SelectedText { param($Pattern)
+    $ranges = $Pattern.GetSelection()
+    if ($ranges.Count -eq 0) { return '' }
+    return $ranges[0].GetText(-1)
+}
+
+function Get-TextRect { param($Range)
+    $bounds = $Range.GetBoundingRectangles()
+    if ($bounds.Count -lt 4) { throw '测试文字当前不可见' }
+    return New-Object System.Windows.Rect($bounds[0], $bounds[1], $bounds[2], $bounds[3])
 }
 
 function Get-ClipboardText {
@@ -117,35 +120,39 @@ try {
     $list = Find-Id -Root $root -Id 'LogList'
     if ($null -eq $list) { throw '找不到 LogList' }
 
-    $items = $list.FindAll($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::ListItem)))
-    Write-Output "ITEMS|$($items.Count)"
-    if ($items.Count -lt 6) { throw "日志行太少（$($items.Count)），无法做拖动测试" }
+    $pattern = $list.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    $available = $pattern.DocumentRange
+    $r2 = $null
+    foreach ($i in 1..3) {
+        $marker = $available.FindText('DRAG-PROBE-LINE', $true, $false)
+        if ($null -eq $marker) { throw '找不到足够的测试日志' }
+        if ($i -eq 1) { $r2 = Get-TextRect $marker }
+        $available.MoveEndpointByRange([System.Windows.Automation.TextPatternRangeEndpoint]::End,
+            $marker, [System.Windows.Automation.TextPatternRangeEndpoint]::Start)
+    }
+    $r1 = Get-TextRect $marker
 
-    $r1 = $items[1].Current.BoundingRectangle
-    $r2 = $items[3].Current.BoundingRectangle
-    $r3 = $items[6].Current.BoundingRectangle
-    Write-Output ("RECT|item1={0:0},{1:0},{2:0},{3:0}" -f $r1.Left, $r1.Top, $r1.Right, $r1.Bottom)
-
-    # --- 1) 单击第 3 行：应当选中 1 行 ---
+    # --- 1) 单击只移动光标 ---
     [void][DragProbe]::SetCursorPos([int](($r2.Left + $r2.Right) / 2), [int](($r2.Top + $r2.Bottom) / 2))
     Start-Sleep -Milliseconds 200
     [DragProbe]::LeftDown()
     Start-Sleep -Milliseconds 120
     [DragProbe]::LeftUp()
     Start-Sleep -Milliseconds 600
-    Write-Output "CLICK|选中行数=$(Get-SelectedCount $list)"
+    if (Get-SelectedText $pattern) { throw '单击后不应选中文字' }
 
-    # --- 2) 从第 1 行内容中间拖到第 3 行内容中间：应当是"这一段字符"的选择，不该再整行连选 ---
-    #     内容列在时间列（104）+ 方向列（30）之后，所以从行左边缘 +260 起算落在内容文字上
-    $startX = $r1.Left + 260
-    $endX = $r2.Left + 300
+    # --- 2) 跨行拖选 ---
+    $startX = $r1.Left + $r1.Width / 4
+    $endX = $r2.Left + $r2.Width / 2
+    $startY = ($r1.Top + $r1.Bottom) / 2
+    $endY = ($r2.Top + $r2.Bottom) / 2
     [System.Windows.Forms.Clipboard]::Clear()
-    [void][DragProbe]::SetCursorPos([int]$startX, [int](($r1.Top + $r1.Bottom) / 2))
+    [void][DragProbe]::SetCursorPos([int]$startX, [int]$startY)
     Start-Sleep -Milliseconds 250
     [DragProbe]::LeftDown()
     Start-Sleep -Milliseconds 150
     for ($step = 1; $step -le 12; $step++) {
-        $y = $r1.Top + (($r2.Top - $r1.Top) * $step / 12)
+        $y = $startY + (($endY - $startY) * $step / 12)
         $x = $startX + (($endX - $startX) * $step / 12)
         [void][DragProbe]::SetCursorPos([int]$x, [int]$y)
         Start-Sleep -Milliseconds 60
@@ -153,23 +160,22 @@ try {
     Start-Sleep -Milliseconds 250
     [DragProbe]::LeftUp()
     Start-Sleep -Milliseconds 700
-    Write-Output "DRAG|选中行数=$(Get-SelectedCount $list)（跨行部分选择应当=0）"
+    $picked = Get-SelectedText $pattern
 
-    $list.SetFocus()
-    Start-Sleep -Milliseconds 300
     [System.Windows.Forms.SendKeys]::SendWait('^c')
     Start-Sleep -Milliseconds 800
     $clip = Get-ClipboardText
     $firstLine = ($clip -split "`r`n")[0]
     Write-Output ("DRAGCOPY|字符数={0}|含CRLF={1}|首行=[{2}]" -f $clip.Length, $clip.Contains("`r`n"), $firstLine)
-    Write-Output ("DRAGCOPY-判定|首行不是完整一行（不以时间戳开头）= {0}" -f (-not ($firstLine -match '^\d\d:\d\d:\d\d\.\d\d\d ')))
+    if ($clip -cne $picked -or -not $clip.Contains("`r`n") -or $firstLine -match '^\d\d:\d\d:\d\d\.\d\d\d ') {
+        throw '跨行复制应与选中的字符一致'
+    }
 
-    # --- 3) 行内自由选择：在第 4 行文字上拖一小段，Ctrl+C 应当只复制那一段字符 ---
+    # --- 3) 行内拖选 ---
     [System.Windows.Forms.Clipboard]::Clear()
-    $r4 = $items[4].Current.BoundingRectangle
-    $startX = $r4.Left + 300      # 跳过时间列/方向列，落在内容文本上
-    $endX = $r4.Left + 420
-    $midY = [int](($r4.Top + $r4.Bottom) / 2)
+    $startX = $r2.Left + $r2.Width / 4
+    $endX = $r2.Left + $r2.Width * 3 / 4
+    $midY = [int]$endY
     [void][DragProbe]::SetCursorPos([int]$startX, $midY)
     Start-Sleep -Milliseconds 250
     [DragProbe]::LeftDown()
@@ -182,24 +188,16 @@ try {
     [DragProbe]::LeftUp()
     Start-Sleep -Milliseconds 600
 
-    # 行文本框是只读 Edit，读一下它当前选中的文本
-    $edits = $list.FindAll($TS::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)))
-    $picked = ''
-    foreach ($edit in $edits) {
-        $pattern = $null
-        if ($edit.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) {
-            $ranges = $pattern.GetSelection()
-            if ($ranges.Count -gt 0) {
-                $t = $ranges[0].GetText(-1)
-                if ($t) { $picked = $t; break }
-            }
-        }
-    }
+    $picked = Get-SelectedText $pattern
     Write-Output ("TEXTSEL|行内拖选得到的字符=[{0}]" -f $picked)
 
     [System.Windows.Forms.SendKeys]::SendWait('^c')
     Start-Sleep -Milliseconds 800
-    Write-Output ("TEXTCOPY|剪贴板=[{0}]" -f (Get-ClipboardText))
+    $clip = Get-ClipboardText
+    Write-Output ("TEXTCOPY|剪贴板=[{0}]" -f $clip)
+    if (-not $picked -or $picked.Contains("`n") -or $clip -cne $picked) {
+        throw '行内复制应与选中的字符一致'
+    }
 }
 finally {
     if (-not $process.HasExited) {

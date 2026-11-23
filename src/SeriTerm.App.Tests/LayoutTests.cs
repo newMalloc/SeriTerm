@@ -4,6 +4,9 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Interop;
+using System.Windows.Input;
+using ICSharpCode.AvalonEdit;
 using SeriTerm.App.Services;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.App.Controls;
@@ -13,7 +16,43 @@ namespace SeriTerm.App.Tests;
 public sealed class LayoutTests
 {
     [Fact]
-    public Task SearchOccupiesItsOwnRowAndDoesNotCoverReceivedData() => UiThread.Run(async () =>
+    public Task F6TogglesPauseAndResume() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var window = new MainWindow(h.Vm, h.Theme);
+        var handle = new WindowInteropHelper(window).EnsureHandle();
+        var source = HwndSource.FromHwnd(handle)!;
+        for (var i = 0; i < 2; i++)
+        {
+            var key = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.F6)
+            {
+                RoutedEvent = Keyboard.PreviewKeyDownEvent,
+            };
+            window.RaiseEvent(key);
+            Assert.True(key.Handled);
+            Assert.Equal(i == 0, h.Vm.IsPaused);
+        }
+        window.Close();
+    });
+
+    [Fact]
+    public Task SelectingAnotherOpenPortSwitchesTheConnection() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        await h.Connect();
+        var port = new SeriTerm.App.ViewModels.PortItem("COM_OTHER", "COM_OTHER");
+        h.Vm.Ports.Add(port);
+        h.Vm.SelectedPort = port;
+        Assert.True(h.Vm.CanSelectPort);
+        await h.Vm.SwitchOpenPortAsync(port);
+        await UiThread.Drain();
+        Assert.Equal("COM_OTHER", h.Transport.CurrentSettings?.PortName);
+        Assert.Equal(SeriTerm.Core.Serial.TransportState.Open, h.Transport.State);
+        Assert.Empty(h.Notifier.Errors);
+    });
+
+    [Fact]
+    public Task SearchFloatsAtTheTopRightWithoutResizingTheLog() => UiThread.Run(async () =>
     {
         await using var h = new AppHarness();
         await h.Connect();
@@ -23,8 +62,6 @@ public sealed class LayoutTests
             new DisplayLine(3, DateTime.Now, LineDirection.Rx, [0x4F, 0x4B], "OK"),
             new DisplayLine(4, DateTime.Now, LineDirection.Rx, [0x45], "ERROR: checksum mismatch"),
         ]);
-        h.Vm.SearchText = "ERROR";
-        h.Vm.SearchVisible = true;
         h.Vm.TerminalMode = true;
         h.Vm.SendText = "AT+VERSION?";
         var window = new MainWindow(h.Vm, h.Theme);
@@ -37,11 +74,17 @@ public sealed class LayoutTests
         root.UpdateLayout();
         var log = (LogView)window.FindName("LogViewControl");
         var search = (FrameworkElement)log.FindName("SearchOverlay");
-        var list = (FrameworkElement)log.FindName("LogList");
+        var editor = (TextEditor)log.FindName("LogText");
+        var closedBounds = editor.TransformToAncestor(root).TransformBounds(new Rect(editor.RenderSize));
+        h.Vm.SearchText = "ERROR";
+        h.Vm.SearchVisible = true;
+        root.UpdateLayout();
         var searchBounds = search.TransformToAncestor(root).TransformBounds(new Rect(search.RenderSize));
-        var listBounds = list.TransformToAncestor(root).TransformBounds(new Rect(list.RenderSize));
-        Assert.True(listBounds.Top >= searchBounds.Bottom - 1);
-        Assert.True(listBounds.Height >= 40, $"Log viewport too short: {listBounds}");
+        var textBounds = editor.TransformToAncestor(root).TransformBounds(new Rect(editor.RenderSize));
+        Assert.Equal(closedBounds, textBounds);
+        Assert.InRange(searchBounds.Width, 250, 390);
+        Assert.InRange(textBounds.Right - searchBounds.Right, 19, 28);
+        Assert.InRange(searchBounds.Top - textBounds.Top, 0, 10);
         Assert.Equal(1, h.Vm.Log.MatchCount);
         var output = Environment.GetEnvironmentVariable("SERITERM_UI_ARTIFACTS");
         if (!string.IsNullOrWhiteSpace(output))
@@ -55,6 +98,158 @@ public sealed class LayoutTests
             encoder.Save(file);
         }
         window.Content = null;
+    });
+
+    [Fact]
+    public Task LongLogHasGrabbableScrollbarAndKeepsFollowingNewText() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var window = new MainWindow(h.Vm, h.Theme);
+        var root = (Border)window.Content;
+        var log = (LogView)window.FindName("LogViewControl");
+        var editor = (TextEditor)log.FindName("LogText");
+        h.Vm.Log.Append(Enumerable.Range(1, 7_500)
+            .Select(i => new DisplayLine(i, DateTime.Now, LineDirection.Rx, [0x41], $"test log {i}"))
+            .ToArray());
+        root.Measure(new Size(1264, 737));
+        root.Arrange(new Rect(0, 0, 1264, 737));
+        await UiThread.Drain();
+        root.UpdateLayout();
+
+        var viewer = (ScrollViewer)editor.Template.FindName("PART_ScrollViewer", editor);
+        var scrollbar = (ScrollBar)viewer.Template.FindName("PART_VerticalScrollBar", viewer);
+        var track = (Track)scrollbar.Template.FindName("PART_Track", scrollbar);
+        Assert.InRange(scrollbar.ActualWidth, 15, 20);
+        Assert.True(track.Thumb.ActualHeight >= 32, $"Thumb too short: {track.Thumb.ActualHeight}");
+        Assert.InRange(viewer.ScrollableHeight - viewer.VerticalOffset, 0, 1);
+        Assert.True(h.Vm.AutoScroll);
+
+        viewer.ScrollToTop();
+        root.UpdateLayout();
+        await UiThread.Drain();
+        Assert.False(h.Vm.AutoScroll);
+
+        h.Vm.SearchText = "test log 6000";
+        h.Vm.SearchNextCommand.Execute(null);
+        root.UpdateLayout();
+        await UiThread.Drain();
+        Assert.InRange(viewer.VerticalOffset, viewer.ScrollableHeight * .75, viewer.ScrollableHeight * .85);
+        Assert.False(h.Vm.AutoScroll);
+
+        h.Vm.ScrollToLatestCommand.Execute(null);
+        h.Vm.Log.Append([new DisplayLine(7_501, DateTime.Now, LineDirection.Rx, [0x42], "newest")]);
+        root.UpdateLayout();
+        await UiThread.Drain();
+        Assert.InRange(viewer.ScrollableHeight - viewer.VerticalOffset, 0, 1);
+        Assert.True(h.Vm.AutoScroll);
+        Assert.EndsWith("Rx newest\r\n", editor.Text);
+        window.Content = null;
+    });
+
+    [Fact]
+    public Task VerticalThumbTracksInsideLogWhileNewRecordsArrive() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var window = new MainWindow(h.Vm, h.Theme);
+        var root = (Border)window.Content;
+        var log = (LogView)window.FindName("LogViewControl");
+        var editor = (TextEditor)log.FindName("LogText");
+        h.Vm.Log.Append(Enumerable.Range(1, 7_500)
+            .Select(i => new DisplayLine(i, DateTime.Now, LineDirection.Rx, [], $"record {i}")).ToArray());
+        root.Measure(new Size(1264, 737));
+        root.Arrange(new Rect(0, 0, 1264, 737));
+        await Settle();
+        var viewer = (ScrollViewer)editor.Template.FindName("PART_ScrollViewer", editor);
+        var bar = (ScrollBar)viewer.Template.FindName("PART_VerticalScrollBar", viewer);
+        var track = bar.Track;
+        var thumb = track.Thumb;
+        var liveRecord = new DisplayLine(7_501, DateTime.Now, LineDirection.Rx, [], "incoming");
+
+        thumb.RaiseEvent(new DragStartedEventArgs(4, 8));
+        thumb.RaiseEvent(new DragDeltaEventArgs(0, -60));
+        await Settle();
+        var before = viewer.VerticalOffset;
+        Assert.True(before < viewer.ScrollableHeight - 8);
+        foreach (var dy in new[] { -24, -12, 10, 18 })
+        {
+            var expected = viewer.VerticalOffset + track.ValueFromDistance(0, dy);
+            thumb.RaiseEvent(new DragDeltaEventArgs(-300, dy));
+            await Settle();
+            Assert.InRange(viewer.VerticalOffset, expected - 1, expected + 1);
+        }
+        var held = viewer.VerticalOffset;
+        thumb.RaiseEvent(new DragDeltaEventArgs(-450, 0));
+        h.Vm.Log.Append([liveRecord]);
+        await Settle();
+        Assert.InRange(viewer.VerticalOffset, held - 1, held + 1);
+        thumb.RaiseEvent(new DragCompletedEventArgs(-450, -68, false));
+        await Settle();
+        Assert.False(h.Vm.AutoScroll);
+
+        thumb.RaiseEvent(new DragStartedEventArgs(4, 8));
+        thumb.RaiseEvent(new DragDeltaEventArgs(-300, track.ActualHeight));
+        await Settle();
+        Assert.False(h.Vm.AutoScroll);
+        thumb.RaiseEvent(new DragCompletedEventArgs(-300, track.ActualHeight, false));
+        await Settle();
+        Assert.True(h.Vm.AutoScroll);
+        Assert.InRange(viewer.ScrollableHeight - viewer.VerticalOffset, 0, 1);
+        window.Content = null;
+
+        async Task Settle()
+        {
+            root.UpdateLayout();
+            await UiThread.Drain();
+            root.UpdateLayout();
+        }
+    });
+
+    [Fact]
+    public Task LogTextSupportsCrossLineSelectionAndIncrementalEviction() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        h.Vm.ShowTimestamp = false;
+        h.Vm.Log.MaxLines = 4;
+        var log = new LogView { DataContext = h.Vm };
+        var editor = (TextEditor)log.FindName("LogText");
+        h.Vm.Log.Append([
+            new DisplayLine(1, DateTime.Now, LineDirection.Rx, [0x61], "alpha"),
+            new DisplayLine(2, DateTime.Now, LineDirection.Tx, [0x62], "beta\ngamma"),
+            new DisplayLine(3, DateTime.Now, LineDirection.Rx, [0x63], "delta"),
+            new DisplayLine(4, DateTime.Now, LineDirection.Rx, [0x64], "epsilon"),
+        ]);
+
+        Assert.True(editor.IsReadOnly);
+        editor.Select(6, 13);
+        Assert.Equal("ha\r\nTx beta\ng", editor.SelectedText);
+        h.Vm.Log.Append([new DisplayLine(5, DateTime.Now, LineDirection.Rx, [0x65], "zeta")]);
+        Assert.Equal("Rx delta\r\nRx epsilon\r\nRx zeta\r\n", editor.Text);
+
+        h.Vm.Log.Reformat(_ => "41");
+        Assert.Equal("Rx 41\r\nRx 41\r\nRx 41\r\n", editor.Text);
+        h.Vm.ShowTimestamp = true;
+        Assert.StartsWith(h.Vm.Log.Lines[0].TimeText, editor.Text);
+        h.Vm.ClearLogCommand.Execute(null);
+        Assert.EndsWith("-- 显示数据已清空。\r\n", editor.Text);
+        Assert.DoesNotContain("Rx 41", editor.Text);
+        h.Vm.Log.Clear();
+        Assert.Empty(editor.Text);
+        log.DataContext = null;
+    });
+
+    [Fact]
+    public Task WindowClosesOnceWhenCleanupFinishesSynchronously() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var window = new MainWindow(h.Vm, h.Theme);
+        _ = new WindowInteropHelper(window).EnsureHandle();
+        var closedCount = 0;
+        window.Closed += (_, _) => closedCount++;
+        window.Close();
+        window.Close();
+        Assert.Equal(0, closedCount);
+        await UiThread.Drain();
+        Assert.Equal(1, closedCount);
     });
 
     [Theory]
@@ -89,12 +284,20 @@ public sealed class LayoutTests
         var send = (TextBox)window.FindName("SendTextBox");
         Assert.True(send.AcceptsReturn);
         Assert.True(((FrameworkElement)window.FindName("LogCard")).ActualHeight >= 450);
-        Assert.InRange(((FrameworkElement)window.FindName("LogToolbar")).ActualHeight, 35, 48);
+        var toolbar = (FrameworkElement)window.FindName("LogToolbar");
+        Assert.InRange(toolbar.ActualHeight, 25, 48);
         var sendCard = (FrameworkElement)window.FindName("SendCard");
         Assert.InRange(sendCard.ActualHeight, 45, 52);
         var options = (ToggleButton)window.FindName("SendOptionsToggle");
         Assert.NotEqual(true, options.IsChecked);
         var sidebar = (ScrollViewer)window.FindName("SidebarScrollViewer");
+        Assert.True(sidebar.IsAncestorOf(toolbar));
+        foreach (var name in new[] { "LogSearchButton", "LogPauseButton", "LogSaveButton", "LogClearButton" })
+        {
+            var button = (Button)window.FindName(name);
+            var bounds = button.TransformToAncestor(toolbar).TransformBounds(new Rect(button.RenderSize));
+            Assert.True(bounds.Width >= 40 && bounds.Left >= 0 && bounds.Right <= toolbar.ActualWidth + 1, $"{name}: {bounds}");
+        }
         Assert.Equal(290, sidebar.ActualWidth);
         Assert.NotEqual(Visibility.Visible, sidebar.ComputedVerticalScrollBarVisibility);
         foreach (var name in new[] { "HexDisplayCheck", "AutoScrollToggle" })

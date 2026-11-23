@@ -26,6 +26,13 @@ public partial class MainWindow : Window
     private bool _closing;
     private bool _shutdownCompleted;
 
+    private async void OnPortSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox { SelectedItem: PortItem port } combo &&
+            (combo.IsKeyboardFocusWithin || combo.IsDropDownOpen))
+            await _viewModel.SwitchOpenPortAsync(port);
+    }
+
     public MainWindow(MainViewModel viewModel, IThemeService themeService)
     {
         _viewModel = viewModel;
@@ -111,6 +118,11 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
 
+            case Key.F6:
+                if (!e.IsRepeat && _viewModel.TogglePauseCommand.CanExecute(null)) _viewModel.TogglePauseCommand.Execute(null);
+                e.Handled = true;
+                return;
+
             case Key.F when control:
                 LogViewControl.FocusSearch();
                 e.Handled = true;
@@ -132,7 +144,7 @@ public partial class MainWindow : Window
                 return;
 
             case Key.Escape when _viewModel.SearchVisible:
-                _viewModel.CloseSearchCommand.Execute(null);
+                LogViewControl.CloseSearch();
                 e.Handled = true;
                 return;
 
@@ -187,8 +199,8 @@ public partial class MainWindow : Window
                 return true;
 
             case Key.C when control:
-                // 焦点在日志列表里时不抢：那时 Ctrl+C 的意思是"复制选中的日志行"
-                if (LogViewControl.IsLogListFocused)
+                // 日志区有焦点时让编辑器处理 Ctrl+C。
+                if (LogViewControl.IsLogTextFocused)
                 {
                     return false;
                 }
@@ -607,17 +619,23 @@ public partial class MainWindow : Window
         }
     }
 
-    protected override async void OnClosing(CancelEventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
-        if (_shutdownCompleted)
+        base.OnClosing(e);
+        if (_shutdownCompleted || e.Cancel)
         {
-            base.OnClosing(e);
             return;
         }
+
         e.Cancel = true;
-        base.OnClosing(e);
         if (_closing) return;
         _closing = true;
+        // 即使清理同步完成，下一次 Close 也必须发生在本轮 Closing 返回之后。
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(BeginShutdown));
+    }
+
+    private async void BeginShutdown()
+    {
         // 记录窗口尺寸供下次启动恢复（最大化时用 RestoreBounds 记住还原后的尺寸）
         var settings = _viewModel.Settings;
         var bounds = WindowState == WindowState.Normal

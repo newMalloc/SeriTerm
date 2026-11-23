@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using SeriTerm.App.Common;
 using SeriTerm.Core.Logging;
 using SeriTerm.Core.Pipeline;
@@ -18,6 +19,7 @@ public partial class MainViewModel
 {
     private DispatcherTimer _portRefreshTimer = null!;
     private bool _refreshingPorts;
+    private bool _switchingPort;
     private volatile bool _disposed;
     private int _timedSendRevision;
     private long _pausedBytes;
@@ -42,7 +44,8 @@ public partial class MainViewModel
     public bool CanSend => !_disposed && IsOpen && !HasSendError && !IsSendingFile && !TimedSendEnabled;
     public bool CanStartFileSend => !_disposed && IsOpen && !IsSendingFile && !TimedSendEnabled;
     public bool CanToggleTimedSend => !_disposed && (TimedSendEnabled || (IsOpen && !IsSendingFile && !HasSendError));
-    public bool CanToggleConnection => !_disposed && State != TransportState.Opening && (IsOpen || SelectedPort is not null);
+    public bool CanToggleConnection => !_disposed && !_switchingPort && State != TransportState.Opening && (IsOpen || SelectedPort is not null);
+    public bool CanSelectPort => !_disposed && !_switchingPort && State != TransportState.Opening;
     public string EmptyLogTitle => IsOpen ? "已连接，等待设备数据" : "从连接一台设备开始";
     public string EmptyLogHint => IsOpen ? "收到的数据会实时出现在这里。也可以在下方发送命令。"
         : "选择左侧串口和波特率，点击“打开串口”。插拔设备后列表会自动更新。";
@@ -59,7 +62,7 @@ public partial class MainViewModel
 
     private async Task UpdatePortsAsync(bool force)
     {
-        if (_refreshingPorts || _disposed) return;
+        if (_refreshingPorts || _switchingPort || _disposed) return;
         _refreshingPorts = true;
         try
         {
@@ -67,7 +70,7 @@ public partial class MainViewModel
             if (_disposed || (!force && names.SequenceEqual(_availablePorts, StringComparer.OrdinalIgnoreCase))) return;
             _friendlyNames.Invalidate();
             var friendly = await _friendlyNames.GetAsync();
-            if (_disposed) return;
+            if (_disposed || _switchingPort) return;
             _availablePorts = names.ToArray();
             var previous = SelectedPort?.PortName ?? _settings.LastSerial.PortName;
             // A disappearing port must not silently redirect the next send to another device.
@@ -87,8 +90,43 @@ public partial class MainViewModel
 
     partial void OnSelectedPortChanged(PortItem? value) => ToggleOpenCommand.NotifyCanExecuteChanged();
 
+    public async Task SwitchOpenPortAsync(PortItem port)
+    {
+        if (_disposed || _refreshingPorts || _switchingPort || !IsOpen ||
+            _transport.CurrentSettings is not { } current ||
+            string.Equals(current.PortName, port.PortName, StringComparison.OrdinalIgnoreCase)) return;
+
+        _switchingPort = true;
+        OnPropertyChanged(nameof(CanSelectPort));
+        ToggleOpenCommand.NotifyCanExecuteChanged();
+        try
+        {
+            await _reconnect.StopAsync().ConfigureAwait(true);
+            await _transport.CloseAsync().ConfigureAwait(true);
+            var settings = current with { PortName = port.PortName };
+            await _transport.OpenAsync(settings).ConfigureAwait(true);
+            _settings.LastSerial = settings;
+            StatusDetail = settings.ToShortDescription();
+            AddSystemLine($"串口已切换：{settings.ToShortDescription()}");
+        }
+        catch (Exception ex)
+        {
+            StatusDetail = $"切换到 {port.PortName} 失败。";
+            AddSystemLine($"切换到 {port.PortName} 失败：{ex.Message}");
+            _logger.LogError(ex, "切换串口到 {PortName} 失败", port.PortName);
+            _notifier.ShowError($"切换到 {port.PortName} 失败", ex.Message);
+        }
+        finally
+        {
+            _switchingPort = false;
+            OnPropertyChanged(nameof(CanSelectPort));
+            ToggleOpenCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     partial void OnStateChanged(TransportState value)
     {
+        OnPropertyChanged(nameof(CanSelectPort));
         NotifySendAvailability();
         ToggleOpenCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(EmptyLogTitle));

@@ -135,30 +135,10 @@ try {
         if ($t.Current.Name -match '第 .* 共') { Write-Output "SEARCH|$($t.Current.Name)" }
     }
 
-    # 再拖选两行，看选中底色够不够明显
+    # 拖选与复制由 probe-log-drag.ps1 验证，这里只检查查找高亮。
     $list = Find-Id -Root $root -Id 'LogList'
-    $items = $list.FindAll($TS::Children, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::ListItem)))
-    if ($items.Count -ge 4) {
-        $a = $items[1].Current.BoundingRectangle
-        $b = $items[3].Current.BoundingRectangle
-        [void][SearchProbe]::SetCursorPos([int]($a.Left + 40), [int](($a.Top + $a.Bottom) / 2))
-        Start-Sleep -Milliseconds 250
-        [SearchProbe]::LeftDown()
-        Start-Sleep -Milliseconds 150
-        for ($step = 1; $step -le 10; $step++) {
-            $y = $a.Top + (($b.Top - $a.Top) * $step / 10)
-            [void][SearchProbe]::SetCursorPos([int]($a.Left + 40), [int]$y)
-            Start-Sleep -Milliseconds 60
-        }
-        [SearchProbe]::LeftUp()
-        Start-Sleep -Milliseconds 700
 
-        $pattern = $list.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern)
-        Write-Output "SELECTED|$($pattern.Current.GetSelection().Count)"
-        Save-Shot -Handle $handle -Name '02-selection'
-    }
-
-    # --- 关掉搜索条：命中高亮（行底色 + 字符方块）必须一起消失 ---
+    # --- 关掉搜索条后，命中高亮应当一起消失 ---
     $closeButton = Find-Name -Root $root -Name '✕' -ControlType $CT::Button
     if ($null -eq $closeButton) { throw '找不到搜索条的关闭按钮' }
     Invoke-El $closeButton '关闭搜索'

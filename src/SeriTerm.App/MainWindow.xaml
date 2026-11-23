@@ -175,6 +175,7 @@
                            Foreground="{DynamicResource SubtleForegroundBrush}"
                            TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
                 <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <TextBlock x:Name="BufferStatus" Text="{Binding BufferStatusText}" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,16,0" VerticalAlignment="Center" />
                     <TextBlock Text="Rx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
                     <TextBlock Text="{Binding RxText}" Margin="0,0,8,0" ToolTip="{Binding RxRateText}" /><TextBlock Text="{Binding RxRateText}" Margin="0,0,16,0" Foreground="{DynamicResource SubtleForegroundBrush}" />
                     <TextBlock Text="Tx:" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="0,0,5,0" />
@@ -218,10 +219,10 @@
                             </DockPanel>
                             <TextBlock Text="串口设备" Style="{StaticResource HintText}" Margin="0,0,0,6" />
                             <ComboBox x:Name="PortCombo" ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}"
-                                      IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="串口设备" MinHeight="34">
+                                      IsEnabled="{Binding CanSelectPort}" SelectionChanged="OnPortSelectionChanged"
+                                      AutomationProperties.Name="串口设备" ToolTip="已连接时选择其他设备会切换连接" MinHeight="34" Margin="0,0,0,12">
                                 <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" /></DataTemplate></ComboBox.ItemTemplate>
                             </ComboBox>
-                            <TextBlock Text="{Binding PortHint}" Style="{StaticResource HintText}" Margin="0,7,0,12" />
                             <TextBlock Text="波特率" Style="{StaticResource HintText}" Margin="0,0,0,6" />
                             <ComboBox x:Name="BaudRateCombo" IsEditable="True" ItemsSource="{Binding BaudRateOptions}"
                                       Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditBaudRate}"
@@ -229,13 +230,13 @@
                                       ToolTip="支持自定义波特率；已连接时修改会立即生效" MinHeight="34" />
                             <Button Content="{Binding OpenButtonText}" Command="{Binding ToggleOpenCommand}" Style="{StaticResource PrimaryButton}"
                                     Height="38" Margin="0,14,0,10" ToolTip="打开或关闭当前串口（F5）" />
-                            <CheckBox Content="断线自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,8" />
                             <DockPanel Visibility="{Binding HasReconnectStatus, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,8">
                                 <Button DockPanel.Dock="Right" Content="停止重连" Command="{Binding StopReconnectCommand}" Style="{StaticResource SmallButton}" />
                                 <TextBlock Text="{Binding ReconnectStatusText}" Style="{StaticResource HintText}" />
                             </DockPanel>
                             <Expander Header="高级连接参数">
                                 <StackPanel Margin="0,12,0,0">
+                                    <CheckBox Content="断线自动重连" IsChecked="{Binding AutoReconnect}" Margin="0,0,0,12" />
                                     <UniformGrid Columns="2">
                                         <StackPanel Margin="0,0,6,10">
                                             <TextBlock Text="数据位" Style="{StaticResource HintText}" Margin="0,0,0,5" />
@@ -257,6 +258,19 @@
                                 </StackPanel>
                             </Expander>
                         </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SectionPanel}" Padding="10,8">
+                        <Grid x:Name="LogToolbar">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="1.45*" />
+                                <ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="LogSearchButton" Grid.Column="0" Content="查找" Command="{Binding OpenSearchCommand}" Style="{StaticResource ToolbarButton}" ToolTip="查找日志（Ctrl+F）" />
+                            <Button x:Name="LogPauseButton" Grid.Column="1" Content="{Binding PauseButtonText}" Command="{Binding TogglePauseCommand}" Style="{StaticResource ToolbarButton}" ToolTip="暂停或继续显示（F6）" />
+                            <Button x:Name="LogSaveButton" Grid.Column="2" Content="保存" Command="{Binding SaveLogCommand}" Style="{StaticResource ToolbarButton}" ToolTip="保存显示内容（Ctrl+S）" />
+                            <Button x:Name="LogClearButton" Grid.Column="3" Content="清空" Command="{Binding ClearLogCommand}" Style="{StaticResource ToolbarButton}" Margin="0" ToolTip="清空显示内容（Ctrl+K）" />
+                        </Grid>
                     </Border>
 
                     <Border Style="{StaticResource SectionPanel}" Padding="16,12">
@@ -313,7 +327,6 @@
                             <StackPanel Margin="0,12,0,0">
                                 <CheckBox x:Name="SaveLogCheck" Content="实时保存文本日志" IsChecked="{Binding SaveLogToFile}" Margin="0,0,0,10" />
                                 <CheckBox Content="保存原始字节日志" IsChecked="{Binding SaveRawLog}" Margin="0,0,0,10" />
-                                <TextBlock Text="暂停显示时仍持续记录。原始日志可离线打开查看。" Style="{StaticResource HintText}" Margin="0,0,0,10" />
                                 <TextBlock Text="{Binding LogDirectory}" Style="{StaticResource HintText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding LogDirectory}" />
                                 <UniformGrid Columns="2" Margin="0,10,0,0">
                                     <Button Content="选择目录" Command="{Binding ChooseLogDirectoryCommand}" Margin="0,0,4,0" />
@@ -338,7 +351,7 @@
                             </StackPanel>
                         </Expander>
                     </Border>
-                    <TextBlock Text="F5 连接 / 断开   ·   F1 关于&#10;Ctrl+F 查找   ·   Ctrl+S 保存日志" Style="{StaticResource HintText}" Margin="10,6,0,6" LineHeight="22" />
+                    <TextBlock Text="F5 连接 / 断开   ·   F6 暂停 / 继续&#10;Ctrl+F 查找   ·   Ctrl+S 保存日志   ·   F1 关于" Style="{StaticResource HintText}" Margin="10,6,0,6" LineHeight="22" />
                 </StackPanel>
             </ScrollViewer>
 
@@ -347,21 +360,8 @@
                 <Border x:Name="LogCard" CornerRadius="8" Background="{DynamicResource LogBackgroundBrush}"
                         BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="1" SizeChanged="OnLogCardSizeChanged">
                     <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                        <Border x:Name="LogToolbar" Padding="12,7" BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,0,0,1" Background="{DynamicResource PanelBackgroundBrush}">
-                            <DockPanel>
-                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                    <Button Content="查找" Command="{Binding OpenSearchCommand}" Style="{StaticResource ToolbarButton}" ToolTip="查找日志（Ctrl+F）" />
-                                    <Button Content="{Binding PauseButtonText}" Command="{Binding TogglePauseCommand}" Style="{StaticResource ToolbarButton}" />
-                                    <Button Content="保存" Command="{Binding SaveLogCommand}" Style="{StaticResource ToolbarButton}" ToolTip="保存显示内容（Ctrl+S）" />
-                                    <Button Content="清空" Command="{Binding ClearLogCommand}" Style="{StaticResource ToolbarButton}" ToolTip="清空显示内容（Ctrl+K）" />
-                                </StackPanel>
-                                <TextBlock DockPanel.Dock="Left" Text="接收工作区" FontWeight="SemiBold" FontSize="15" />
-                                <TextBlock Text="{Binding BufferStatusText}" Style="{StaticResource HintText}" Margin="12,0,8,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                            </DockPanel>
-                        </Border>
-                        <controls:LogView x:Name="LogViewControl" Grid.Row="1" />
-                        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360" Margin="20,8" IsHitTestVisible="False">
+                        <controls:LogView x:Name="LogViewControl" />
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="360" Margin="20,8" IsHitTestVisible="False">
                             <StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
                                 <DataTrigger Binding="{Binding Log.Lines.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
                             </Style.Triggers></Style></StackPanel.Style>

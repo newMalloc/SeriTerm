@@ -288,7 +288,7 @@ try {
     } else {
         $viewRect = Get-RectOf $logView
         $boxRect = Get-RectOf $searchBox
-        $inRightPane = $boxRect.Left -gt (($viewRect.Left + $viewRect.Right) / 2)
+        $inRightPane = (($boxRect.Left + $boxRect.Right) / 2) -gt (($viewRect.Left + $viewRect.Right) / 2)
         Write-Output ("OVERLAY|查找框在右半边={0} 距日志区右边={1:0} 距顶边={2:0}" -f $inRightPane,
             ($viewRect.Right - $boxRect.Right), ($boxRect.Top - $viewRect.Top))
         if (-not $inRightPane) { $failures++ }
@@ -303,7 +303,7 @@ try {
 
     # ---------- 3) 字号下拉框真的改字号 ----------
     Write-Output '== 字号下拉框'
-    $fontCombo = Find-Id -Root $root -Id 'FontSizeCombo'
+    $fontCombo = Find-Id -Root $root -Id 'LogFontSizeCombo'
     $openButton = Find-One -Root $root -Name '打开串口' -ControlType $CT::Button
     Invoke-Element $openButton
     Start-Sleep -Milliseconds 1500
@@ -313,9 +313,11 @@ try {
     Start-Sleep -Milliseconds 1200
 
     $logList = Find-Id -Root $root -Id 'LogList'
-    $items = $logList.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    $heightBefore = if ($items.Count -gt 0) { [math]::Round($items[0].Current.BoundingRectangle.Height, 1) } else { 0 }
-    Write-Output "FONT|行数=$($items.Count)|13号字行高=$heightBefore"
+    $logText = $logList.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    $sample = $logText.DocumentRange.FindText('LAYOUT-CHECK-LINE', $true, $false)
+    if ($null -eq $sample) { throw '日志中找不到字号测试用的文字' }
+    $heightBefore = $sample.GetBoundingRectangles()[3]
+    Write-Output "FONT|13号字行高=$heightBefore"
 
     $fontCombo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
     Start-Sleep -Milliseconds 500
@@ -326,8 +328,7 @@ try {
         $failures++
     }
     Start-Sleep -Milliseconds 900
-    $items = $logList.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    $heightAfter = if ($items.Count -gt 0) { [math]::Round($items[0].Current.BoundingRectangle.Height, 1) } else { 0 }
+    $heightAfter = $sample.GetBoundingRectangles()[3]
     Write-Output "FONT|20号字行高=$heightAfter"
     if (-not ($heightAfter -gt $heightBefore)) { $failures++; Write-Output 'FONT|字号没有生效' }
     Save-Shot -Handle $handle -Name '01-font20'
@@ -404,12 +405,11 @@ try {
 
     # ---------- 7) 清空 ----------
     Write-Output '== 清空'
-    $before = $logList.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition).Count
     Invoke-Element (Find-One -Root $root -Name '清空' -ControlType $CT::Button)
     Start-Sleep -Milliseconds 900
-    $after = $logList.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition).Count
-    Write-Output "CLEAR|清空前=$before 清空后=$after"
-    if ($after -ge $before) { $failures++ }
+    $cleared = $logText.DocumentRange.GetText(-1)
+    Write-Output "CLEAR|清空后=$cleared"
+    if ($cleared -notmatch '显示数据已清空' -or $cleared -match 'LAYOUT-CHECK-LINE') { $failures++ }
 
     Invoke-Element (Find-One -Root $root -Name '关闭串口' -ControlType $CT::Button)
     Start-Sleep -Milliseconds 900

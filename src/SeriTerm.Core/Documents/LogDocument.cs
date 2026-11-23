@@ -3,6 +3,9 @@ using SeriTerm.Core.Search;
 
 namespace SeriTerm.Core.Documents;
 
+/// <summary>一次日志缓冲更新，包含从头部淘汰的行数或整段重建标记。</summary>
+public readonly record struct LogContentChange(int RemovedLines, bool IsReset = false);
+
 /// <summary>
 /// 日志文档：保存显示行、按行数与字节数双重预算淘汰旧数据，并承载 Ctrl+F 搜索。
 ///
@@ -52,6 +55,9 @@ public sealed class LogDocument
     /// <summary>搜索状态（命中集合 / 当前命中）发生变化。</summary>
     public event EventHandler? SearchChanged;
 
+    /// <summary>缓冲完成一次追加、清空或重排后发出，供文本视图按批同步。</summary>
+    public event EventHandler<LogContentChange>? ContentChanged;
+
     /// <summary>追加一批新行并处理淘汰；返回实际追加的行数。</summary>
     public int Append(IReadOnlyList<DisplayLine> newLines)
     {
@@ -60,17 +66,7 @@ public sealed class LogDocument
             return 0;
         }
 
-        // 追加要逐行走 Add 通知，**不能**攒成一个 Reset。
-        //
-        // 原来这里是 using (Lines.Defer())：一批只发一次 Reset，看着很省。实测恰恰相反——
-        // Reset 会让 WPF 的虚拟化列表把已经生成的行容器**全部丢掉重建**（每行一个只读文本框、
-        // 一层高亮 Canvas、时间/方向两列），每次追加都要重排整个可视区。10 次/秒的定时发送
-        // （每次 Tx+Rx 两行）就够把界面线程跑满：进程 CPU 占空比 ~100%，点一下要等 0.1~2 秒，
-        // 表现就是"数据照发，界面像卡死"。
-        //
-        // 换成 Add 之后，WPF 只为新行生成容器，同一帧里的多次失效会合并成一次布局，
-        // 开销与"新增多少行"成正比，而不是与"屏幕上显示多少行"成正比。
-        // 真正需要 Reset 的只有整段变化：淘汰旧行（下面 TrimFront）和切换 HEX/编码重刷（Reformat）。
+        // 保留逐行 Add 的集合通知契约，文本视图通过 ContentChanged 一次处理整批。
         foreach (var line in newLines)
         {
             Lines.Add(line);
@@ -95,9 +91,10 @@ public sealed class LogDocument
 
         if (HasSearch)
         {
-            MatchNewLines(newLines);
+            MatchNewLines(newLines, Math.Max(0, newLines.Count - Lines.Count));
         }
 
+        ContentChanged?.Invoke(this, new(trim));
         return newLines.Count;
     }
 
@@ -111,6 +108,7 @@ public sealed class LogDocument
         _totalBytes = 0;
         _droppedLines = 0;
         SearchChanged?.Invoke(this, EventArgs.Empty);
+        ContentChanged?.Invoke(this, new(0, IsReset: true));
     }
 
     /// <summary>
@@ -138,6 +136,8 @@ public sealed class LogDocument
         {
             RescanMatches();
         }
+
+        ContentChanged?.Invoke(this, new(0, IsReset: true));
     }
 
     // ---------- 搜索 ----------
@@ -212,12 +212,13 @@ public sealed class LogDocument
     }
 
     /// <summary>新到达的行也要参与匹配，这样搜索才是"实时"的。</summary>
-    private void MatchNewLines(IReadOnlyList<DisplayLine> newLines)
+    private void MatchNewLines(IReadOnlyList<DisplayLine> newLines, int startIndex)
     {
         var changed = false;
 
-        foreach (var line in newLines)
+        for (var i = startIndex; i < newLines.Count; i++)
         {
+            var line = newLines[i];
             if (!IsHit(line))
             {
                 continue;
