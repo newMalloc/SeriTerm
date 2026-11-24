@@ -1,8 +1,8 @@
 # SeriTerm v1.2.3 界面演示
 
-48 秒演示使用 Windows 上的 SeriTerm 1.2.3 界面和模拟串口数据。开场概览串口收发、实时日志、自动重连与 AI 接入，随后演示工作台、异常搜索、暂停恢复与磨砂设置。MCP 一节展示复制客户端配置、等待 TIMEOUT 和读取命中帧及上下文。
+视频使用 Windows 上的 SeriTerm 1.2.3 界面和模拟串口数据。开场概览串口收发、实时日志、自动重连与 AI 接入，随后展示工作台、异常搜索、暂停恢复与磨砂设置。MCP 一节展示复制客户端配置、等待 TIMEOUT 和读取命中帧及上下文。镜头运动、指针和转场为后期演示效果。
 
-- [GitHub 首页播放器](https://github.com/newMalloc/SeriTerm#v123-界面演示)
+- [GitHub 首页播放器](https://github.com/newMalloc/SeriTerm#演示)
 - [网页版](https://newmalloc.github.io/SeriTerm/video/) 支持暂停、拖动进度和全屏，无背景音。
 - [1080p MP4](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4) 包含用 `music.mjs` 合成的背景音。
 

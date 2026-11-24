@@ -6,15 +6,13 @@
 
 [简体中文](README.md) | **English**
 
-**SeriTerm is a portable Windows serial debugging tool.** Send and receive text or HEX, search and save live logs, and reconnect automatically. AI clients can read frames or wait for a keyword over local MCP. Access is read-only by default.
+An open-source, portable serial tool for Windows. Send text or HEX, search logs, reconnect automatically, and connect AI clients to your serial data through MCP.
 
-## v1.2.3 interface demo
+## Demo
 
-This 48-second demo covers the workspace, frosted glass, and AI access. From **0:31**, see how to configure an MCP client, wait for a device warning, and retrieve the matching frame with context.
+https://github.com/user-attachments/assets/29c80a35-9e77-477b-be4b-de2314c838ad
 
-https://github.com/user-attachments/assets/b2861fe2-41e7-43af-a481-493b5d544ba5
-
-[Watch on the web](https://newmalloc.github.io/SeriTerm/video/) · [Download the 1080p video](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
+[Watch on the web](https://newmalloc.github.io/SeriTerm/video/) · [Download the video](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
 
 ## Download
 
@@ -91,7 +89,7 @@ dotnet run   --project src/SeriTerm.App
 dotnet test  SeriTerm.sln
 ```
 
-**360 automated tests** (352 pure logic unit tests + 8 loopback integration tests); `dotnet test` runs them all.
+Run the automated tests with `dotnet test`.
 The loopback group needs a USB-TTL adapter with TX and RX shorted and uses `COM5` by default; the port can be
 overridden without touching the source (`$env:SERITERM_LOOPBACK_PORT = 'COM3'`). On a machine without loopback
 hardware the group is skipped, not failed.
