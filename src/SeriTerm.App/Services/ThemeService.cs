@@ -11,7 +11,7 @@ public enum ThemeMode
     /// <summary>浅色。</summary>
     Light,
 
-    /// <summary>跟随系统（应用时解析为深/浅；v1 不监听系统主题实时变化）。</summary>
+    /// <summary>跟随 Windows 应用配色。</summary>
     System,
 }
 
@@ -23,8 +23,7 @@ public interface IThemeService
     bool IsDarkEffective { get; }
 
     /// <summary>
-    /// 当前生效的主题字典。背景模糊需要从它里面取"原始不透明颜色"来生成半透明表面，
-    /// 不能走 Application.Resources（那里可能已经被半透明覆盖字典盖住了）。
+    /// 当前生效的主题字典，包含纯色画刷与窗口材质配色。
     /// </summary>
     ResourceDictionary? ActiveTheme { get; }
 

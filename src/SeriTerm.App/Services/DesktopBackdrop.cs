@@ -1,249 +1,142 @@
-using System.IO;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Windows;
 using Microsoft.Win32;
 
 namespace SeriTerm.App.Services;
 
-/// <summary>
-/// 自绘的"模糊桌面背景"。
-///
-/// 为什么不用 DWM 的亚克力（<c>SetWindowCompositionAttribute</c>）：
-/// 本机（Windows 10 19045，远程/虚拟显示会话）实测该 API 一律返回成功、但对窗口毫无效果——
-/// AccentState 1/2/3/4/5/6、AccentFlags 0/2、深浅两种底色共九种组合，外加
-/// <c>DwmExtendFrameIntoClientArea(-1)</c> 把玻璃区扩到整个客户区，像素一个都没变；
-/// 而同一时刻系统任务栏的亚克力是正常工作的，说明 DWM 支持模糊，只是拒绝为第三方窗口做这套旧接口。
-///
-/// 所以改成自己模糊壁纸：拿桌面壁纸做一次降采样 + 多次盒式模糊，得到一张很小的图，
-/// 再由 GPU 拉伸铺满窗口。效果与亚克力等价（最大化时窗口背后本来就是这块壁纸），
-/// 而且不依赖 DWM、任何会话都能用，也不需要每帧跑模糊。
-/// </summary>
+/// <summary>在主窗口的客户区启用 DWM 实时背景。成功后 WPF 仍需透明的合成底色。</summary>
 internal static class DesktopBackdrop
 {
-    /// <summary>模糊后的图宽（像素）。很低频就够了：越接近"色块"越像亚克力。</summary>
-    private const int TargetWidth = 320;
+    // DWMWA_SYSTEMBACKDROP_TYPE 于 Windows 11 22H2 引入。
+    public static bool UsesSystemAcrylic => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621);
 
-    /// <summary>盒式模糊重复次数，用来逼近高斯模糊。</summary>
-    private const int BlurPasses = 3;
-
-    /// <summary>壁纸能不能拿到（只查文件和注册表，不解码图像）。</summary>
-    public static bool IsAvailable => ResolveWallpaperPath() is not null;
-
-    /// <summary>生成模糊壁纸。任何一步失败都返回 null，调用方应保持不透明背景。</summary>
-    public static ImageSource? Create()
+    public static bool IsAllowed()
     {
+        if (SystemParameters.HighContrast || DwmIsCompositionEnabled(out var enabled) < 0 || !enabled)
+            return false;
+
         try
         {
-            var path = ResolveWallpaperPath();
-            if (path is null)
-            {
-                return null;
-            }
-
-            var pixels = Load(path);
-            if (pixels is null || pixels.Width < 2 || pixels.Height < 2)
-            {
-                return null;
-            }
-
-            var small = Downsample(pixels, TargetWidth);
-            Blur(small, Math.Max(2, small.Width / 14), BlurPasses);
-
-            var bitmap = BitmapSource.Create(
-                small.Width, small.Height, 96, 96, PixelFormats.Bgra32, null, small.Data, small.Stride);
-            bitmap.Freeze();
-            return bitmap;
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("EnableTransparency") is not 0;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or System.IO.IOException)
         {
-            // 壁纸文件被删/格式怪异/权限不足：当作没有背景，不要让窗口启动失败
-            return null;
+            return false;
         }
     }
 
-    /// <summary>
-    /// 取壁纸文件路径。优先注册表里用户设置的壁纸；
-    /// 取不到时退回 Windows 自己缓存的转码壁纸（幻灯片、Windows 聚焦都靠它）。
-    /// </summary>
-    private static string? ResolveWallpaperPath()
+    public static bool SetMaterial(IntPtr hwnd, int? blurLevel)
     {
+        if (blurLevel != 0)
+        {
+            var off = new BlurBehind { Flags = 1 };
+            DwmEnableBlurBehindWindow(hwnd, ref off);
+        }
+        // 22H2 起系统 Acrylic 用全客户区玻璃。旧版 BlurBehind 中间档只在仍支持它的系统上提供。
+        if (UsesSystemAcrylic)
+        {
+            const int dwmwaSystemBackdropType = 38;
+            int backdrop = blurLevel is > 0 ? 3 : 1; // DWMSBT_TRANSIENTWINDOW / DWMSBT_NONE
+            if (DwmSetWindowAttribute(hwnd, dwmwaSystemBackdropType, ref backdrop, sizeof(int)) < 0)
+                return false;
+            if (blurLevel is not 0) return true;
+        }
+
+        return blurLevel switch
+        {
+            null => SetAccentPolicy(hwnd, default),
+            0 => EnableClearBackground(hwnd),
+            1 => SetAccentBlur(hwnd, true),
+            _ => SetStrongAccent(hwnd),
+        };
+    }
+
+    private static bool SetStrongAccent(IntPtr hwnd)
+    {
+        // Win10 直接从 BlurBehind 切到 Acrylic 可能继续显示旧材质，先解除再在当前位置合成。
+        SetAccentPolicy(hwnd, default);
+        return SetAccentPolicy(hwnd, new AccentPolicy { State = 4, GradientColor = 0x01000000 }) || SetAccentBlur(hwnd, true);
+    }
+
+    private static bool EnableClearBackground(IntPtr hwnd)
+    {
+        SetAccentPolicy(hwnd, default);
+        var region = CreateRectRgn(0, 0, -1, -1);
+        if (region == 0) return false;
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop");
-            if (key?.GetValue("WallPaper") is string configured
-                && !string.IsNullOrWhiteSpace(configured)
-                && File.Exists(configured))
-            {
-                return configured;
-            }
+            // 透明客户区参与 DWM 合成，将模糊区域放在客户区之外即可保留背景边缘。
+            var clear = new BlurBehind { Flags = 3, Enable = 1, Region = region };
+            return DwmEnableBlurBehindWindow(hwnd, ref clear) >= 0;
         }
-        catch (Exception)
-        {
-            // 注册表读不到就继续尝试转码文件
-        }
-
-        var transcoded = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Microsoft",
-            "Windows",
-            "Themes",
-            "TranscodedWallpaper");
-
-        return File.Exists(transcoded) ? transcoded : null;
+        finally { DeleteObject(region); }
     }
 
-    private static Pixels? Load(string path)
+    // 分层 Popup 使用 BlurBehind，确保同一应用内的文字和色块边缘也会被模糊。
+    public static bool SetAccentBlur(IntPtr hwnd, bool enabled) =>
+        SetAccentPolicy(hwnd, new AccentPolicy { State = enabled ? 3 : 0 });
+
+    private static bool SetAccentPolicy(IntPtr hwnd, AccentPolicy policy)
     {
-        using var stream = File.OpenRead(path);
-        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-        if (decoder.Frames.Count == 0)
+        const int wcaAccentPolicy = 19;
+        var size = Marshal.SizeOf<AccentPolicy>();
+        var pointer = Marshal.AllocHGlobal(size);
+        try
         {
-            return null;
+            Marshal.StructureToPtr(policy, pointer, false);
+            var data = new AttributeData { Attribute = wcaAccentPolicy, Data = pointer, Size = size };
+            return SetWindowCompositionAttribute(hwnd, ref data);
         }
-
-        // 统一成 Bgra32：后面按字节做降采样和模糊，必须先确定通道顺序
-        var converted = new FormatConvertedBitmap(decoder.Frames[0], PixelFormats.Bgra32, null, 0);
-        var stride = converted.PixelWidth * 4;
-        var data = new byte[stride * converted.PixelHeight];
-        converted.CopyPixels(data, stride, 0);
-
-        return new Pixels(data, converted.PixelWidth, converted.PixelHeight, stride);
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(pointer);
+        }
     }
 
-    /// <summary>盒式平均降采样，避免直接丢像素产生噪点。</summary>
-    private static Pixels Downsample(Pixels source, int targetWidth)
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AccentPolicy
     {
-        var width = Math.Min(targetWidth, source.Width);
-        var height = Math.Max(1, (int)Math.Round(source.Height * (double)width / source.Width));
-        var stride = width * 4;
-        var data = new byte[stride * height];
-
-        for (var y = 0; y < height; y++)
-        {
-            var y0 = y * source.Height / height;
-            var y1 = Math.Max(y0 + 1, (y + 1) * source.Height / height);
-
-            for (var x = 0; x < width; x++)
-            {
-                var x0 = x * source.Width / width;
-                var x1 = Math.Max(x0 + 1, (x + 1) * source.Width / width);
-
-                int b = 0, g = 0, r = 0, a = 0, count = 0;
-
-                for (var sy = y0; sy < y1; sy++)
-                {
-                    var row = sy * source.Stride;
-                    for (var sx = x0; sx < x1; sx++)
-                    {
-                        var p = row + (sx * 4);
-                        b += source.Data[p];
-                        g += source.Data[p + 1];
-                        r += source.Data[p + 2];
-                        a += source.Data[p + 3];
-                        count++;
-                    }
-                }
-
-                var q = (y * stride) + (x * 4);
-                data[q] = (byte)(b / count);
-                data[q + 1] = (byte)(g / count);
-                data[q + 2] = (byte)(r / count);
-                data[q + 3] = (byte)(a / count);
-            }
-        }
-
-        return new Pixels(data, width, height, stride);
+        public int State, Flags, GradientColor, AnimationId;
     }
 
-    /// <summary>可分离盒式模糊（先横后纵，各用滑动窗口累加）。</summary>
-    private static void Blur(Pixels image, int radius, int passes)
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlurBehind
     {
-        if (radius < 1)
-        {
-            return;
-        }
-
-        var scratch = new byte[image.Data.Length];
-
-        for (var pass = 0; pass < passes; pass++)
-        {
-            BlurHorizontal(image.Data, scratch, image, radius);
-            BlurVertical(scratch, image.Data, image, radius);
-        }
+        public uint Flags;
+        public int Enable;
+        public IntPtr Region;
+        public int TransitionOnMaximized;
     }
 
-    private static void BlurHorizontal(byte[] source, byte[] target, Pixels image, int radius)
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AttributeData
     {
-        var window = (radius * 2) + 1;
-
-        for (var y = 0; y < image.Height; y++)
-        {
-            var row = y * image.Stride;
-            int b = 0, g = 0, r = 0, a = 0;
-
-            for (var i = -radius; i <= radius; i++)
-            {
-                var p = row + (Math.Clamp(i, 0, image.Width - 1) * 4);
-                b += source[p];
-                g += source[p + 1];
-                r += source[p + 2];
-                a += source[p + 3];
-            }
-
-            for (var x = 0; x < image.Width; x++)
-            {
-                var q = row + (x * 4);
-                target[q] = (byte)(b / window);
-                target[q + 1] = (byte)(g / window);
-                target[q + 2] = (byte)(r / window);
-                target[q + 3] = (byte)(a / window);
-
-                var add = row + (Math.Clamp(x + radius + 1, 0, image.Width - 1) * 4);
-                var sub = row + (Math.Clamp(x - radius, 0, image.Width - 1) * 4);
-                b += source[add] - source[sub];
-                g += source[add + 1] - source[sub + 1];
-                r += source[add + 2] - source[sub + 2];
-                a += source[add + 3] - source[sub + 3];
-            }
-        }
+        public int Attribute;
+        public IntPtr Data;
+        public nint Size;
     }
 
-    private static void BlurVertical(byte[] source, byte[] target, Pixels image, int radius)
-    {
-        var window = (radius * 2) + 1;
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
 
-        for (var x = 0; x < image.Width; x++)
-        {
-            var column = x * 4;
-            int b = 0, g = 0, r = 0, a = 0;
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmEnableBlurBehindWindow(IntPtr hwnd, ref BlurBehind blur);
 
-            for (var i = -radius; i <= radius; i++)
-            {
-                var p = (Math.Clamp(i, 0, image.Height - 1) * image.Stride) + column;
-                b += source[p];
-                g += source[p + 1];
-                r += source[p + 2];
-                a += source[p + 3];
-            }
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
 
-            for (var y = 0; y < image.Height; y++)
-            {
-                var q = (y * image.Stride) + column;
-                target[q] = (byte)(b / window);
-                target[q + 1] = (byte)(g / window);
-                target[q + 2] = (byte)(r / window);
-                target[q + 3] = (byte)(a / window);
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr obj);
 
-                var add = (Math.Clamp(y + radius + 1, 0, image.Height - 1) * image.Stride) + column;
-                var sub = (Math.Clamp(y - radius, 0, image.Height - 1) * image.Stride) + column;
-                b += source[add] - source[sub];
-                g += source[add + 1] - source[sub + 1];
-                r += source[add + 2] - source[sub + 2];
-                a += source[add + 3] - source[sub + 3];
-            }
-        }
-    }
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-    /// <summary>内存里的一张 Bgra32 位图。</summary>
-    private sealed record Pixels(byte[] Data, int Width, int Height, int Stride);
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref AttributeData data);
 }

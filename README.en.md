@@ -80,7 +80,7 @@ single-file builds, no installer required:
 
 > Version 1.2.2 WPF offscreen layout preview (UI text is Chinese only). See [verification](docs/verification.md) for the scope of theme, small-window, and search checks.
 
-- Dark / light themes, switchable at runtime; custom-drawn title bar; window background blur (can be disabled)
+- Switch between dark and light themes at runtime, with a custom title bar and a choice of solid, frosted glass, or image backgrounds.
 - About in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links
 
 ## Requirements
@@ -134,8 +134,9 @@ section is missing, the workflow fails instead of publishing.
 - **"Port in use" and "device unplugged" are indistinguishable at the Win32 level**: both surface as
   `ERROR_ACCESS_DENIED`. The app reports "in use by another program" only when the port is still enumerated but cannot
   be opened; otherwise it treats the device as unplugged.
-- **The background blur uses a blurred copy of the desktop wallpaper**, not live desktop content: when the window covers
-  only part of the desktop, desktop icons and other windows do not appear in it.
+- With **frosted glass**, transparency controls how much background color shows through. Blur strength controls how soft background edges appear.
+  Windows 10 and Windows 11 21H2 offer clear, light, and strong settings. Windows 11 22H2 and later offer clear and strong. Both sliders preview changes immediately and save when settings close. Reset restores strong blur and 45% transparency. SeriTerm uses a solid background when system transparency is unavailable.
+  On systems with three blur levels, Strong uses Windows Composition to blur the live backdrop and reduce the contrast of white and gray areas while preserving the backdrop colors. The blur strength stays constant while you move or resize the window, and log text and controls stay sharp.
 - **The search overlay covers a small part of the log's top-right corner**: the trade-off for not spending a log row on
   it. With no search open it collapses and the log uses the full width.
 - In a short window the left settings column needs scrolling; "Open port" stays on the first screen.

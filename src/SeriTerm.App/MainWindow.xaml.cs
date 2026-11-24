@@ -15,11 +15,11 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private readonly IThemeService _themeService;
-
-    /// <summary>模糊过的桌面壁纸；生成成功后一直复用，为 null 表示背景模糊不可用。</summary>
-    private ImageSource? _backdropImage;
-
-    private bool _backdropUpdateQueued;
+    private ResourceDictionary? _surfaceResources;
+    private bool _desktopBlurActive;
+    private CompositionGlassLayer? _glassLayer;
+    private Color _previousTargetColor;
+    private bool _systemBackdropUpdateQueued;
 
     private IntPtr _savedImeContext;
     private bool _imeDetached;
@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         DataContext = viewModel;
 
         RestoreWindowPlacement();
+        Topmost = viewModel.Settings.WindowTopmost;
 
         // 系统标题栏也要跟着主题走，否则深色界面顶着一个白色标题栏。
         // 说明：Windows 10 上这个 DWM 属性会被接受但并不生效（实测返回 S_OK、读回 1，
@@ -53,13 +54,11 @@ public partial class MainWindow : Window
             ApplyTerminalInputMethod(_viewModel.TerminalMode);
             HookWindowMessages(new WindowInteropHelper(this).Handle);
             ApplyBackdrop();
+            if (viewModel.KeepDisplayAwake)
+                SetKeepDisplayAwake(true);
         };
 
-        _themeService.ThemeChanged += (_, _) =>
-        {
-            TitleBarTheme.Apply(this, _themeService.IsDarkEffective);
-            ApplyBackdrop();
-        };
+        _themeService.ThemeChanged += OnThemeChanged;
 
         // 终端模式下要关掉输入法，见 ApplyTerminalInputMethod 的说明
         viewModel.PropertyChanged += (_, e) =>
@@ -70,8 +69,22 @@ public partial class MainWindow : Window
                     ApplyTerminalInputMethod(viewModel.TerminalMode);
                     break;
 
-                case nameof(MainViewModel.BlurBackground):
+                case nameof(MainViewModel.BackgroundMode):
+                case nameof(MainViewModel.BackgroundImagePath):
                     ApplyBackdrop();
+                    break;
+
+                case nameof(MainViewModel.GlassBlurLevel):
+                    if (viewModel.BackgroundMode == BackdropMode.Desktop)
+                        ApplyBackdrop();
+                    break;
+
+                case nameof(MainViewModel.GlassTransparency):
+                    UpdateGlassTransparency();
+                    break;
+
+                case nameof(MainViewModel.KeepDisplayAwake):
+                    SetKeepDisplayAwake(viewModel.KeepDisplayAwake);
                     break;
             }
         };
@@ -79,11 +92,11 @@ public partial class MainWindow : Window
         // WPF 在窗口获得焦点时会重新关联输入法上下文，所以激活/加载后要再摘一次
         Activated += (_, _) => ReapplyImeState();
         Loaded += (_, _) => ReapplyImeState();
-
-        // 背景按屏幕坐标对齐，窗口一动就要重新取壁纸里对应的那一块
-        LocationChanged += (_, _) => QueueBackdropViewboxUpdate();
-        SizeChanged += (_, _) => QueueBackdropViewboxUpdate();
-        StateChanged += (_, _) => QueueBackdropViewboxUpdate();
+        Deactivated += (_, _) =>
+        {
+            if (!_choosingBackgroundImage)
+                CloseSettings(restoreFocus: false);
+        };
 
         ApplyTerminalInputMethod(viewModel.TerminalMode);
 
@@ -99,6 +112,9 @@ public partial class MainWindow : Window
         var control = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         var key = ResolveKey(e);
+
+        if (HandleSettingsKey(key, e, control, shift))
+            return;
 
         // 终端模式：键盘直接进串口；焦点在输入框里时不抢键（那里是正常编辑）
         if (_viewModel.TerminalMode && !IsTextInputFocused() && TryHandleTerminalKey(key, e, control))
@@ -175,7 +191,7 @@ public partial class MainWindow : Window
     {
         base.OnPreviewTextInput(e);
 
-        if (!_viewModel.TerminalMode || IsTextInputFocused() || string.IsNullOrEmpty(e.Text))
+        if (SettingsOpen || !_viewModel.TerminalMode || IsTextInputFocused() || string.IsNullOrEmpty(e.Text))
         {
             return;
         }
@@ -355,7 +371,11 @@ public partial class MainWindow : Window
     /// <summary>「关于」窗口。每次点都新建：它只是一次性的小对话框，没必要缓存。</summary>
     private void OnAboutClick(object sender, RoutedEventArgs e) => ShowAbout();
 
-    private void ShowAbout() => new AboutWindow(_themeService) { Owner = this }.ShowDialog();
+    private void ShowAbout()
+    {
+        CloseSettings();
+        new AboutWindow(_themeService) { Owner = this }.ShowDialog();
+    }
 
     // ---------- 背景模糊 ----------
 
@@ -373,16 +393,24 @@ public partial class MainWindow : Window
     {
         switch (message)
         {
-            // 自绘标题栏的窗口（WindowStyle=None + GlassFrameThickness=0）客户区就是整个窗口，
+            // 自绘标题栏的客户区覆盖整个窗口，
             // WPF 却按"无边框全屏"处理最大化，客户区会盖住任务栏；这里改成按显示器工作区。
             case WmGetMinMaxInfo:
                 ApplyWorkAreaLimits(hwnd, lParam);
                 handled = true;
                 break;
 
-            // 换壁纸后重新取一次（系统只在设置变化时广播，不频繁）
-            case WmSettingChange when IsDesktopSettingChange(lParam):
-                ReloadBackdrop();
+            case WmSettingChange when _themeService.Current == ThemeMode.System &&
+                string.Equals(Marshal.PtrToStringAuto(lParam), "ImmersiveColorSet", StringComparison.OrdinalIgnoreCase):
+                _themeService.Apply(ThemeMode.System);
+                break;
+
+            case WmSettingChange:
+            case WmDwmCompositionChanged:
+                QueueSystemBackdropUpdate();
+                break;
+            case 0x0047: // WM_WINDOWPOSCHANGED
+                _glassLayer?.SyncPosition();
                 break;
         }
 
@@ -429,130 +457,107 @@ public partial class MainWindow : Window
         Marshal.StructureToPtr(limits, lParam, false);
     }
 
-    private static bool IsDesktopSettingChange(IntPtr lParam)
+    private void QueueSystemBackdropUpdate()
     {
-        if (lParam == IntPtr.Zero)
-        {
-            return true;
-        }
-
-        var area = Marshal.PtrToStringAuto(lParam);
-        return string.IsNullOrEmpty(area)
-            || area.Equals("Desktop", StringComparison.OrdinalIgnoreCase)
-            || area.Equals("Environment", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// 按当前设置与主题重新决定背景：模糊背景真正可用时才把表面画刷换成半透明，
-    /// 否则保持纯色（半透明却没有背景层时，用户看到的是窗口后面的黑/桌面，比纯色更难看）。
-    ///
-    /// 这里直接读 <see cref="MainViewModel.BlurBackground"/> 而不是等属性通知——
-    /// 默认值与配置值都为 true 时通知不会触发（和自动重连踩过的是同一个坑）。
-    /// </summary>
-    private void ApplyBackdrop()
-    {
-        _backdropImage ??= DesktopBackdrop.Create();
-
-        var live = _viewModel.BlurBackground && _backdropImage is not null;
-
-        if (live)
-        {
-            BackdropBrush.ImageSource = _backdropImage;
-            UpdateBackdropViewbox();
-        }
-        else
-        {
-            BackdropBrush.ImageSource = null;
-        }
-
-        var visibility = live ? Visibility.Visible : Visibility.Collapsed;
-        BackdropLayer.Visibility = visibility;
-        BackdropTint.Visibility = visibility;
-
-        SurfaceTranslucency.SetEnabled(_themeService.ActiveTheme, live);
-    }
-
-    private void ReloadBackdrop()
-    {
-        _backdropImage = null;
-        ApplyBackdrop();
-    }
-
-    /// <summary>
-    /// 把窗口在屏幕上的位置换算成壁纸里对应的那一块（而不是把整张壁纸压进窗口），
-    /// 这样窗口移动/缩放时背景始终与桌面重合。
-    ///
-    /// 用 GetWindowRect 而不是 Window.Left/ActualWidth：最大化过程中 WPF 的这几个属性
-    /// 会有一段时间是旧值，算出来的 Viewbox 会超出图像范围，右侧/底部露出一条没有背景的竖带。
-    /// </summary>
-    private void UpdateBackdropViewbox()
-    {
-        if (BackdropLayer.Visibility != Visibility.Visible)
-        {
+        if (_systemBackdropUpdateQueued || _closing || _viewModel.BackgroundMode != BackdropMode.Desktop)
             return;
-        }
 
-        var screenWidth = SystemParameters.VirtualScreenWidth;
-        var screenHeight = SystemParameters.VirtualScreenHeight;
-        var handle = new WindowInteropHelper(this).Handle;
-
-        if (screenWidth <= 0 || screenHeight <= 0 || handle == IntPtr.Zero
-            || !GetWindowRect(handle, out var rect))
+        _systemBackdropUpdateQueued = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
-            return;
-        }
-
-        // GetWindowRect 是物理像素，Viewbox 用 DIP
-        var scale = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-        if (scale <= 0)
-        {
-            scale = 1.0;
-        }
-
-        var virtualLeft = SystemParameters.VirtualScreenLeft;
-        var virtualTop = SystemParameters.VirtualScreenTop;
-
-        var x0 = Math.Clamp(((rect.Left / scale) - virtualLeft) / screenWidth, 0, 1);
-        var y0 = Math.Clamp(((rect.Top / scale) - virtualTop) / screenHeight, 0, 1);
-        var x1 = Math.Clamp(((rect.Right / scale) - virtualLeft) / screenWidth, 0, 1);
-        var y1 = Math.Clamp(((rect.Bottom / scale) - virtualTop) / screenHeight, 0, 1);
-
-        BackdropBrush.Viewbox = new Rect(
-            x0,
-            y0,
-            Math.Max(0.01, x1 - x0),
-            Math.Max(0.01, y1 - y0));
-    }
-
-    /// <summary>窗口移动/缩放/最大化时合并成一次更新，避免拖动过程中反复重算。</summary>
-    private void QueueBackdropViewboxUpdate()
-    {
-        if (_backdropUpdateQueued)
-        {
-            return;
-        }
-
-        _backdropUpdateQueued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-        {
-            _backdropUpdateQueued = false;
-
-            // 关窗过程中排队的回调仍会被执行，此时窗口已不是 Loaded、
-            // 取 HWND 会抛异常（而且异常处理里再去取已释放的 DI 容器会二次抛出，
-            // 直接把"退出"变成崩溃弹窗），所以这里必须先确认窗口还活着。
-            if (IsLoaded && !Dispatcher.HasShutdownStarted)
-            {
-                UpdateBackdropViewbox();
-            }
+            _systemBackdropUpdateQueued = false;
+            if (!_closing && _viewModel.BackgroundMode == BackdropMode.Desktop)
+                ApplyBackdrop();
         });
     }
 
+    private void OnThemeChanged(object? sender, ThemeMode mode)
+    {
+        if (_closing) return;
+        TitleBarTheme.Apply(this, _themeService.IsDarkEffective);
+        ApplyBackdrop();
+    }
+
+    private void ApplyBackdrop()
+    {
+        if (_closing) return;
+
+        var handle = new WindowInteropHelper(this).Handle;
+        var source = handle == IntPtr.Zero ? null : HwndSource.FromHwnd(handle);
+        var mode = _viewModel.BackgroundMode;
+        var useGlass = source is not null && mode == BackdropMode.Desktop && DesktopBackdrop.IsAllowed();
+        var useCustomGlass = useGlass && !DesktopBackdrop.UsesSystemAcrylic && _viewModel.GlassBlurLevel == AppSettings.StrongGlassBlur;
+        if (_glassLayer is not null && (!useCustomGlass || _glassLayer.IsDark != _themeService.IsDarkEffective))
+        {
+            _glassLayer.Dispose();
+            _glassLayer = null;
+        }
+        if (useCustomGlass)
+            _glassLayer ??= CompositionGlassLayer.TryCreate(handle, _themeService.IsDarkEffective, UpdateGlassTransparency);
+        // 模糊只作用于下方的实时背景。让 WPF 以透明底色覆盖它，避免二次读取合成结果。
+        bool live = false;
+        if (_glassLayer is not null)
+        {
+            live = DesktopBackdrop.SetMaterial(handle, 0);
+            if (!live)
+            {
+                _glassLayer.Dispose();
+                _glassLayer = null;
+            }
+        }
+        if (!live && useGlass)
+            live = DesktopBackdrop.SetMaterial(handle, _viewModel.GlassBlurLevel);
+        if (!live && _desktopBlurActive && source is not null)
+            DesktopBackdrop.SetMaterial(source.Handle, null);
+
+        bool changingMaterial = _desktopBlurActive != live;
+        if (changingMaterial && live && source?.CompositionTarget is { } previousTarget)
+            _previousTargetColor = previousTarget.BackgroundColor;
+        if (source is not null && (live || changingMaterial) && DesktopBackdrop.UsesSystemAcrylic)
+        {
+            var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
+            chrome.GlassFrameThickness = live && _viewModel.GlassBlurLevel > 0 ? new Thickness(-1) : new Thickness(0);
+        }
+        _desktopBlurActive = live;
+
+        var image = mode == BackdropMode.Image ? GetCustomWallpaper() : null;
+        BackdropBrush.ImageSource = image;
+        BackdropLayer.Visibility = image is null ? Visibility.Collapsed : Visibility.Visible;
+        ImageTint.Visibility = BackdropLayer.Visibility;
+        DesktopTint.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+
+        var effectiveMode = live || image is not null ? mode : BackdropMode.Solid;
+        var surfaces = SurfaceTranslucency.Create(_themeService.ActiveTheme, effectiveMode);
+        if (_surfaceResources is not null)
+            Resources.MergedDictionaries.Remove(_surfaceResources);
+        if (surfaces is not null)
+            Resources.MergedDictionaries.Add(surfaces);
+        _surfaceResources = surfaces;
+        UpdateGlassTransparency();
+
+        // 零玻璃边距下 WindowChrome 默认用系统窗口色清屏，会完全盖住 Windows 10 的实时背景。
+        if ((live || changingMaterial) && source?.CompositionTarget is { } target)
+            target.BackgroundColor = live ? Color.FromArgb(0, 0, 0, 0) : _previousTargetColor;
+    }
+
+    private void UpdateGlassTransparency()
+    {
+        if (_desktopBlurActive && _surfaceResources is not null)
+            SurfaceTranslucency.SetGlassTransparency(_surfaceResources, _viewModel.GlassTransparency, _glassLayer?.ToneActive == true);
+    }
+
+    internal void SyncBackdropAfterPopupOpens()
+    {
+        if (_glassLayer is null) return;
+
+        // WPF 显示子弹窗时，Windows 会调整拥有者的 Z 顺序。等弹窗就位再把合成层移回主窗口正下方。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => _glassLayer?.SyncPosition());
+    }
+
     private const int WmSettingChange = 0x001A;
+    private const int WmDwmCompositionChanged = 0x031E;
     private const int WmGetMinMaxInfo = 0x0024;
     private const uint MonitorDefaultToNearest = 2;
-
-    [DllImport("user32.dll")]
-    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
 
     /// <summary>窗口所在显示器的 DPI（Windows 10 1607+，本程序最低支持 1809）。</summary>
     [DllImport("user32.dll")]
@@ -630,6 +635,7 @@ public partial class MainWindow : Window
         e.Cancel = true;
         if (_closing) return;
         _closing = true;
+        CloseSettings(restoreFocus: false);
         // 即使清理同步完成，下一次 Close 也必须发生在本轮 Closing 返回之后。
         Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(BeginShutdown));
     }
@@ -645,6 +651,7 @@ public partial class MainWindow : Window
         settings.WindowWidth = bounds.Width;
         settings.WindowHeight = bounds.Height;
         settings.WindowMaximized = WindowState == WindowState.Maximized;
+        settings.WindowTopmost = Topmost;
 
         // Keep the dispatcher alive while stopping sends and flushing log queues.
         // Blocking in Application.OnExit can strand workers waiting for this thread.
@@ -659,5 +666,14 @@ public partial class MainWindow : Window
             _shutdownCompleted = true;
             Close();
         }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _glassLayer?.Dispose();
+        _themeService.ThemeChanged -= OnThemeChanged;
+        if (_viewModel.KeepDisplayAwake)
+            SetKeepDisplayAwake(false);
+        base.OnClosed(e);
     }
 }

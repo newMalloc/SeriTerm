@@ -219,7 +219,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         State = _transport.State;
         StatusText = State.ToDisplayText();
-        UpdateThemeButtonText();
         UpdateSearchStatus();
         InitializeWorkspace();
     }
@@ -417,16 +416,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _autoOpenOnStartup;
 
-    /// <summary>
-    /// 窗口背景是否用亚克力模糊透出桌面。默认开，但系统不支持/关了"透明效果"时
-    /// <see cref="BackdropAvailable"/> 为 false，界面上这个开关会直接禁用。
-    /// </summary>
-    [ObservableProperty]
-    private bool _blurBackground;
-
-    /// <summary>当前系统能不能做背景模糊（能读到桌面壁纸才行）。</summary>
-    public bool BackdropAvailable => DesktopBackdrop.IsAvailable;
-
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasReconnectStatus))]
     private string _reconnectStatusText = string.Empty;
@@ -604,9 +593,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _statusDetail = string.Empty;
 
     [ObservableProperty]
-    private string _themeButtonText = "切换到浅色";
-
-    [ObservableProperty]
     private string _rxText = "0 B";
 
     [ObservableProperty]
@@ -663,9 +649,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string PauseButtonText => IsPaused ? "继续显示" : "暂停显示";
 
-    /// <summary>供自绘标题栏切换太阳/月亮图标。</summary>
-    public bool IsDarkTheme => _themeService.IsDarkEffective;
-
     public bool HasPendingNewLines => PendingNewLines > 0;
 
     public string NewDataBarText => $"▾ {PendingNewLines} 条新数据（点击回到最新）";
@@ -681,7 +664,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task InitializeCoreAsync()
     {
-        await RefreshPortsAsync().ConfigureAwait(true);
+        await UpdatePortsAsync(force: true).ConfigureAwait(true);
         if (_disposed) return;
         _portRefreshTimer.Start();
 
@@ -690,12 +673,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             AddSystemLine($"自动打开串口：{SelectedPort.PortName}");
             await ToggleOpenAsync().ConfigureAwait(true);
         }
-    }
-
-    [RelayCommand]
-    private async Task RefreshPortsAsync()
-    {
-        await UpdatePortsAsync(force: true).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanToggleConnection))]
@@ -782,15 +759,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             _logger.LogError(ex, "修改波特率时出现未预期的异常");
             AddSystemLine($"波特率改为 {baudRate} 失败：{ex.Message}");
         }
-    }
-
-    [RelayCommand]
-    private void ToggleTheme()
-    {
-        var next = _themeService.IsDarkEffective ? ThemeMode.Light : ThemeMode.Dark;
-        _themeService.Apply(next);
-        _settings.Theme = next;
-        UpdateThemeButtonText();
     }
 
     [RelayCommand]
@@ -1756,12 +1724,21 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _settings.ShowTimestamp = ShowTimestamp;
         _settings.LineWrap = LineWrap;
         _settings.LogFontSize = LogFontSize;
+        _settings.LogFontFamily = LogFontFamily;
+        _settings.LogBufferMiB = LogBufferMiB;
+        _settings.ShowLogLineNumbers = ShowLogLineNumbers;
+        _settings.KeepDisplayAwake = KeepDisplayAwake;
 
         _settings.AutoReconnect = AutoReconnect;
         _settings.AutoOpenOnStartup = AutoOpenOnStartup;
         _settings.McpEnabled = McpEnabled;
         _settings.McpPermission = Permission;
-        _settings.BlurBackground = BlurBackground;
+        _settings.BackgroundMode = BackgroundMode;
+        _settings.GlassTransparency = GlassTransparency;
+        _settings.GlassBlurLevel = GlassBlurLevel;
+        _settings.BackgroundImagePath = BackgroundImagePath;
+        _settings.BackgroundImageOpacity = BackgroundImageOpacity;
+        _settings.BlurBackground = BackgroundMode == BackdropMode.Desktop;
         _settings.TerminalLocalEcho = TerminalLocalEcho;
         _settings.TerminalBackspaceSendsDel = TerminalBackspaceSendsDel;
         _settings.SaveLogToFile = SaveLogToFile;
@@ -1798,7 +1775,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         ShowTimestamp = settings.ShowTimestamp;
         AutoScroll = settings.AutoScroll;
         LineWrap = settings.LineWrap;
-        LogFontSize = settings.LogFontSize < 9 ? 13 : settings.LogFontSize;
+        LogFontSize = FontSizeOptions.Contains(settings.LogFontSize)
+            ? settings.LogFontSize
+            : FontSizeOptions.MinBy(size => Math.Abs(size - settings.LogFontSize));
+        LogFontFamily = LogFontOptions.Any(option => option.Value == settings.LogFontFamily)
+            ? settings.LogFontFamily : LogFontOptions[0].Value;
+        LogBufferMiB = LogBufferOptions.Any(option => option.Value == settings.LogBufferMiB)
+            ? settings.LogBufferMiB : 64;
+        ShowLogLineNumbers = settings.ShowLogLineNumbers;
+        KeepDisplayAwake = settings.KeepDisplayAwake;
 
         SendHex = settings.SendHex;
         SendText = settings.SendDraft;
@@ -1819,7 +1804,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         // AI 接入：权限档位要在监听开始之前就位，否则刚启动那几秒的权限是错的
         McpFullPermission = settings.McpPermission == McpPermission.Full;
         McpEnabled = settings.McpEnabled;
-        BlurBackground = settings.BlurBackground;
+        SelectedTheme = settings.Theme;
+        BackgroundImagePath = settings.BackgroundImagePath;
+        BackgroundImageOpacity = settings.BackgroundImageOpacity;
+        GlassTransparency = settings.GlassTransparency;
+        GlassBlurLevel = settings.GlassBlurLevel == 1 && GlassBlurStep == 2 ? AppSettings.StrongGlassBlur : settings.GlassBlurLevel;
+        BackgroundMode = settings.BackgroundMode ?? (settings.BlurBackground ? BackdropMode.Desktop : BackdropMode.Solid);
         TerminalLocalEcho = settings.TerminalLocalEcho;
         TerminalBackspaceSendsDel = settings.TerminalBackspaceSendsDel;
 
@@ -1834,12 +1824,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         SyncSearchFavorites(SearchFavoriteList.Sanitize(settings.SearchFavorites));
         _settings.SearchFavorites = [.. SearchFavorites];
         NotifyFavoritesChanged();
-    }
-
-    private void UpdateThemeButtonText()
-    {
-        ThemeButtonText = _themeService.IsDarkEffective ? "切换到浅色" : "切换到深色";
-        OnPropertyChanged(nameof(IsDarkTheme));
     }
 
     // ---------- 传输层事件 ----------

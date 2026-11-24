@@ -26,7 +26,7 @@ public sealed partial class PortFriendlyNameProvider
         return result;
     }
 
-    /// <summary>强制下次重新查询（用户点刷新时调用）。</summary>
+    /// <summary>设备列表变化后重新查询友好名。</summary>
     public void Invalidate() => _cache = null;
 
     private static IReadOnlyDictionary<string, string> Query()
@@ -56,7 +56,8 @@ public sealed partial class PortFriendlyNameProvider
 
                     var portName = match.Groups[1].Value.ToUpperInvariant();
                     var label = name[..match.Index].Trim().TrimEnd('(', ' ').Trim();
-                    map[portName] = string.IsNullOrWhiteSpace(label) ? portName : $"{portName} ({label})";
+                    if (!string.IsNullOrWhiteSpace(label))
+                        map[portName] = label;
                 }
             }
         }

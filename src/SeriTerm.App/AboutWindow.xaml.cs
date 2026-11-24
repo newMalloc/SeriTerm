@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -25,7 +24,12 @@ public partial class AboutWindow : Window
 
         InitializeComponent();
 
-        ApplyOpaqueSurface();
+        SourceInitialized += (_, _) =>
+        {
+            if (Owner is MainWindow main)
+                Resources.MergedDictionaries.Add(main.Resources);
+            TitleBarTheme.Apply(this, _themeService.IsDarkEffective);
+        };
 
         VersionText.Text = AppInfo.Version;
         RuntimeText.Text = AppInfo.RuntimeDescription;
@@ -79,41 +83,7 @@ public partial class AboutWindow : Window
         base.OnKeyDown(e);
     }
 
-    private void OnThemeChanged(object? sender, ThemeMode mode) => ApplyOpaqueSurface();
-
-    /// <summary>
-    /// 窗口表面用主题里的**原始不透明**画刷。
-    ///
-    /// 主窗口开着"模糊背景"时，<see cref="SurfaceTranslucency"/> 会往 Application.Resources 末尾
-    /// 合并一个覆盖字典，把 <c>WindowBackgroundBrush</c>（alpha 0xA8）等换成半透明版，好让主窗口
-    /// 后面那层模糊壁纸透出来。主窗口自己画了壁纸层，所以没问题；本窗口是纯色窗口，
-    /// 66% 的浅灰叠在黑色窗口底上会变成灰蒙蒙的 #A1A1A1（实测），副标题这类次要文字的
-    /// 对比度会从设计值 4.85:1 掉到 2.06:1。所以这里绕开 Application.Resources，
-    /// 直接从主题字典取原色——SurfaceTranslucency 的注释里也写着"取原始颜色必须从当前主题字典里取"。
-    ///
-    /// 注意取到的是**画刷实例**，不能再 SetResourceReference(key)：那样又会走一遍资源查找，
-    /// 命中的还是那份半透明覆盖字典。
-    /// </summary>
-    private void ApplyOpaqueSurface()
-    {
-        SetOpaqueSurface(this, Control.BackgroundProperty, "WindowBackgroundBrush");
-        // 标题栏和窗口底色是同一支画刷（顶部不单独占一条色带），但要单独赋一次：
-        // 上面那次只改了 Window 自己的 Background，标题栏那块 Border 的 DynamicResource
-        // 仍然会查到半透明覆盖字典。
-        SetOpaqueSurface(TitleBar, Border.BackgroundProperty, "WindowBackgroundBrush");
-    }
-
-    private void SetOpaqueSurface(FrameworkElement target, DependencyProperty property, string key)
-    {
-        if (_themeService.ActiveTheme?[key] is Brush opaque)
-        {
-            target.SetValue(property, opaque);
-            return;
-        }
-
-        // 拿不到主题字典时退回动态资源：至少还能跟随主题，代价是会跟着半透明
-        target.SetResourceReference(property, key);
-    }
+    private void OnThemeChanged(object? sender, ThemeMode mode) => TitleBarTheme.Apply(this, _themeService.IsDarkEffective);
 
     /// <summary>
     /// 从 ICO 里挑一帧来显示。

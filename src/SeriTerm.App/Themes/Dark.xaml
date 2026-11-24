@@ -5,16 +5,25 @@
 
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#181818" />
     <SolidColorBrush x:Key="PanelBackgroundBrush" Color="#202020" />
+    <SolidColorBrush x:Key="FlyoutBackgroundBrush" Color="#232323" />
+    <SolidColorBrush x:Key="SegmentTrackBrush" Color="#191919" />
+    <SolidColorBrush x:Key="SegmentHoverBrush" Color="#2A2A2A" />
+    <SolidColorBrush x:Key="SegmentSelectionBrush" Color="#393939" />
     <SolidColorBrush x:Key="PanelBorderBrush" Color="#343434" />
     <SolidColorBrush x:Key="LogBackgroundBrush" Color="#161616" />
     <SolidColorBrush x:Key="ForegroundBrush" Color="#ECECEC" />
     <SolidColorBrush x:Key="SubtleForegroundBrush" Color="#A6A6A6" />
     <SolidColorBrush x:Key="DisabledForegroundBrush" Color="#767676" />
-    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#292929" />
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#353535" />
     <SolidColorBrush x:Key="ControlBorderBrush" Color="#454545" />
-    <SolidColorBrush x:Key="ControlHoverBrush" Color="#353535" />
+    <SolidColorBrush x:Key="ControlHoverBrush" Color="#3C3C3C" />
+    <SolidColorBrush x:Key="ButtonHoverOverlayBrush" Color="#14FFFFFF" />
     <SolidColorBrush x:Key="ControlPressedBrush" Color="#414141" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#2F6FCC" />
+    <Color x:Key="AccentColor">#2F6FCC</Color>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="PrimaryActionBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="ConnectedActionBrush" Color="#206B58" />
+    <SolidColorBrush x:Key="PausedActionBrush" Color="#49361C" />
     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="AccentTextBrush" Color="#86B7F5" />
     <SolidColorBrush x:Key="TxForegroundBrush" Color="#F2B76B" />
@@ -30,8 +39,24 @@
     <SolidColorBrush x:Key="CaptionCloseHoverBrush" Color="#E81123" />
     <SolidColorBrush x:Key="CaptionClosePressedBrush" Color="#F1707A" />
 
-    <!-- 模糊背景（壁纸）之上的蒙版：决定壁纸透出多少、文字对比度是否够 -->
+    <!-- 自定义图片与实时玻璃分别着色。 -->
     <SolidColorBrush x:Key="BackdropTintBrush" Color="#AA1E1E1E" />
+    <SolidColorBrush x:Key="DesktopTintBrush" Color="#2B2B2D" />
+    <SolidColorBrush x:Key="GlassPanelBrush" Color="#222E2D32" />
+    <SolidColorBrush x:Key="GlassLogBrush" Color="#23151319" />
+    <SolidColorBrush x:Key="GlassEdgeBrush" Color="#28FFFFFF" />
+    <SolidColorBrush x:Key="GlassControlBrush" Color="#28FFFFFF" />
+    <SolidColorBrush x:Key="GlassHoverBrush" Color="#32FFFFFF" />
+    <SolidColorBrush x:Key="GlassPressedBrush" Color="#16FFFFFF" />
+    <SolidColorBrush x:Key="GlassTrackBrush" Color="#38000000" />
+    <SolidColorBrush x:Key="GlassFlyoutBrush" Color="#343439" />
+    <SolidColorBrush x:Key="GlassPopupBrush" Color="#B818181E" />
+    <LinearGradientBrush x:Key="GlassAccentBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#E53775CE" /><GradientStop Offset="1" Color="#C92D60AB" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="GlassControlEdgeBrush" Color="#36FFFFFF" />
+    <SolidColorBrush x:Key="GlassTextBrush" Color="#F3F2F5" />
+    <SolidColorBrush x:Key="GlassSecondaryTextBrush" Color="#D2D0D4" />
     <SolidColorBrush x:Key="SelectionBrush" Color="#284A70" />
     <!-- 选区用低饱和蓝色，搜索命中用暖色，正文与面板仍保持中性灰。 -->
     <SolidColorBrush x:Key="MatchRowBrush" Color="#242424" />

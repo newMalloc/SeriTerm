@@ -4,10 +4,13 @@
   这样切换 Themes/Dark.xaml ↔ Themes/Light.xaml 时无需重启即生效。
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:SeriTerm.App.Controls"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!-- ============ 转换器 ============ -->
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <sys:Boolean x:Key="UseDesktopGlass">False</sys:Boolean>
 
     <!-- ============ 默认文本 ============ -->
     <Style TargetType="TextBlock">
@@ -39,13 +42,14 @@
     </Style>
 
     <!-- ============ 按钮 ============ -->
+    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
     <Style TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="10,4" />
         <Setter Property="MinHeight" Value="26" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
@@ -54,16 +58,18 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            CornerRadius="{StaticResource ControlCornerRadius}">
+                        <Grid>
+                            <Border x:Name="Feedback" CornerRadius="{StaticResource ControlCornerRadius}" />
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                            <Setter TargetName="Feedback" Property="Background" Value="{DynamicResource ButtonHoverOverlayBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlPressedBrush}" />
+                            <Setter TargetName="Feedback" Property="Background" Value="#26000000" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.45" />
@@ -77,19 +83,21 @@
 
     <!-- 主操作按钮（打开/关闭） -->
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Background" Value="{DynamicResource PrimaryActionBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="PrimaryBorder" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}" CornerRadius="{StaticResource ControlCornerRadius}" />
+                        <Border x:Name="Feedback" CornerRadius="{StaticResource ControlCornerRadius}" />
+                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PrimaryBorder" Property="Opacity" Value="0.86" /></Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="PrimaryBorder" Property="Opacity" Value="0.7" /></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Feedback" Property="Background" Value="#12FFFFFF" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Feedback" Property="Background" Value="#26000000" /></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -100,19 +108,23 @@
     <Style x:Key="CompactToggleButton" TargetType="ToggleButton">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,4" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource ControlCornerRadius}">
+                        <Grid>
+                            <Border x:Name="Feedback" CornerRadius="{StaticResource ControlCornerRadius}" />
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" /></Trigger>
-                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlPressedBrush}" /></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Feedback" Property="Background" Value="{DynamicResource ButtonHoverOverlayBrush}" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Feedback" Property="Background" Value="#26000000" /></Trigger>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Feedback" Property="Background" Value="#26000000" /></Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -129,22 +141,30 @@
 
     <!-- ============ 图标几何 ============ -->
     <!--
-        自绘标题栏里的两个图标。刻意用 Path 几何而不是字体符号：
-        Segoe MDL2 的字形编号记错了就会渲染成豆腐块，而几何是确定性的。
-        尺寸都按 14x14 画，中心 (7,7)。
+        Lucide 图标转为 WPF Path 几何；授权见 THIRD-PARTY-NOTICES.txt。
     -->
-    <!-- 月亮：大圆减去偏移的小圆（F0=EvenOdd），得到月牙 -->
-    <StreamGeometry x:Key="IconMoon">F0 M 1.3,7 A 5.2,5.2 0 1 0 11.7,7 A 5.2,5.2 0 1 0 1.3,7 Z M 4.8,5.2 A 4.6,4.6 0 1 0 14,5.2 A 4.6,4.6 0 1 0 4.8,5.2 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconSettings">M9.671 4.136 a2.34 2.34 0 0 1 4.659 0 a2.34 2.34 0 0 0 3.319 1.915 a2.34 2.34 0 0 1 2.33 4.033 a2.34 2.34 0 0 0 0 3.831 a2.34 2.34 0 0 1 -2.33 4.033 a2.34 2.34 0 0 0 -3.319 1.915 a2.34 2.34 0 0 1 -4.659 0 a2.34 2.34 0 0 0 -3.32 -1.915 a2.34 2.34 0 0 1 -2.33 -4.033 a2.34 2.34 0 0 0 0 -3.831 A2.34 2.34 0 0 1 6.35 6.051 A2.34 2.34 0 0 0 9.671 4.136 Z M9 12 A3 3 0 1 0 15 12 A3 3 0 1 0 9 12 Z</StreamGeometry>
 
-    <!-- 太阳的光芒（描边） -->
-    <StreamGeometry x:Key="IconSunRays">M 7,0.8 V 2.4 M 7,11.6 V 13.2 M 0.8,7 H 2.4 M 11.6,7 H 13.2 M 2.6,2.6 L 3.7,3.7 M 10.3,10.3 L 11.4,11.4 M 11.4,2.6 L 10.3,3.7 M 3.7,10.3 L 2.6,11.4</StreamGeometry>
+    <StreamGeometry x:Key="IconPalette">M 12 22 A 10 10 0 0 1 12 2 A 10 9 0 0 1 22 11 A 5 5 0 0 1 17 16 H 14.75 A 1.75 1.75 0 0 0 13.35 18.8 L 13.65 19.2 A 1.75 1.75 0 0 1 12.25 22 Z M 13.25 6.5 H 13.75 M 17.25 10.5 H 17.75 M 6.25 12.5 H 6.75 M 8.25 7.5 H 8.75</StreamGeometry>
 
-    <!-- 模糊背景：半实心圆（右半边填色），左边描边圆圈在 XAML 里叠 -->
-    <StreamGeometry x:Key="IconHalfDisc">M 7,1.5 A 5.5,5.5 0 0 1 7,12.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconInfo">M 2 12 A 10 10 0 1 0 22 12 A 10 10 0 1 0 2 12 Z M 12 16 V 12 M 12 8 H 12.01</StreamGeometry>
 
-    <!-- 关于（ⓘ）：小圆点 + 竖条，外圈圆圈由 XAML 里的 Ellipse 描边叠出。
-         FillRule 默认 EvenOdd，但这两个图元互不相交，所以各自都会被填上。 -->
-    <StreamGeometry x:Key="IconInfoGlyph">M 7,3.05 A 0.95,0.95 0 1 0 7,4.95 A 0.95,0.95 0 1 0 7,3.05 Z M 6.15,6.3 H 7.85 V 10 H 6.15 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconBack">M 12 19 L 5 12 L 12 5 M 19 12 H 5</StreamGeometry>
+    <StreamGeometry x:Key="IconClose">M 18 6 L 6 18 M 6 6 L 18 18</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronRight">M 9 18 L 15 12 L 9 6</StreamGeometry>
+
+    <Style x:Key="OutlineIcon" TargetType="Path">
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
+        <Setter Property="StrokeThickness" Value="1.5" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
 
     <!-- ============ 自绘标题栏按钮 ============ -->
     <!-- 注意 WindowChrome.IsHitTestVisibleInChrome：标题栏区域默认被当作"可拖动标题"，
@@ -206,8 +226,7 @@
         </Setter>
     </Style>
 
-    <!-- 标题栏里的开关（模糊背景）。选中态用强调色画图标，不铺底色，
-         免得和右边的三个窗口按钮抢注意力。 -->
+    <!-- 齿轮在设置面板打开时保持选中态。 -->
     <Style x:Key="TitleBarToggle" TargetType="ToggleButton">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="Transparent" />
@@ -215,24 +234,27 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="Width" Value="36" />
-        <Setter Property="Height" Value="32" />
+        <Setter Property="Width" Value="38" />
+        <Setter Property="Height" Value="30" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Bd"
-                            Background="{TemplateBinding Background}"
-                            SnapsToDevicePixels="True">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Bd" Width="30" Height="28" CornerRadius="6"
+                                Background="{TemplateBinding Background}" />
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionButtonHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionButtonHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionButtonPressedBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.35" />
@@ -243,7 +265,7 @@
         </Setter>
     </Style>
 
-    <!-- 侧栏里的小按钮（保存/删除预设、刷新端口、选择/打开目录）。
+    <!-- 侧栏里的小按钮（保存/删除预设、选择/打开目录）。
          统一成一种样式，免得每处各写一遍 Padding/FontSize。 -->
     <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Padding" Value="8,1" />
@@ -352,7 +374,7 @@
     <Style TargetType="TextBox">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="6,3" />
         <Setter Property="MinHeight" Value="26" />
@@ -366,7 +388,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4">
+                            CornerRadius="{StaticResource ControlCornerRadius}">
                         <!--
                             跟随 VerticalContentAlignment：多行输入框（发送区）要顶对齐，单行输入框要居中。
                             这里刻意不写 Margin="{TemplateBinding Padding}"：WPF 自己会把 TextBox.Padding
@@ -394,19 +416,24 @@
     <!-- ============ 下拉框（含可编辑模式） ============ -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-        <Setter Property="Padding" Value="7,4" />
+        <Setter Property="Padding" Value="9,5" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="3" Margin="2,1">
-                        <ContentPresenter />
+                    <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="5" Margin="0,1">
+                        <DockPanel>
+                            <Ellipse x:Name="SelectedMark" DockPanel.Dock="Right" Width="5" Height="5" Margin="9,0,1,0"
+                                     VerticalAlignment="Center" Fill="{DynamicResource AccentTextBrush}" Visibility="Hidden" />
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </DockPanel>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectionBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SegmentSelectionBrush}" />
+                            <Setter TargetName="SelectedMark" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -417,10 +444,11 @@
     <Style TargetType="ComboBox">
         <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="MinHeight" Value="26" />
         <Setter Property="Padding" Value="7,2" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
@@ -429,7 +457,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="4" />
+                                CornerRadius="{StaticResource ControlCornerRadius}" />
 
                         <!--
                             可编辑模式下的输入框（波特率用）。
@@ -479,19 +507,17 @@
                                AllowsTransparency="True"
                                Placement="Bottom"
                                Focusable="False"
-                               PopupAnimation="Fade"
+                               VerticalOffset="3"
                                IsOpen="{TemplateBinding IsDropDownOpen}">
-                            <Border MinWidth="{TemplateBinding ActualWidth}"
+                            <controls:GlassFlyout MinWidth="{TemplateBinding ActualWidth}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                    Background="{DynamicResource ControlBackgroundBrush}"
                                     BorderBrush="{DynamicResource ControlBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="4"
-                                    Margin="0,2,0,0">
-                                <ScrollViewer>
+                                    BorderThickness="1" CornerRadius="8" Padding="4">
+                                <ScrollViewer CanContentScroll="True" HorizontalScrollBarVisibility="Disabled"
+                                              VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
                                     <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
-                            </Border>
+                            </controls:GlassFlyout>
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -500,6 +526,12 @@
                             <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -522,7 +554,6 @@
         系统给文本框自动生成的右键菜单（剪切/复制/粘贴）也是单层。
     -->
     <Style TargetType="ContextMenu">
-        <Setter Property="Background" Value="{DynamicResource PanelBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource PanelBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="3" />
@@ -530,18 +561,13 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
+                    <controls:GlassFlyout BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="5"
+                            CornerRadius="8"
                             Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Direction="270"
-                                              Opacity="0.35" Color="#000000" />
-                        </Border.Effect>
                         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
-                    </Border>
+                    </controls:GlassFlyout>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -706,8 +732,7 @@
     <Style TargetType="ProgressBar">
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Height" Value="8" />
         <Setter Property="Template">
             <Setter.Value>

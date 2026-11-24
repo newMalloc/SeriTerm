@@ -101,6 +101,6 @@ AI 客户端 ──stdio──▶ SeriTerm.exe --mcp-stdio ──命名管道─
 发版前建议跑一次冒烟脚本（它会真的拉起桥、走完 initialize → tools/list → 打开 → 发送 → 等关键词）：
 
 ```powershell
-pwsh -File tools/mcp-smoke.ps1 -Exe src/SeriTerm.App/bin/Debug/net8.0-windows/SeriTerm.exe
+pwsh -File tools/mcp-smoke.ps1 -Exe src/SeriTerm.App/bin/Debug/net8.0-windows10.0.17763.0/SeriTerm.exe
 pwsh -File tools/mcp-smoke.ps1 -Exe <同一个 exe> -ExpectFullPermission   # 完全权限档下
 ```

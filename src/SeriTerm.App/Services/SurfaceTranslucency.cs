@@ -3,81 +3,62 @@ using System.Windows.Media;
 
 namespace SeriTerm.App.Services;
 
-/// <summary>
-/// 背景模糊生效时，把主题里的"表面"画刷换成同色半透明版本，
-/// 这样 DWM 画在窗口后面的模糊桌面才能透出来。
-///
-/// 做法是往 <see cref="Application.Resources"/> 末尾再合并一个覆盖字典：
-/// WPF 查找合并字典是"后加入的优先"，所以覆盖字典里的同名键会盖住主题字典，
-/// 而所有引用这些键的地方本来就是 DynamicResource，换掉即生效，不用改任何样式。
-///
-/// 注意：取原始颜色必须从"当前主题字典"里取，不能从 Application.Resources 查——
-/// 覆盖字典已经在里面了，查出来会是半透明版本，反复刷新会把 alpha 越乘越深。
-/// </summary>
+/// <summary>为当前窗口及菜单提供背景材质和交互状态画刷。</summary>
 internal static class SurfaceTranslucency
 {
-    /// <summary>参与半透明的表面画刷及各自的 alpha。文字主要落在日志区与面板上，所以这两处别太透。</summary>
-    private static readonly (string Key, byte Alpha)[] Surfaces =
-    [
-        ("WindowBackgroundBrush", 0xA8),
-        ("PanelBackgroundBrush", 0xCC),
-        ("LogBackgroundBrush", 0xA0),
-    ];
-
-    private static ResourceDictionary? _overlay;
-
-    /// <summary>
-    /// 打开/关闭半透明表面。<paramref name="theme"/> 必须是当前主题字典（可为 null）。
-    /// </summary>
-    public static void SetEnabled(ResourceDictionary? theme, bool enabled)
+    public static ResourceDictionary? Create(ResourceDictionary? theme, BackdropMode mode)
     {
-        var app = Application.Current;
-        if (app is null)
+        if (mode == BackdropMode.Solid || theme is null)
+            return null;
+
+        if (mode == BackdropMode.Desktop)
         {
-            return;
-        }
-
-        RemoveOverlay(app);
-
-        if (!enabled || theme is null)
-        {
-            return;
-        }
-
-        var overlay = new ResourceDictionary();
-
-        foreach (var (key, alpha) in Surfaces)
-        {
-            if (theme[key] is SolidColorBrush source)
+            return new ResourceDictionary
             {
-                overlay[key] = Translucent(source, alpha);
-            }
+                ["WindowBackgroundBrush"] = Brushes.Transparent,
+                ["UseDesktopGlass"] = true,
+                ["DesktopTintBrush"] = ((SolidColorBrush)theme["DesktopTintBrush"]).Clone(),
+                ["GlassFlyoutBrush"] = ((SolidColorBrush)theme["GlassFlyoutBrush"]).Clone(),
+                ["ControlHoverBrush"] = theme["GlassHoverBrush"],
+                ["ControlPressedBrush"] = theme["GlassPressedBrush"],
+                ["SegmentTrackBrush"] = theme["GlassTrackBrush"],
+                ["SegmentHoverBrush"] = theme["GlassPressedBrush"],
+                ["SegmentSelectionBrush"] = theme["GlassControlBrush"],
+                ["PrimaryActionBrush"] = theme["GlassAccentBrush"],
+                ["PanelBackgroundBrush"] = theme["GlassPanelBrush"],
+                ["LogBackgroundBrush"] = theme["GlassLogBrush"],
+                ["PanelBorderBrush"] = theme["GlassEdgeBrush"],
+                ["ControlBackgroundBrush"] = theme["GlassControlBrush"],
+                ["ControlBorderBrush"] = theme["GlassControlEdgeBrush"],
+                ["ForegroundBrush"] = theme["GlassTextBrush"],
+                ["RxForegroundBrush"] = theme["GlassTextBrush"],
+                ["SubtleForegroundBrush"] = theme["GlassSecondaryTextBrush"],
+            };
         }
 
-        app.Resources.MergedDictionaries.Add(overlay);
-        _overlay = overlay;
-    }
-
-    /// <summary>主题切换后重新取色（覆盖字典里的颜色是写死的，不会自己跟着主题走）。</summary>
-    public static void Refresh(ResourceDictionary? theme)
-        => SetEnabled(theme, _overlay is not null);
-
-    private static void RemoveOverlay(Application app)
-    {
-        if (_overlay is null)
+        return new ResourceDictionary
         {
-            return;
-        }
+            ["WindowBackgroundBrush"] = WithAlpha("WindowBackgroundBrush", 0xA8),
+            ["PanelBackgroundBrush"] = WithAlpha("PanelBackgroundBrush", 0xCC),
+            ["LogBackgroundBrush"] = WithAlpha("LogBackgroundBrush", 0xA0),
+        };
 
-        app.Resources.MergedDictionaries.Remove(_overlay);
-        _overlay = null;
+        SolidColorBrush WithAlpha(string key, byte alpha)
+        {
+            var color = ((SolidColorBrush)theme[key]).Color;
+            var brush = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
+            brush.Freeze();
+            return brush;
+        }
     }
 
-    private static SolidColorBrush Translucent(SolidColorBrush source, byte alpha)
+    public static void SetGlassTransparency(ResourceDictionary surfaces, int percent, bool toneActive)
     {
-        var color = source.Color;
-        var brush = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
-        brush.Freeze();
-        return brush;
+        var fraction = Math.Clamp(percent, 0, 100) / 100d;
+        // 色调处理已经压住明暗反差，较低的滑杆值仍可透出背景色。
+        var colorTransmission = toneActive ? 4 * fraction / (1 + 3 * fraction) : fraction;
+        ((SolidColorBrush)surfaces["DesktopTintBrush"]).Opacity = 1 - colorTransmission;
+        // 弹层下方可能有高反差日志，即使窗口调到最透也给菜单文字保留底色。
+        ((SolidColorBrush)surfaces["GlassFlyoutBrush"]).Opacity = 1 - 0.34 * fraction;
     }
 }

@@ -76,6 +76,28 @@ public class LogDocumentTests
     }
 
     [Fact]
+    public void 调低缓冲上限_立即淘汰旧记录并同步搜索结果()
+    {
+        var document = new LogDocument();
+        var oldest = Lines(-3, 1, _ => "hit", byteLength: 3)[0];
+        var middle = Lines(-7, 1, _ => "hit", byteLength: 8)[0];
+        var newest = Lines(-8, 1, _ => "hit", byteLength: 5)[0];
+        document.Append([oldest, middle, newest]);
+        document.SetSearch("hit", caseSensitive: false);
+        LogContentChange? change = null;
+        document.ContentChanged += (_, value) => change = value;
+
+        document.SetByteLimit(13);
+
+        Assert.Equal(new LogContentChange(1), change);
+        Assert.Equal(13, document.TotalBytes);
+        Assert.Equal(new[] { middle, newest }, document.Lines);
+        Assert.Equal(new[] { middle, newest }, document.Matches);
+        Assert.False(oldest.IsMatch);
+        Assert.Equal(0, document.CurrentMatchIndex);
+    }
+
+    [Fact]
     public void 淘汰后保留的行应是最新的那些()
     {
         var document = new LogDocument { MaxLines = 50 };

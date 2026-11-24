@@ -74,9 +74,9 @@ public partial class MainViewModel
             _availablePorts = names.ToArray();
             var previous = SelectedPort?.PortName ?? _settings.LastSerial.PortName;
             // A disappearing port must not silently redirect the next send to another device.
-            var items = names.Select(name => new PortItem(name, friendly.GetValueOrDefault(name) ?? name)).ToList();
+            var items = names.Select(name => new PortItem(name, friendly.GetValueOrDefault(name))).ToList();
             if (!string.IsNullOrWhiteSpace(previous) && !names.Contains(previous, StringComparer.OrdinalIgnoreCase))
-                items.Insert(0, new PortItem(previous, $"{previous}（未连接）"));
+                items.Insert(0, new PortItem(previous, "未连接"));
             Ports.Clear();
             foreach (var item in items) Ports.Add(item);
             SelectedPort = Ports.FirstOrDefault(p => string.Equals(p.PortName, previous, StringComparison.OrdinalIgnoreCase))
@@ -211,6 +211,11 @@ public partial class MainViewModel
         _previousRx = rx;
         _previousTx = tx;
         _rateTimestamp = now;
+        UpdateBufferStatus();
+    }
+
+    private void UpdateBufferStatus()
+    {
         BufferStatusText = $"{Log.Lines.Count:N0} 行 · {ByteSize.Format(Log.TotalBytes)}"
             + (Log.DroppedLines > 0 ? $" · 已淘汰 {Log.DroppedLines:N0} 行" : string.Empty);
     }
@@ -222,6 +227,8 @@ public partial class MainViewModel
         if (string.IsNullOrWhiteSpace(path)) return;
         try
         {
+            var maxLines = Log.MaxLines;
+            var maxBytes = Log.MaxBytes;
             var (records, total) = await Task.Run(() =>
             {
                 var retained = new Queue<RawLogRecord>();
@@ -233,7 +240,7 @@ public partial class MainViewModel
                     count++;
                     retained.Enqueue(record);
                     bytes += record.Payload.Length;
-                    while (retained.Count > 200_000 || bytes > 64L * 1024 * 1024)
+                    while (retained.Count > maxLines || bytes > maxBytes)
                         bytes -= retained.Dequeue().Payload.Length;
                 }
                 return (retained.ToArray(), count);

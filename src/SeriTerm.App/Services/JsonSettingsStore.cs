@@ -9,9 +9,19 @@ using SeriTerm.Core.Serial;
 
 namespace SeriTerm.App.Services;
 
+public enum BackdropMode
+{
+    Solid,
+    Desktop,
+    Image,
+}
+
 /// <summary>应用配置（持久化到 <c>%AppData%\SeriTerm\settings.json</c>）。</summary>
 public sealed class AppSettings
 {
+    public const int DefaultGlassTransparency = 45;
+    public const int StrongGlassBlur = 2;
+
     public ThemeMode Theme { get; set; } = ThemeMode.Dark;
 
     /// <summary>上次使用的串口参数，启动时回填。</summary>
@@ -22,6 +32,8 @@ public sealed class AppSettings
     public double WindowHeight { get; set; } = 800;
 
     public bool WindowMaximized { get; set; }
+
+    public bool WindowTopmost { get; set; }
 
     /// <summary>日志区自动滚动（M9）。</summary>
     public bool AutoScroll { get; set; } = true;
@@ -90,7 +102,24 @@ public sealed class AppSettings
     /// <summary>日志区字号。</summary>
     public double LogFontSize { get; set; } = 13;
 
-    /// <summary>窗口背景亚克力模糊（透出被模糊的桌面壁纸）。</summary>
+    public string LogFontFamily { get; set; } = "Consolas, Microsoft YaHei UI";
+
+    public int LogBufferMiB { get; set; } = 64;
+
+    public bool ShowLogLineNumbers { get; set; }
+
+    public bool KeepDisplayAwake { get; set; }
+
+    public BackdropMode? BackgroundMode { get; set; }
+
+    public int GlassTransparency { get; set; } = DefaultGlassTransparency;
+    public int GlassBlurLevel { get; set; } = StrongGlassBlur;
+
+    public string BackgroundImagePath { get; set; } = string.Empty;
+
+    public double BackgroundImageOpacity { get; set; } = 0.8;
+
+    /// <summary>旧配置的壁纸模糊开关，供迁移使用。</summary>
     public bool BlurBackground { get; set; }
 
     /// <summary>AI（MCP）接入总开关。默认开：只读档下没有写入能力，开着才方便用户直接接入。</summary>
@@ -112,6 +141,11 @@ public sealed class AppSettings
         Presets = (Presets ?? []).Where(p => p is not null && p.Serial is not null && !string.IsNullOrWhiteSpace(p.Name)).ToList();
         SearchFavorites ??= [];
         LogFontSize = double.IsFinite(LogFontSize) ? Math.Clamp(LogFontSize, 9, 24) : 13;
+        BackgroundImagePath ??= string.Empty;
+        GlassTransparency = Math.Clamp(GlassTransparency, 0, 100);
+        GlassBlurLevel = Math.Clamp(GlassBlurLevel, 0, StrongGlassBlur);
+        BackgroundImageOpacity = double.IsFinite(BackgroundImageOpacity) ? Math.Clamp(BackgroundImageOpacity, 0.1, 1) : 0.8;
+        if (BackgroundMode is { } mode && !Enum.IsDefined(mode)) BackgroundMode = null;
         WindowWidth = double.IsFinite(WindowWidth) ? Math.Clamp(WindowWidth, 920, 7680) : 1280;
         WindowHeight = double.IsFinite(WindowHeight) ? Math.Clamp(WindowHeight, 600, 4320) : 800;
         AutoFrameGapMilliseconds = Math.Clamp(AutoFrameGapMilliseconds, 1, 2000);

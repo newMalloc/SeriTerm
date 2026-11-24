@@ -73,21 +73,7 @@ public sealed class LogDocument
             _totalBytes += line.ByteLength;
         }
 
-        var trim = ComputeTrimCount();
-
-        if (trim > 0)
-        {
-            for (var i = 0; i < trim && i < Lines.Count; i++)
-            {
-                _totalBytes -= Lines[i].ByteLength;
-            }
-
-            _droppedLines += trim;
-            Lines.TrimFront(trim);
-
-            // 淘汰后需要把已经不在缓冲里的命中项清掉
-            PruneEvictedMatches();
-        }
+        var trim = TrimToLimits(batch: true);
 
         if (HasSearch)
         {
@@ -96,6 +82,16 @@ public sealed class LogDocument
 
         ContentChanged?.Invoke(this, new(trim));
         return newLines.Count;
+    }
+
+    /// <summary>调整显示缓冲的字节上限，立即淘汰超限的最旧记录。</summary>
+    public void SetByteLimit(long maxBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+        MaxBytes = maxBytes;
+        var trim = TrimToLimits(batch: false);
+        if (trim > 0)
+            ContentChanged?.Invoke(this, new(trim));
     }
 
     public void Clear()
@@ -293,23 +289,8 @@ public sealed class LogDocument
     }
 
     /// <summary>淘汰行之后，把随之一并消失的命中项从命中集合里剔除。</summary>
-    private void PruneEvictedMatches()
+    private void PruneEvictedMatches(int removed)
     {
-        if (_matches.Count == 0)
-        {
-            return;
-        }
-
-        var firstLiveSequence = Lines.Count > 0 ? Lines[0].Sequence : long.MaxValue;
-        var removed = 0;
-
-        while (removed < _matches.Count && _matches[removed].Sequence < firstLiveSequence)
-        {
-            _matches[removed].IsMatch = false;
-            _matches[removed].IsCurrentMatch = false;
-            removed++;
-        }
-
         if (removed == 0)
         {
             return;
@@ -317,7 +298,7 @@ public sealed class LogDocument
 
         _matches.RemoveRange(0, removed);
 
-        if (_currentMatch is null || _currentMatch.Sequence < firstLiveSequence)
+        if (_currentMatch?.IsMatch != true)
         {
             _currentMatch = null;
 
@@ -338,28 +319,35 @@ public sealed class LogDocument
         SearchChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private int ComputeTrimCount()
+    private int TrimToLimits(bool batch)
     {
-        var overLines = Lines.Count - MaxLines;
-        var overBytes = _totalBytes - MaxBytes;
-
-        if (overLines <= 0 && overBytes <= 0)
-        {
+        if (Lines.Count <= MaxLines && _totalBytes <= MaxBytes)
             return 0;
-        }
 
-        var needed = Math.Max(overLines, 0);
-
-        if (overBytes > 0 && Lines.Count > 0)
+        var minimum = Math.Max(0, Lines.Count - MaxLines);
+        if (batch)
         {
-            var averageBytes = Math.Max(1, _totalBytes / Lines.Count);
-            needed = Math.Max(needed, (int)Math.Min(Lines.Count, (overBytes / averageBytes) + 1));
+            var chunk = Math.Min(MinEvictChunk, Math.Max(1, MaxLines / 2));
+            minimum = Math.Max(minimum, chunk);
         }
 
-        // 分块淘汰：一次多淘汰一些，避免每个刷新周期都重建集合。
-        // 分块大小还要受 MaxLines 约束，否则 MaxLines 配得很小时会把整个缓冲清空。
-        var chunk = Math.Min(MinEvictChunk, Math.Max(1, MaxLines / 2));
+        var trim = 0;
+        var removedMatches = 0;
+        while (trim < Lines.Count && (trim < minimum || _totalBytes > MaxBytes))
+        {
+            var line = Lines[trim++];
+            _totalBytes -= line.ByteLength;
+            if (!line.IsMatch)
+                continue;
 
-        return (int)Math.Min(Lines.Count, Math.Max(needed, chunk));
+            removedMatches++;
+            line.IsMatch = false;
+            line.IsCurrentMatch = false;
+        }
+
+        _droppedLines += trim;
+        Lines.TrimFront(trim);
+        PruneEvictedMatches(removedMatches);
+        return trim;
     }
 }

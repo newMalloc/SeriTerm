@@ -10,7 +10,10 @@ public sealed record Choice<T>(T Value, string Display)
 }
 
 /// <summary>串口下拉项。友好名取不到时 <see cref="Display"/> 就是端口名本身。</summary>
-public sealed record PortItem(string PortName, string Display)
+public sealed record PortItem(string PortName, string? DeviceName)
 {
+    public string Display => string.IsNullOrWhiteSpace(DeviceName) || DeviceName == PortName
+        ? PortName : $"{PortName} ({DeviceName})";
+
     public override string ToString() => Display;
 }

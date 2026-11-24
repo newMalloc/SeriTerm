@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -8,8 +9,10 @@ using System.Windows.Interop;
 using System.Windows.Input;
 using ICSharpCode.AvalonEdit;
 using SeriTerm.App.Services;
+using SeriTerm.Core.Framing;
 using SeriTerm.Core.Pipeline;
 using SeriTerm.App.Controls;
+using SeriTerm.Core.Send;
 
 namespace SeriTerm.App.Tests;
 
@@ -22,6 +25,10 @@ public sealed class LayoutTests
         var window = new MainWindow(h.Vm, h.Theme);
         var handle = new WindowInteropHelper(window).EnsureHandle();
         var source = HwndSource.FromHwnd(handle)!;
+        await UiThread.Drain();
+        var pause = (Button)window.FindName("LogPauseButton");
+        var icon = Assert.IsType<System.Windows.Shapes.Path>(pause.Content);
+        var pauseGeometry = icon.Data.ToString();
         for (var i = 0; i < 2; i++)
         {
             var key = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.F6)
@@ -31,6 +38,8 @@ public sealed class LayoutTests
             window.RaiseEvent(key);
             Assert.True(key.Handled);
             Assert.Equal(i == 0, h.Vm.IsPaused);
+            Assert.Equal(i == 0 ? "继续显示" : "暂停显示", AutomationProperties.GetName(pause));
+            Assert.Equal(i == 1, icon.Data.ToString() == pauseGeometry);
         }
         window.Close();
     });
@@ -260,7 +269,7 @@ public sealed class LayoutTests
     public Task MainWorkspaceFitsWithoutClippingPrimaryActions(int width, int height, ThemeMode theme) => UiThread.Run(async () =>
     {
         await using var h = new AppHarness();
-        h.Theme.Apply(theme);
+        h.Vm.SelectedTheme = theme;
         var window = new MainWindow(h.Vm, h.Theme);
         // Measure and render the WPF visual tree in memory. No desktop window is shown.
         var root = (Border)window.Content;
@@ -292,40 +301,108 @@ public sealed class LayoutTests
         Assert.NotEqual(true, options.IsChecked);
         var sidebar = (ScrollViewer)window.FindName("SidebarScrollViewer");
         Assert.True(sidebar.IsAncestorOf(toolbar));
-        foreach (var name in new[] { "LogSearchButton", "LogPauseButton", "LogSaveButton", "LogClearButton" })
+        var connection = (Button)window.FindName("ConnectionButton");
+        var pause = (Button)window.FindName("LogPauseButton");
+        var pauseOrigin = pause.TranslatePoint(new Point(), connection);
+        Assert.InRange(pauseOrigin.Y, -1, 1);
+        Assert.InRange(Math.Abs(pause.ActualHeight - connection.ActualHeight), 0, 1);
+        Assert.True(pauseOrigin.X > connection.ActualWidth);
+        Assert.True(sidebar.IsAncestorOf(connection) && sidebar.IsAncestorOf(pause));
+        foreach (var name in new[] { "LogSearchButton", "LogSaveButton", "LogClearButton" })
         {
             var button = (Button)window.FindName(name);
             var bounds = button.TransformToAncestor(toolbar).TransformBounds(new Rect(button.RenderSize));
             Assert.True(bounds.Width >= 40 && bounds.Left >= 0 && bounds.Right <= toolbar.ActualWidth + 1, $"{name}: {bounds}");
         }
-        Assert.Equal(290, sidebar.ActualWidth);
+        Assert.Equal(new GridLength(290), ((ColumnDefinition)window.FindName("SidebarColumn")).Width);
+        var sidebarWidth = sidebar.ActualWidth;
+        // UseLayoutRounding 在 125% 缩放下会把 362.5 个物理像素对齐到整数。
+        var dpiScale = VisualTreeHelper.GetDpi(sidebar).DpiScaleX;
+        Assert.InRange(Math.Abs(sidebarWidth * dpiScale - 290 * dpiScale), 0, 0.500001);
         Assert.NotEqual(Visibility.Visible, sidebar.ComputedVerticalScrollBarVisibility);
         foreach (var name in new[] { "HexDisplayCheck", "AutoScrollToggle" })
             Assert.True(sidebar.IsAncestorOf((DependencyObject)window.FindName(name)), $"{name} should be in the sidebar.");
-        AssertCentered("LogFontSizeLabel", "LogFontSizeCombo");
-        AssertCentered("LineEndingLabel", "LineEndingCombo");
+        var framing = (ComboBox)window.FindName("FramingCombo");
+        var fullFramingWidth = framing.ActualWidth;
+        foreach (var (mode, fieldName) in new[] { (FramingMode.Gap, "FrameGapInput"), (FramingMode.Delimiter, "FrameDelimiterInput") })
+        {
+            h.Vm.SelectedFraming = h.Vm.FramingOptions.Single(option => option.Value == mode);
+            root.UpdateLayout();
+            var field = (TextBox)window.FindName(fieldName);
+            var origin = field.TranslatePoint(new Point(), framing);
+            Assert.Equal(Visibility.Visible, field.Visibility);
+            Assert.InRange(origin.Y, -1, 1);
+            Assert.True(origin.X > framing.ActualWidth && origin.X + field.ActualWidth <= fullFramingWidth + 1);
+        }
+        h.Vm.SelectedFraming = h.Vm.FramingOptions.Single(option => option.Value == FramingMode.None);
+        root.UpdateLayout();
+        Assert.Equal(fullFramingWidth, framing.ActualWidth);
+        var logCard = (FrameworkElement)window.FindName("LogCard");
+        var logBounds = logCard.TransformToAncestor(root).TransformBounds(new Rect(logCard.RenderSize));
+        var gear = (ToggleButton)window.FindName("SettingsButton");
+        var settings = (SettingsFlyout)window.FindName("SettingsPanel");
+        Assert.False(settings.IsVisible);
+        gear.IsChecked = true;
+        root.UpdateLayout();
+        Assert.Equal(logBounds, logCard.TransformToAncestor(root).TransformBounds(new Rect(logCard.RenderSize)));
+        AssertSettingsBounds();
+        AssertCentered("LogFontSizeLabel", "FontSizeBox");
+        AssertCentered("LineEndingLabel", "EndingBox");
+        Capture("settings");
+
+        ((Button)settings.FindName("AppearanceButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var glassRow = (FrameworkElement)settings.FindName("GlassSettingsRows");
+        Assert.Equal(Visibility.Collapsed, glassRow.Visibility);
+        h.Vm.BackgroundMode = BackdropMode.Desktop;
+        root.UpdateLayout();
+        Assert.Equal(Visibility.Visible, glassRow.Visibility);
+        var slider = (Slider)settings.FindName("GlassTransparencySlider");
+        Assert.InRange(slider.ActualWidth, 120, settings.ActualWidth);
+        var blurSlider = (Slider)settings.FindName("GlassBlurSlider");
+        Assert.Equal(slider.ActualWidth, blurSlider.ActualWidth);
+        Assert.Equal(slider.TranslatePoint(new Point(), settings).X, blurSlider.TranslatePoint(new Point(), settings).X);
+        AssertSettingsBounds();
+        Capture("settings-glass");
+        h.Vm.BackgroundMode = BackdropMode.Image;
+        root.UpdateLayout();
+        Assert.Equal(Visibility.Collapsed, glassRow.Visibility);
+        AssertSettingsBounds();
+        Capture("settings-appearance");
+        gear.IsChecked = false;
+        root.UpdateLayout();
 
         void AssertCentered(string labelName, string controlName)
         {
-            var label = (FrameworkElement)window.FindName(labelName);
-            var control = (FrameworkElement)window.FindName(controlName);
+            var label = (FrameworkElement)settings.FindName(labelName);
+            var control = (FrameworkElement)settings.FindName(controlName);
             var labelBounds = label.TransformToAncestor(root).TransformBounds(new Rect(label.RenderSize));
             var controlBounds = control.TransformToAncestor(root).TransformBounds(new Rect(control.RenderSize));
             var centerDifference = Math.Abs(labelBounds.Top + labelBounds.Height / 2 - controlBounds.Top - controlBounds.Height / 2);
             Assert.True(centerDifference <= 1, $"{labelName} is not centered with {controlName}: {centerDifference} DIP.");
         }
 
-        var output = Environment.GetEnvironmentVariable("SERITERM_UI_ARTIFACTS");
-        if (!string.IsNullOrWhiteSpace(output))
+        void AssertSettingsBounds()
         {
+            var bounds = settings.TransformToAncestor(root).TransformBounds(new Rect(settings.RenderSize));
+            Assert.InRange(bounds.Width, 340, 380);
+            Assert.InRange(width - bounds.Right, 0, 20);
+            Assert.InRange(bounds.Top, 40, 50);
+            Assert.InRange(bounds.Bottom, 150, height - 10);
+        }
+
+        void Capture(string name)
+        {
+            var output = Environment.GetEnvironmentVariable("SERITERM_UI_ARTIFACTS");
+            if (string.IsNullOrWhiteSpace(output)) return;
             Directory.CreateDirectory(output);
             var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
             bitmap.Render(root);
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            using var file = File.Create(Path.Combine(output, $"workspace-{theme}-{width}x{height}.png"));
+            using var file = File.Create(Path.Combine(output, $"{name}-{theme}-{width}x{height}.png"));
             encoder.Save(file);
         }
+        Capture("workspace");
         options.IsChecked = true;
         root.UpdateLayout();
         foreach (var name in new[] { "TimedIntervalBox", "SendFileButton", "TerminalModeCheck" })
@@ -336,20 +413,83 @@ public sealed class LayoutTests
             Assert.True(bounds.Left >= 0 && bounds.Right <= width + 1 && bounds.Top >= 0 && bounds.Bottom <= height + 1,
                 $"{name} clipped after expanding options: {bounds}");
         }
-        if (!string.IsNullOrWhiteSpace(output))
-        {
-            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-            bitmap.Render(root);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            using var file = File.Create(Path.Combine(output, $"workspace-options-{theme}-{width}x{height}.png"));
-            encoder.Save(file);
-        }
+        Capture("workspace-options");
         // Hiding the scrollbar must not make the lower settings unreachable or change the column width.
+        ((Expander)window.FindName("AdvancedConnectionExpander")).IsExpanded = true;
+        root.UpdateLayout();
         sidebar.ScrollToBottom();
         root.UpdateLayout();
         Assert.True(sidebar.VerticalOffset > 0);
-        Assert.Equal(290, sidebar.ActualWidth);
+        Assert.Equal(sidebarWidth, sidebar.ActualWidth);
         window.Content = null;
+    });
+
+    [Fact]
+    public Task SettingsApplyToTheWorkspaceAndKeepKeysOutOfTheSerialTerminal() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        await h.Connect();
+        var window = new MainWindow(h.Vm, h.Theme);
+        var root = (Border)window.Content;
+        var handle = new WindowInteropHelper(window).EnsureHandle();
+        var source = HwndSource.FromHwnd(handle)!;
+        var gear = (ToggleButton)window.FindName("SettingsButton");
+        var settings = (SettingsFlyout)window.FindName("SettingsPanel");
+        h.Vm.TerminalMode = true;
+        gear.IsChecked = true;
+        root.Measure(new Size(920, 600));
+        root.Arrange(new Rect(0, 0, 920, 600));
+        await UiThread.Drain();
+
+        var encoding = (ComboBox)settings.FindName("EncodingBox");
+        encoding.SetCurrentValue(Selector.SelectedItemProperty, h.Vm.EncodingOptions.First(name => name != "UTF-8"));
+        var ending = (ListBox)settings.FindName("EndingBox");
+        ending.SetCurrentValue(Selector.SelectedItemProperty, h.Vm.LineEndingOptions.Single(option => option.Value == LineEnding.Lf));
+        var buffer = (ComboBox)settings.FindName("BufferBox");
+        buffer.SetCurrentValue(Selector.SelectedValueProperty, 16);
+        Assert.Equal(encoding.SelectedItem, h.Vm.SelectedEncodingName);
+        Assert.Equal(LineEnding.Lf, h.Vm.SelectedLineEnding!.Value);
+        Assert.Equal(16L * 1024 * 1024, h.Vm.Log.MaxBytes);
+
+        RaiseKey(Key.Enter);
+        await UiThread.Drain();
+        Assert.Empty(h.Transport.Writes);
+
+        var appearance = (Button)settings.FindName("AppearanceButton");
+        appearance.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var theme = (ListBox)settings.FindName("ThemeBox");
+        theme.SetCurrentValue(Selector.SelectedValueProperty, ThemeMode.Light);
+        Assert.Equal(ThemeMode.Light, h.Theme.Current);
+
+        var picturePath = Path.Combine(h.DirectoryPath, "wallpaper.png");
+        var picture = new PngBitmapEncoder();
+        picture.Frames.Add(BitmapFrame.Create(BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgr24, null, new byte[12], 6)));
+        using (var file = File.Create(picturePath)) picture.Save(file);
+        h.Vm.BackgroundImagePath = picturePath;
+        h.Vm.BackgroundMode = BackdropMode.Image;
+        h.Vm.BackgroundImageOpacity = 0.55;
+        var backdrop = (FrameworkElement)window.FindName("BackdropLayer");
+        Assert.Equal(Visibility.Visible, backdrop.Visibility);
+        Assert.Equal(0.55, backdrop.Opacity);
+        h.Vm.BackgroundImagePath = Path.Combine(h.DirectoryPath, "missing.png");
+        Assert.Equal(Visibility.Collapsed, backdrop.Visibility);
+
+        var log = (LogView)window.FindName("LogViewControl");
+        var editor = (TextEditor)log.FindName("LogText");
+        h.Vm.ShowLogLineNumbers = true;
+        Assert.True(editor.ShowLineNumbers);
+        Assert.True(RaiseKey(Key.Escape).Handled);
+        Assert.False(gear.IsChecked);
+        Assert.Equal(16, h.Vm.Settings.LogBufferMiB);
+
+        window.Close();
+        await UiThread.Drain();
+
+        KeyEventArgs RaiseKey(Key key)
+        {
+            var args = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, key) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+            window.RaiseEvent(args);
+            return args;
+        }
     });
 }

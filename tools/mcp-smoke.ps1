@@ -9,7 +9,7 @@
 # 发版前跑一次，比事后听用户说"AI 连不上"要便宜得多。
 #
 # 用法：
-#   pwsh -File tools/mcp-smoke.ps1 -Exe src/SeriTerm.App/bin/Debug/net8.0-windows/SeriTerm.exe
+#   pwsh -File tools/mcp-smoke.ps1 -Exe src/SeriTerm.App/bin/Debug/net8.0-windows10.0.17763.0/SeriTerm.exe
 #   pwsh -File tools/mcp-smoke.ps1 -Exe <exe> -ExpectFullPermission     # 完全权限档下应能发送
 #
 # 注意：界面进程需要已经在运行（脚本不会替你去点窗口）；回环验证要求 TX–RX 短接。
