@@ -1,25 +1,25 @@
 ﻿# 发布 SeriTerm 的可分发产物。三种形态，按体积从小到大：
 #
-#   pwsh -File tools/publish.ps1                       # 【推荐分发】小体积启动器，约 2 MB
+#   pwsh -File tools/publish.ps1                       # 【推荐分发】小体积启动器
 #   pwsh -File tools/publish.ps1 -All                  # 启动器 + 自包含完整版，两个都出
-#   pwsh -File tools/publish.ps1 -SelfContained        # 只出自包含完整版，约 67 MB
-#   pwsh -File tools/publish.ps1 -FrameworkDependent   # 只出框架依赖单文件，约 1.7 MB（开发自用）
+#   pwsh -File tools/publish.ps1 -SelfContained        # 只出自包含完整版
+#   pwsh -File tools/publish.ps1 -FrameworkDependent   # 只出框架依赖单文件（开发自用）
 #
 # 三者分别是什么、为什么要有三个：
 #
-# 1) 启动器（SeriTerm-<版本>-<RID>.exe，约 2 MB）
+# 1) 启动器（SeriTerm-<版本>-<RID>.exe）
 #    它自己是用 NativeAOT 编的**原生 exe**，不含 .NET 运行时，因此在"机器上什么都没装"时也能跑起来。
-#    肚子里的程序体是第 3 种产物经 Brotli 压缩后内嵌进去的（约 0.6 MB）。
+#    肚子里的程序体是第 3 种产物经 Brotli 压缩后内嵌进去的。
 #    启动时先探测 .NET 桌面运行时：装了就直接解包运行；没装就弹窗征得同意后，
 #    从微软官方短链下载官方安装包（校验 Authenticode 签名后）静默安装，再继续启动。
-#    对已经装了 .NET 8/9/10 桌面运行时的机器，用户只下载约 2 MB。
+#    对已经装了 .NET 8/9/10 桌面运行时的机器，只需下载启动器。
 #
-# 2) 自包含完整版（SeriTerm-<版本>-<RID>-full.exe，约 67 MB）
+# 2) 自包含完整版（SeriTerm-<版本>-<RID>-full.exe）
 #    运行时整套塞进 exe，目标机器不需要装任何东西，也不需要联网。离线/内网分发用这个。
 #    注意：WPF 不支持裁剪（PublishTrimmed 会让运行时找不到类型），所以体积下不来；
-#    已开 EnableCompressionInSingleFile，把 147 MB 压到约 67 MB。
+#    已开 EnableCompressionInSingleFile 压缩体积。
 #
-# 3) 框架依赖单文件（SeriTerm-<版本>-<RID>-fd.exe，约 1.7 MB）
+# 3) 框架依赖单文件（SeriTerm-<版本>-<RID>-fd.exe）
 #    开发自用：本机装了运行时，改完直接跑最快。它同时也是第 1 种的"程序体"原料。
 #    注意：框架依赖 + EnableCompressionInSingleFile 会被 SDK 直接拒绝
 #    （NETSDK1176：仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩），故该开关按模式传。
@@ -159,7 +159,7 @@ function New-Bootstrapper {
     New-Item -ItemType Directory -Path $payloadDir, $launcherDir -Force | Out-Null
 
     try {
-        # 1) 先出"程序体"：框架依赖单文件（约 1.7 MB）
+        # 1) 先出框架依赖单文件程序体
         Invoke-Publish -Project $appProject -Arguments @(
             '-c', 'Release',
             '-r', $Runtime,
@@ -173,7 +173,7 @@ function New-Bootstrapper {
         $payloadExe = Join-Path $payloadDir 'SeriTerm.exe'
         if (-not (Test-Path $payloadExe)) { throw "程序体发布失败：没有 $payloadExe" }
 
-        # 2) 压成 Brotli（1.7 MB → 约 0.6 MB），启动器按同样的算法解压
+        # 2) 压成 Brotli，启动器按同样的算法解压
         $payloadBr = Join-Path $temp 'SeriTerm.payload.br'
 
         Compress-Brotli -Source $payloadExe -Destination $payloadBr

@@ -534,6 +534,9 @@
                         <Trigger Property="IsDropDownOpen" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
+                        <Trigger Property="Tag" Value="NoFocusHighlight">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="Transparent" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.55" />
                         </Trigger>

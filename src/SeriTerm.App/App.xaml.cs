@@ -22,7 +22,7 @@ public partial class App : Application
     /// </summary>
     private IUserNotifier? _notifier;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -34,21 +34,45 @@ public partial class App : Application
             return;
         }
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        _services = services.BuildServiceProvider();
-
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
 
-        // 先应用上次的主题，再创建窗口，避免启动瞬间闪一下另一种配色
-        var settingsStore = _services.GetRequiredService<ISettingsStore>();
-        _services.GetRequiredService<IThemeService>().Apply(settingsStore.Load().Theme);
-        _notifier = _services.GetRequiredService<IUserNotifier>();
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        var splash = new StartupWindow();
+        splash.Show();
 
-        var window = _services.GetRequiredService<MainWindow>();
-        MainWindow = window;
-        window.Show();
+        try
+        {
+            // 先让首屏完成绘制，再执行同步的主题和主窗口初始化。
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            _services = services.BuildServiceProvider();
+
+            var settingsStore = _services.GetRequiredService<ISettingsStore>();
+            _services.GetRequiredService<IThemeService>().Apply(settingsStore.Load().Theme);
+            _notifier = _services.GetRequiredService<IUserNotifier>();
+
+            var window = _services.GetRequiredService<MainWindow>();
+            MainWindow = window;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            EventHandler? onRendered = null;
+            onRendered = (_, _) =>
+            {
+                window.ContentRendered -= onRendered;
+                splash.Close();
+            };
+            window.ContentRendered += onRendered;
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            WriteErrorLog(ex);
+            splash.Close();
+            MessageBox.Show($"无法启动 SeriTerm：{ex.Message}", "SeriTerm", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     private static void ConfigureServices(ServiceCollection services)

@@ -50,7 +50,7 @@
                     <ToggleButton x:Name="SettingsButton" Style="{StaticResource TitleBarToggle}"
                                   Checked="OnSettingsToggled" Unchecked="OnSettingsToggled"
                                   AutomationProperties.Name="设置" ToolTip="设置（Ctrl+,）">
-                        <Path Style="{StaticResource OutlineIcon}" Data="{StaticResource IconSettings}" Width="19" Height="19" />
+                        <Path Style="{StaticResource OutlineIcon}" Data="{StaticResource IconSettings}" Width="16" Height="16" StrokeThickness="1.25" />
                     </ToggleButton>
                     <Border Width="1" Height="16" Margin="6,0,8,0" VerticalAlignment="Center"
                             Background="{DynamicResource PanelBorderBrush}" />
@@ -183,10 +183,10 @@
                                 </ComboBox.ItemContainerStyle>
                             </ComboBox>
                             <TextBlock Text="波特率" Style="{StaticResource HintText}" Margin="0,0,0,6" />
-                            <ComboBox x:Name="BaudRateCombo" IsEditable="True" ItemsSource="{Binding BaudRateOptions}"
+                            <ComboBox x:Name="BaudRateCombo" IsEditable="True" Tag="NoFocusHighlight" ItemsSource="{Binding BaudRateOptions}"
                                       MaxDropDownHeight="Infinity" ScrollViewer.VerticalScrollBarVisibility="Hidden"
                                       Text="{Binding BaudRateText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditBaudRate}"
-                                      SelectionChanged="OnBaudRateSelectionChanged" AutomationProperties.Name="波特率"
+                                      SelectionChanged="OnBaudRateSelectionChanged" DropDownOpened="OnBaudRateDropDownChanged" DropDownClosed="OnBaudRateDropDownChanged" AutomationProperties.Name="波特率"
                                       ToolTip="支持自定义波特率；已连接时修改会立即生效" MinHeight="34" />
                             <Grid Height="38" Margin="0,14,0,10">
                                 <Grid.ColumnDefinitions>
@@ -353,7 +353,19 @@
                             </StackPanel>
                         </Expander>
                     </Border>
-                    <TextBlock Text="F5 连接 / 断开   ·   F6 暂停 / 继续&#10;Ctrl+F 查找   ·   Ctrl+S 保存日志   ·   F1 关于" Style="{StaticResource HintText}" Margin="10,6,0,6" LineHeight="22" />
+                    <TextBlock Text="F5 连接 / 断开   ·   F6 暂停 / 继续&#10;Ctrl+F 查找   ·   Ctrl+S 保存日志   ·   F1 关于" Style="{StaticResource HintText}" Margin="10,6,0,6" LineHeight="22">
+                        <TextBlock.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Visibility">
+                                            <DiscreteObjectKeyFrame KeyTime="0:0:5" Value="{x:Static Visibility.Collapsed}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </TextBlock.Triggers>
+                    </TextBlock>
                 </StackPanel>
             </ScrollViewer>
 

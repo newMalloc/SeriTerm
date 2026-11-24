@@ -16,13 +16,13 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
     <StripSymbols>true</StripSymbols>
-    <!-- 体积优先：这个 exe 越接近 2 MB，替代 67 MB 自包含版的意义才越大 -->
+    <!-- 体积优先，减小分发包。 -->
     <OptimizationPreference>Size</OptimizationPreference>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 内置程序体：框架依赖单文件 exe（约 1.7 MB）经 Brotli 压缩后的结果，
+    <!-- 内置程序体：框架依赖单文件 exe 经 Brotli 压缩后的结果，
          由 tools/publish.ps1 用 -p:SeriTermPayload=<路径> 传进来。
          直接 dotnet build 时不传该属性，程序体就不存在——这是正常情况：
          启动器此时仍能跑（诊断开关可用），只是会明确报"本 exe 里没有内置程序体"。 -->

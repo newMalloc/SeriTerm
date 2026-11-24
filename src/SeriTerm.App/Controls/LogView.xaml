@@ -13,7 +13,7 @@
         </Grid.RowDefinitions>
         <edit:TextEditor x:Name="LogText" AutomationProperties.AutomationId="LogList"
                          AutomationProperties.Name="接收日志"
-                         Background="Transparent" BorderThickness="0" Padding="10,3,0,3"
+                         Background="Transparent" BorderThickness="0" Padding="10,7,0,3"
                          Foreground="{DynamicResource RxForegroundBrush}"
                          FontFamily="{Binding LogFontFamily}" FontSize="{Binding LogFontSize}"
                          ShowLineNumbers="{Binding ShowLogLineNumbers}" LineNumbersForeground="{DynamicResource SubtleForegroundBrush}"

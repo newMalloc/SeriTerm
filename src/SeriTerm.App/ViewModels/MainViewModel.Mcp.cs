@@ -99,7 +99,8 @@ public partial class MainViewModel : IMcpSession
     {
         get
         {
-            var exe = Environment.ProcessPath ?? "SeriTerm.exe";
+            var exe = Environment.GetEnvironmentVariable("SERITERM_LAUNCHER_PATH")
+                ?? Environment.ProcessPath ?? "SeriTerm.exe";
 
             var config = new JsonObject
             {

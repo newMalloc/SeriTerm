@@ -6,9 +6,8 @@ namespace SeriTerm.Launcher;
 /// <summary>
 /// SeriTerm 的小体积启动器。
 ///
-/// 它解决的是"自包含单文件 exe 有 67 MB，其中 99.5% 是 .NET 运行时"这个问题：
-/// ・exe 本身用 NativeAOT 编译，是纯原生代码（约 2 MB），**不依赖任何运行时**，所以"机器上什么都没装"时它也能跑；
-/// ・真正的程序体（框架依赖单文件 exe，约 1.7 MB）Brotli 压缩后嵌在它肚子里；
+/// ・启动器用 NativeAOT 编译，不依赖 .NET 运行时；
+/// ・框架依赖单文件程序体经 Brotli 压缩后内嵌；
 /// ・启动时先看机器上有没有能用的 .NET 桌面运行时：有就直接解包运行，
 ///   没有就征得同意后自动下载并安装微软官方运行时，装完继续启动。
 ///
@@ -122,6 +121,13 @@ internal static class Program
         foreach (var argument in StripOwnSwitches(args))
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        if (Environment.ProcessPath is { } launcherPath)
+        {
+            startInfo.Environment["SERITERM_LAUNCHER_PATH"] = launcherPath;
+            startInfo.ArgumentList.Add("--seriterm-launcher-path");
+            startInfo.ArgumentList.Add(launcherPath);
         }
 
         // 如果运行时是按 SERITERM_DOTNET_ROOT 找到的，得告诉主程序的宿主去哪儿找同一套运行时

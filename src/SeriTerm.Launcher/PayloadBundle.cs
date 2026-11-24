@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
 
 namespace SeriTerm.Launcher;
 
@@ -12,13 +13,12 @@ internal sealed record PayloadResult(string? ExePath, string? Error)
 /// <summary>
 /// 内置程序体的解包与缓存。
 ///
-/// 启动器里塞的不是"压缩包+解压到临时目录"那套，而是**框架依赖单文件 exe**（约 1.7 MB）
-/// 经 Brotli 压到约 0.6 MB，作为嵌入资源带在身上；运行时解到
-/// <c>%LocalAppData%\SeriTerm\app\&lt;版本&gt;\SeriTerm.exe</c> 并就地启动。
+/// 框架依赖单文件 exe 经 Brotli 压缩后作为嵌入资源；运行时解到
+/// <c>%LocalAppData%\SeriTerm\app\&lt;版本-内容摘要&gt;\SeriTerm.exe</c> 并就地启动。
 ///
 /// 为什么不直接跑内存里的程序集：主程序是 WPF 应用，需要在磁盘上按目录解析一堆依赖，
 /// 落到磁盘一次最省事、也最稳。目录带版本号，所以升级后不会和旧版本打架，
-/// 同一个版本第二次启动直接复用（比对长度即可，不重复解压）。
+/// 目录同时包含程序内容的摘要，同版本的本地构建也不会误用旧程序。
 /// </summary>
 internal static class PayloadBundle
 {
@@ -55,9 +55,10 @@ internal static class PayloadBundle
         }
 
         var version = assembly.GetName().Version?.ToString() ?? "0.0.0.0";
+        var fingerprint = Convert.ToHexString(SHA256.HashData(payload))[..16];
         var directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SeriTerm", "app", version);
+            "SeriTerm", "app", $"{version}-{fingerprint}");
         var target = Path.Combine(directory, PayloadFileName);
 
         // 同一时刻双击两个副本（或首个实例正在解包）时，别让两边写同一个文件
@@ -65,7 +66,8 @@ internal static class PayloadBundle
 
         try
         {
-            gate.WaitOne(TimeSpan.FromSeconds(30));
+            if (!gate.WaitOne(TimeSpan.FromSeconds(30)))
+                return PayloadResult.Fail("等待程序解包超时，请稍后重试。");
 
             if (File.Exists(target) && new FileInfo(target).Length == payload.LongLength)
             {
@@ -105,7 +107,7 @@ internal static class PayloadBundle
         }
     }
 
-    /// <summary>清掉旧版本的解包目录，避免每次升级在 AppData 里趴一个 1.7 MB 的残留。</summary>
+    /// <summary>清掉不再使用的解包目录。</summary>
     private static void CleanupOtherVersions(string currentDirectory)
     {
         try

@@ -41,7 +41,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = viewModel;
 
+        StateChanged += (_, _) => UpdateResizeBorder();
         RestoreWindowPlacement();
+        UpdateResizeBorder();
         Topmost = viewModel.Settings.WindowTopmost;
 
         // 系统标题栏也要跟着主题走，否则深色界面顶着一个白色标题栏。
@@ -312,6 +314,15 @@ public partial class MainWindow : Window
 
     // ---------- 波特率"自定义输入" ----------
 
+    private void OnBaudRateDropDownChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (BaudRateCombo.Template?.FindName("PART_EditableTextBox", BaudRateCombo) is TextBox box)
+                box.Select(box.SelectionStart + box.SelectionLength, 0);
+        });
+    }
+
     /// <summary>
     /// 波特率下拉框最后一项是「自定义输入…」，它不是波特率，而是"切到手动输入"的开关。
     /// 选中后把输入框清空、光标交还给用户，直接键入任意波特率即可。
@@ -344,6 +355,13 @@ public partial class MainWindow : Window
     }
 
     // ---------- 自绘标题栏 ----------
+
+    private void UpdateResizeBorder()
+    {
+        var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
+        if (chrome is not null)
+            chrome.ResizeBorderThickness = WindowState == WindowState.Maximized ? new Thickness(0) : new Thickness(6);
+    }
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
@@ -393,6 +411,11 @@ public partial class MainWindow : Window
     {
         switch (message)
         {
+            case WmNcLeftButtonDown when wParam.ToInt64() == HitCaption:
+            case WmNcLeftButtonDoubleClick when wParam.ToInt64() == HitCaption:
+                CloseSettings(restoreFocus: false);
+                break;
+
             // 自绘标题栏的客户区覆盖整个窗口，
             // WPF 却按"无边框全屏"处理最大化，客户区会盖住任务栏；这里改成按显示器工作区。
             case WmGetMinMaxInfo:
@@ -557,6 +580,9 @@ public partial class MainWindow : Window
     private const int WmSettingChange = 0x001A;
     private const int WmDwmCompositionChanged = 0x031E;
     private const int WmGetMinMaxInfo = 0x0024;
+    private const int WmNcLeftButtonDown = 0x00A1;
+    private const int WmNcLeftButtonDoubleClick = 0x00A3;
+    private const int HitCaption = 2;
     private const uint MonitorDefaultToNearest = 2;
 
     /// <summary>窗口所在显示器的 DPI（Windows 10 1607+，本程序最低支持 1809）。</summary>
