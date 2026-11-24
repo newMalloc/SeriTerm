@@ -121,21 +121,6 @@ section is missing, the workflow fails instead of publishing.
 - Settings: `%AppData%\SeriTerm\settings.json`
 - Diagnostic log: `%AppData%\SeriTerm\ui-errors.log` (written only on failure)
 
-## Known limitations
-
-- **"Port in use" and "device unplugged" are indistinguishable at the Win32 level**: both surface as
-  `ERROR_ACCESS_DENIED`. The app reports "in use by another program" only when the port is still enumerated but cannot
-  be opened; otherwise it treats the device as unplugged.
-- With **frosted glass**, transparency controls how much background color shows through. Blur strength controls how soft background edges appear.
-  Windows 10 and Windows 11 21H2 offer clear, light, and strong settings. Windows 11 22H2 and later offer clear and strong. Both sliders preview changes immediately and save when settings close. Reset restores strong blur and 45% transparency. SeriTerm uses a solid background when system transparency is unavailable.
-  On systems with three blur levels, Strong uses Windows Composition to blur the live backdrop and reduce the contrast of white and gray areas while preserving the backdrop colors. The blur strength stays constant while you move or resize the window, and log text and controls stay sharp.
-- **The search overlay covers a small part of the log's top-right corner**: the trade-off for not spending a log row on
-  it. With no search open it collapses and the log uses the full width.
-- In a short window the left settings column needs scrolling; "Open port" stays on the first screen.
-- **MCP requires the UI process**: SeriTerm must keep running for reads, otherwise tools return `[not_connected]`.
-  "复制配置" contains the path of the currently running exe, which changes on upgrade — copy it again.
-- The single-file build extracts itself to a temporary directory on first launch, so that launch is slightly slower.
-
 ## License
 
 [MIT](LICENSE)
