@@ -6,12 +6,13 @@
 
 [English](README.en.md) | **简体中文**
 
-Windows 串口调试助手（C# / WPF / .NET），用于接收数据、发送命令与记录日志：
-长时运行不卡顿，日志上限 20 万行，断线自动重连，单文件免安装；内置 MCP，AI 可直接读取设备输出。
+Windows 串口调试助手（C# / WPF / .NET）。在同一工作台收发串口数据、查找与保存日志。支持断线自动重连，内置本机 MCP 服务。
 
-https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
+## v1.2.3 界面演示
 
-[网页版](https://newmalloc.github.io/SeriTerm/video/)
+https://github.com/user-attachments/assets/03ee7b8a-9bc7-4246-b3dd-78995feff3ab
+
+[网页版](https://newmalloc.github.io/SeriTerm/video/) · [下载 1080p 视频](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
 
 ## 下载
 
@@ -33,7 +34,7 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 - 「更多」展开发送历史、定时、文件发送和终端设置，运行中的停止 / 取消入口始终可见。
 - 最近 30 条成功发送可回填，并恢复 HEX、行尾和编码；回填不会自动发送。发送草稿随配置保存。
 - 收发速率、计数复位、停止本次重连；文件发送有独立取消按钮。
-- 搜索条独占一行，查找和暂停提示不遮挡日志；原始 `.bin` 日志可从「日志文件」打开，仅查看、不发送。
+- 查找面板悬浮在日志右上角，打开时不缩小接收区；原始 `.bin` 日志可从「日志文件」打开查看。
 - 暂停显示仍记录文件和 MCP 帧；显示缓冲上限 1 万行 / 16 MB，达到上限时提示淘汰数量。
 
 **连接**
@@ -46,7 +47,7 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 - 文本 / HEX 双模式；UTF-8、GB2312 等多编码，跨数据块解码不产生乱码
 - 断帧方式：空闲间隔 / 分隔符 / 不断帧，可设缓冲区上限；按帧输出，不粘连、不输出半包
-- 日志视图虚拟化，显示上限 20 万行，超出按段淘汰；支持暂停、清空、保存
+- 日志使用只读文本编辑器，支持跨行选取，缓冲区可按容量调整，最多显示 20 万行；支持暂停、清空、保存
 - 时间戳、自动换行、字号可调；自动滚动在上翻时暂停，并在底部提示新增行数
 
 **发送**
@@ -78,12 +79,10 @@ https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
 
 **界面**
 
-![v1.2.2 固定左栏与单行发送工作台](docs/images/workspace-dark.png)
-
-> v1.2.2 WPF 离屏布局预览。深浅主题、小窗口和搜索布局的验证范围见 [验证记录](docs/verification.md)。
+![SeriTerm v1.2.3 深色工作台与单行发送区](docs/images/workspace-dark.png)
 
 - 右上角齿轮或 `Ctrl+,` 打开设置。可调整收发编码、发送行尾、日志缓冲和字号，开启行号或保持屏幕常亮。「个性化设置」提供系统 / 浅色 / 深色主题、纯色 / 磨砂玻璃 / 自定义图片背景、日志字体和窗口置顶。
-- 标题栏「关于」或 <kbd>F1</kbd>：版本号、提交号、运行时与仓库入口
+- 设置菜单的「关于 SeriTerm」或 <kbd>F1</kbd> 可查看版本号、提交号、运行时与仓库入口。
 
 ## 环境要求
 

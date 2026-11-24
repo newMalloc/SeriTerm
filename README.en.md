@@ -1,24 +1,18 @@
 # SeriTerm
 
-Version 1.2 adds a reorganized serial workspace, collapsible settings, multiline sending with Ctrl+Enter, byte previews and inline HEX validation, a 30-entry send history, hot-plug port refresh, traffic rates, and an independent file-send cancel action. Search now uses its own row without covering received data. Raw logs can be opened for offline viewing without transmitting or republishing historical frames.
-
-Version 1.2.2 pairs charcoal-and-gray surfaces with blue action accents and uses a fixed-width sidebar with no visible scrollbar; wheel and keyboard scrolling remain available. HEX display and follow-latest controls are in the sidebar. Sending uses one row by default, with an editor that grows for multiline content. History, timed sending, file sending, and terminal settings are under “更多” (More). Active stop, cancel, and terminal-exit controls remain visible when options are collapsed.
-
-Logging continues while display is paused. The release also fixes timer restart races, log-file name collisions, flush synchronization, and final-frame draining on shutdown. Place an empty `SeriTerm.portable` file next to the executable to keep settings in `data/settings.json` beside it. See [verification](docs/verification.md) for current test results and hardware-validation limits.
-
 [![CI](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/newMalloc/SeriTerm/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/newMalloc/SeriTerm?label=release)](https://github.com/newMalloc/SeriTerm/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [简体中文](README.md) | **English**
 
-A serial port debugging assistant for Windows (C# / WPF / .NET) for receiving data, sending commands and capturing
-logs: no stutter over long sessions, a 200,000-line log cap, automatic reconnect, single-file build with no installer.
-It also ships a built-in MCP server, so an AI can read your device output directly.
+A Windows serial debugging tool (C# / WPF / .NET) for sending commands, receiving data, searching logs, and saving captures. It supports automatic reconnection and includes a local MCP server.
 
-https://github.com/user-attachments/assets/60625d5f-2d7c-470b-8355-47cf9d8c60c3
+## v1.2.3 interface demo
 
-[web version](https://newmalloc.github.io/SeriTerm/video/)
+https://github.com/user-attachments/assets/03ee7b8a-9bc7-4246-b3dd-78995feff3ab
+
+[Watch on the web](https://newmalloc.github.io/SeriTerm/video/) · [Download the 1080p video](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
 
 ## Download
 
@@ -42,7 +36,7 @@ single-file builds, no installer required:
 
 - Text / HEX modes; UTF-8, GB2312 and other encodings, decoded across chunk boundaries without corruption
 - Framing by idle gap / delimiter / none, with a configurable buffer cap; output is per frame, never glued or partial
-- Virtualized log view capped at 200,000 lines, evicting in blocks; pause, clear, save
+- Read-only text editor with a configurable buffer capped at 200,000 lines; pause display with `F6` while receiving continues
 - Optional timestamps, word wrap and font size; auto-scroll pauses while you scroll up and shows the new line count
 
 **Sending**
@@ -76,12 +70,10 @@ single-file builds, no installer required:
 
 **UI**
 
-![Dark workspace with compact sending](docs/images/workspace-dark.png)
-
-> Version 1.2.2 WPF offscreen layout preview (UI text is Chinese only). See [verification](docs/verification.md) for the scope of theme, small-window, and search checks.
+![SeriTerm v1.2.3 dark workspace with compact sending](docs/images/workspace-dark.png)
 
 - Switch between dark and light themes at runtime, with a custom title bar and a choice of solid, frosted glass, or image backgrounds.
-- About in the title bar (or <kbd>F1</kbd>): version, commit, runtime and repository links
+- Open About from Settings or press <kbd>F1</kbd> to see the version, commit, runtime, and repository links.
 
 ## Requirements
 

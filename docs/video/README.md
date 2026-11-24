@@ -1,87 +1,24 @@
-# SeriTerm 介绍动画（网页版）
+# SeriTerm v1.2.3 界面演示
 
-一支 56 秒的产品介绍动画：**一张网页**（`index.html`），画面由 JS 按时间轴逐帧算出来，
-用浏览器逐帧截图再编码成 mp4；背景音也是代码合成的（`music.mjs`），没用任何现成素材。
+34 秒演示使用 Windows 上运行的 SeriTerm 1.2.3 界面和模拟串口数据。依次展示接收工作台、异常关键词搜索、暂停及恢复、磨砂玻璃设置和深浅主题。
 
-## 在线看 / 下载
+- [GitHub 首页播放器](https://github.com/newMalloc/SeriTerm#v123-界面演示)
+- [网页版](https://newmalloc.github.io/SeriTerm/video/) 支持暂停和拖动进度，无背景音。
+- [1080p MP4](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4) 包含用 `music.mjs` 合成的背景音。
 
-| 形式 | 地址 | 说明 |
-|---|---|---|
-| 网页版 | <https://newmalloc.github.io/SeriTerm/video/> | 由 GitHub Pages 发布 `docs/` 目录，点开即播，文字是矢量的 |
-| README 内嵌播放器 | [issue #1](https://github.com/newMalloc/SeriTerm/issues/1) 正文里的附件 | GitHub 只允许挂在 issue / PR / 评论上的附件在 Markdown 里渲染成播放器 |
-| mp4 1080p | [Release 附件](https://github.com/newMalloc/SeriTerm/releases) `SeriTerm-intro-1080p.mp4` | 约 11.9 MB，转发 / 投稿用 |
-| mp4 720p | 同上 `SeriTerm-intro-720p.mp4` | 约 5.0 MB，聊天工具里发更省事 |
-
-**不要删 issue #1**：README 里那个播放器指向它的附件，issue 删了链接就失效。
-另外 GitHub 附件的体积上限是**图片 / GIF 10 MB、视频 Free 计划 10 MB（付费 100 MB）**，
-所以那个 issue 里挂的是压到 8.45 MB 的 `SeriTerm-intro-1080p-upload.mp4`（`crf 23` + 音频 96k），
-不是 Release 上 11.85 MB 的母版；需要换附件时用
-`gh issue comment 1 --repo newMalloc/SeriTerm --attach <文件>` 追加一条评论即可。
-
-README 里只放一行链接 + 一个播放器，体积这类细节不占首屏。Pages 只发布 `docs/` 目录，所以页面引用的图
-必须是 docs 里面的：界面截图用 `../images/main.png`，图标用 `../images/seriterm.png`
-（512px 派生图，由 `src/SeriTerm.App/Assets/seriterm.png` 缩出来）。
-
-## 在浏览器里看
-
-双击 `index.html` 即可播放（循环），也可以直接开上面那个 Pages 地址。加参数：
-
-- `index.html?t=23` —— 停在 23 秒那一帧
-- `index.html?static=1` —— 只渲染第 0 帧（截图脚本用这个）
-
-整个动画没有构建步骤、没有运行时依赖：两张图都在仓库里，页面直接引用。
-舞台固定 1920×1080，但会按窗口等比缩放并居中（`fit()`），所以在 1280×720 或手机窄屏上
-也能看全，只是上下或左右会留黑边；1920×1080 时缩放系数正好是 1，逐帧截图不受影响。
-
-## 画面结构
-
-时间轴写在 `index.html` 顶部的 `SCENES`（每段的起止秒），八段依次是：
-
-| 秒 | 内容 |
-|---|---|
-| 0–4.6 | 开场：图标、名字、一句话定位 |
-| 4.4–13.0 | 主界面巡览：实拍界面 + 聚光打点（端口设置 / 接收设置 / 查找 / AI 接入） |
-| 12.8–20.6 | 长跑不卡：日志滚动 + 20 万行 / 30 Hz / 异步写盘 |
-| 20.4–27.4 | 断帧：字节流被切成完整帧，三种断帧方式 |
-| 27.2–33.6 | 自动重连：断线、指数退避、恢复 |
-| 33.4–40.8 | 查找与收藏：Ctrl+F 打字、字符级高亮、关键字收藏 |
-| 40.6–49.8 | MCP：客户端 → 命名管道 → 工具清单 → 权限开关 → `[AI]` 审计行 |
-| 49.6–56.0 | 收尾：两个下载产物、仓库地址 |
-
-文案、配色（`:root` 里的变量）、动画节奏都在同一个文件里：各段画面是 `renderS1`…`renderS8`。
+首页播放器引用 [issue #1](https://github.com/newMalloc/SeriTerm/issues/1) 的附件。更新视频时可用 `gh issue comment 1 --attach <MP4>` 上传，并将评论中生成的附件地址替换到中英文 README。
 
 ## 重新出片
 
-需要 Node（脚本用 `playwright-core` 驱动本机 Edge，`@ffmpeg-installer/ffmpeg` 提供 ffmpeg）：
+`index.html` 中的 `scenes` 定义画面与时间轴。`shots/` 保存交互过程的界面截图，`../images/` 提供工作台截图和图标。双击 `index.html` 即可播放，也可用 `?t=23` 查看第 23 秒或用 `?static=1` 固定画面供脚本渲染。
+
+在 `docs/video` 下执行。逐帧截图需要 Node.js、pnpm 和本机 Edge，编码需要 PowerShell 7.4 或以上版本以及 ffmpeg。
 
 ```powershell
-cd docs/video
-pnpm install                                  # node_modules/ 已被 .gitignore 忽略
-node snap.mjs 7.0 16.0 37.5                   # 抽查这几秒，看图校对到 snap/
-node capture.mjs 0 56 30 frames 95            # 逐帧 1920x1080@30fps，约 90 秒
-pwsh -File build.ps1                          # 合成背景音 + 编码 out/*.mp4 + 抽封面
-node inline.mjs                               # 可选：图片内联成单文件 HTML
+pnpm install
+node snap.mjs 2 8 22 27 32
+node capture.mjs 0 34 30 frames 95
+pwsh -File build.ps1
 ```
 
-`check-single.mjs` / `probe.mjs` / `check-pages.mjs` 是排查用的：第一个校验内联成单文件的 HTML，
-第二个打印页面报错堆栈，第三个拿浏览器打开指定地址（默认线上 Pages），检查有没有 4xx 资源、
-舞台有没有超出视口：
-
-```powershell
-node check-pages.mjs                                        # 线上
-node check-pages.mjs "file:///$PWD/index.html?static=1" 1280 720   # 本地，指定窗口大小
-```
-
-## 背景音
-
-`music.mjs` 用代码合成 56 秒背景音（`out/theme.wav`），不引用任何现成素材，所以没有版权问题：
-120 BPM、Am7–Fmaj7–Cmaj7–G6 四小节一循环共 7 遍，铺底 pad + 低音 + 铃声 + 弱底鼓 + 气声踩镲，
-并在每个分段的起点（0 / 4.4 / 12.8 / 20.4 / 27.2 / 33.4 / 40.6 / 49.6 秒）叠一层噪声渐强做转场。
-`build.ps1` 会先跑它，再把音轨混进两个 mp4。想调风格就改 `music.mjs`：`KEYS` 是和弦与音区，
-`MASTER` 是整体电平（当前约 -17.6 LUFS，做背景音不抢戏），`BARS` 小节数。单独试听：
-
-```powershell
-node music.mjs out\theme.wav
-ffplay out\theme.wav
-```
-
+成片和封面输出到 `out/`。可运行 `node check-pages.mjs` 检查线上页面资源，或用 `node inline.mjs` 生成可离线播放的单文件 HTML。

@@ -1,4 +1,4 @@
-// 把 index.html 引用的两张图内联成 data URI，产出一个单文件 HTML（双击即可播放，不依赖仓库其它文件）。
+// 内联 index.html 的图标和界面截图，产出可离线播放的单文件 HTML。
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -6,18 +6,15 @@ const root = process.cwd();
 const out = path.join(root, 'out');
 fs.mkdirSync(out, { recursive: true });
 
-const URI = {
-  '../images/main.png': path.join(root, '..', 'images', 'main.png'),
-  '../images/seriterm.png': path.join(root, '..', 'images', 'seriterm.png'),
-};
-
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-for (const [ref, file] of Object.entries(URI)) {
-  const data = 'data:image/png;base64,' + fs.readFileSync(file).toString('base64');
-  const before = html.split(ref).length - 1;
-  html = html.split(ref).join(data);
-  console.log(`内联 ${path.basename(file)}：替换 ${before} 处`);
-}
+const images = new Map();
+html = html.replace(/(?:\.\.\/images\/|shots\/)[a-z0-9.-]+\.(png|webp)/g, (ref, type) => {
+  if (!images.has(ref)) {
+    const data = fs.readFileSync(path.join(root, ref)).toString('base64');
+    images.set(ref, 'data:image/' + type + ';base64,' + data);
+  }
+  return images.get(ref);
+});
 
 const target = path.join(out, 'seriterm-intro.html');
 fs.writeFileSync(target, html, 'utf8');

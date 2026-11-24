@@ -1,15 +1,15 @@
-// 生成动画的背景音（56 秒，48kHz 立体声 WAV）。全部是代码合成的，不涉及任何第三方素材。
+// 生成动画的背景音（34 秒，48kHz 立体声 WAV）。全部由代码合成。
 //
-// 音乐结构：120 BPM、4/4，一小节 2 秒，28 小节 = 56 秒。
-//   Am7 – Fmaj7 – Cmaj7 – G6 四小节一循环，共 7 遍。
+// 音乐结构：120 BPM、4/4，一小节 2 秒，17 小节。
+//   Am7 – Fmaj7 – Cmaj7 – G6 循环，最后回到 Am7。
 //   铺底 pad + 低音脉冲 + 八分音符铃声 + 弱底鼓 + 气声踩镲，转场处加噪声渐强（whoosh）。
 //
-// 用法：node music.mjs [输出路径]，默认 out/theme.wav
+// 用法：node music.mjs [输出路径 | --stdout]，默认 out/theme.wav。
 import fs from 'node:fs';
 import path from 'node:path';
 
 const SR = 48000;
-const DUR = 56.05;                 // 比正片略长，混流时按视频长度截断
+const DUR = 34.05;                 // 比正片略长，混流时按视频长度截断
 const N = Math.round(SR * DUR);
 const TAU = Math.PI * 2;
 const L = new Float32Array(N);
@@ -108,7 +108,7 @@ function hat(t0, amp) {
 
 /* ---------- 编曲 ---------- */
 const BAR = 2.0;
-const BARS = 28;
+const BARS = 17;
 const KEYS = [
   { bass: 110.00, pad: [220.00, 261.63, 329.63, 392.00], arp: [220.00, 329.63, 392.00, 523.25] }, // Am7
   { bass: 87.31,  pad: [174.61, 220.00, 261.63, 329.63], arp: [174.61, 261.63, 349.23, 440.00] }, // Fmaj7
@@ -139,7 +139,7 @@ for (let b = 0; b < BARS; b++) {
 }
 
 /* 转场气声：与动画的分段起点对齐 */
-for (const t of [0, 4.4, 12.8, 20.4, 27.2, 33.4, 40.6, 49.6]) swell(t - 0.45, 0.9, 0.075, 600, 3200);
+for (const t of [0, 5, 12, 18, 29]) swell(t - 0.45, 0.9, 0.075, 600, 3200);
 
 /* ---------- 混响：几个衰减的延迟拍（廉价但够用） ---------- */
 const taps = [[0.113, 0.30, -0.2], [0.197, 0.22, 0.25], [0.311, 0.15, -0.3], [0.471, 0.10, 0.35]];
@@ -187,7 +187,12 @@ for (let i = 0; i < N; i++) {
   buf.writeInt16LE((r * 32767) | 0, 46 + i * 4);
 }
 
-const out = path.resolve(process.argv[2] ?? 'out/theme.wav');
-fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, buf);
-console.log(`生成 ${out}：${DUR.toFixed(2)} 秒，${(bytes / 1048576).toFixed(1)} MB`);
+const target = process.argv[2] ?? 'out/theme.wav';
+if (target === '--stdout') {
+  process.stdout.write(buf);
+} else {
+  const out = path.resolve(target);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, buf);
+  console.log(`生成 ${out}：${DUR.toFixed(2)} 秒，${(bytes / 1048576).toFixed(1)} MB`);
+}

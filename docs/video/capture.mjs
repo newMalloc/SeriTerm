@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const start = Number(process.argv[2] ?? 0);
-const end = Number(process.argv[3] ?? 56);
+const end = Number(process.argv[3] ?? 34);
 const fps = Number(process.argv[4] ?? 30);
 const outDir = process.argv[5] ?? 'frames';
 const quality = Number(process.argv[6] ?? 95);
