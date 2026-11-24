@@ -6,11 +6,13 @@
 
 [English](README.en.md) | **简体中文**
 
-Windows 串口调试助手（C# / WPF / .NET）。在同一工作台收发串口数据、查找与保存日志。支持断线自动重连，内置本机 MCP 服务。
+**SeriTerm 是一款免安装的 Windows 串口调试助手。** 支持文本与 HEX 收发、实时日志查找与保存、断线自动重连。内置本机 MCP，AI 客户端可读取设备帧或等待指定关键字，默认只读。
 
 ## v1.2.3 界面演示
 
-https://github.com/user-attachments/assets/03ee7b8a-9bc7-4246-b3dd-78995feff3ab
+48 秒了解工作台、磨砂设置和 AI 接入。**0:31** 起演示如何配置 MCP 客户端、等待设备告警并获取上下文。
+
+https://github.com/user-attachments/assets/b2861fe2-41e7-43af-a481-493b5d544ba5
 
 [网页版](https://newmalloc.github.io/SeriTerm/video/) · [下载 1080p 视频](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
 

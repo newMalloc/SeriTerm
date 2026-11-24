@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SeriTerm 1.2.3 · 界面演示</title>
+<title>SeriTerm 1.2.3 · 产品介绍与演示</title>
 <link rel="icon" href="../images/seriterm.png">
 <style>
   * { box-sizing: border-box; }
@@ -20,11 +20,13 @@
     height: 1080px;
     overflow: hidden;
     transform-origin: top left;
-    background:
-      radial-gradient(ellipse at 84% 16%, #2b204f 0%, transparent 57%),
-      radial-gradient(ellipse at 35% 100%, #172f48 0%, transparent 58%),
-      #101522;
+    background: radial-gradient(ellipse at 82% 18%, #182641, transparent 60%), #0d111b;
   }
+  #stage[data-layout="intro"] {
+    background: radial-gradient(ellipse at 50% 25%, #18345a, transparent 52%),
+                radial-gradient(ellipse at 80% 100%, #182b41, transparent 58%), #0b101b;
+  }
+  #stage[data-layout="mcp"] { background: radial-gradient(ellipse at 26% 55%, #163449, transparent 65%), #0d111b; }
   .bar {
     position: absolute;
     inset: 0 84px auto;
@@ -38,7 +40,7 @@
   .identity { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 650; }
   .identity img { width: 50px; height: 50px; }
   .version { color: #ccd9f8; font: 21px Consolas, monospace; }
-  #story { position: absolute; left: 84px; top: 258px; width: 450px; }
+  #story { position: absolute; left: 84px; top: 295px; width: 426px; }
   #section { margin: 0 0 20px; color: #87c9ff; font-size: 25px; letter-spacing: .11em; }
   #headline {
     margin: 0 0 27px;
@@ -48,7 +50,6 @@
     letter-spacing: -.047em;
     white-space: pre-line;
   }
-  #story.hero #headline { font-size: 82px; }
   #detail { margin: 0; color: #c1cbe0; font-size: 27px; line-height: 1.55; white-space: pre-line; }
   #action { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-top: 28px; }
   kbd, .download {
@@ -81,6 +82,100 @@
     background: #10141e;
   }
   #demo img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #stage[data-layout="tour"] #story { top: 242px; width: 360px; }
+  #stage[data-layout="tour"] #demo { left: 457px; top: 129px; width: 1380px; height: 858px; }
+  #stage[data-layout="tour"] #detail { font-size: 24px; }
+  #tour-notes {
+    position: absolute;
+    top: 56%;
+    right: 3%;
+    width: 35%;
+    padding: 25px 30px 28px;
+    border: 1px solid #7386a64d;
+    border-radius: 16px;
+    background: #192539f5;
+    box-shadow: 0 18px 48px #0006;
+  }
+  #tour-notes span { display: block; color: #90ceff; font-size: 19px; }
+  #tour-notes strong { display: block; margin: 7px 0 10px; font-size: 34px; }
+  #tour-notes p { margin: 0; color: #d0e0f4; font-size: 22px; }
+  #overview, #mcp-stage { display: none; position: absolute; inset: 108px 84px 100px; }
+  #stage[data-layout="intro"] #overview, #stage[data-layout="mcp"] #mcp-stage { display: block; }
+  #stage:is([data-layout="intro"], [data-layout="mcp"]) :is(#story, #demo) { display: none; }
+  .overview-brand { position: absolute; inset: 34px 0 auto; text-align: center; }
+  .overview-emblem { position: relative; display: grid; place-items: center; width: 202px; height: 202px; margin: auto; }
+  .overview-emblem::before, .overview-emblem::after {
+    content: "";
+    position: absolute;
+    width: 153px;
+    height: 153px;
+    border-radius: 50%;
+    border: 1px solid #75bfff70;
+    transform: scale(var(--orbit, 1));
+  }
+  .overview-emblem::after { width: 190px; height: 190px; border-color: #75bfff38; }
+  .overview-emblem img { width: 176px; height: 176px; filter: drop-shadow(0 12px 20px #0006); }
+  .overview-brand h1 { margin: 3px 0 4px; font-size: 118px; line-height: 1.07; letter-spacing: -.046em; }
+  .overview-brand h1 span { color: #9cd4ff; }
+  .overview-brand p { margin: 14px 0 0; color: #d6e5f8; font-size: 38px; }
+  .overview-features {
+    position: absolute;
+    inset: 519px 68px auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    padding: 0;
+    list-style: none;
+  }
+  .overview-features li {
+    display: grid;
+    align-content: center;
+    gap: 8px;
+    min-height: 138px;
+    padding: 22px 26px;
+    border: 1px solid #b0d1fc30;
+    border-radius: 13px;
+    background: #1d2b41b8;
+  }
+  .overview-features li:last-child { border-color: #77bcff7d; background: #213d5c; }
+  .overview-features b { color: #f4f7ff; font-size: 30px; font-weight: 650; }
+  .overview-features span { color: #bdd0e7; font-size: 22px; }
+  .overview-platform { position: absolute; inset: 717px 0 auto; margin: 0; text-align: center; color: #b8cbe4; font-size: 23px; }
+  #mcp-stage h2 { margin: 38px 0 12px; font-size: 64px; font-weight: 700; letter-spacing: -.045em; }
+  .mcp-subtitle { margin: 0; color: #c7e2ef; font-size: 26px; }
+  .mcp-grid { display: grid; grid-template-columns: 720px 1fr; gap: 28px; margin-top: 44px; }
+  .mcp-app, .mcp-client {
+    min-height: 615px;
+    border: 1px solid #9dbfd74a;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #132231;
+  }
+  .mcp-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 27px;
+    border-bottom: 1px solid #92b9d733;
+    color: #e1edf5;
+    font-size: 23px;
+  }
+  .mcp-bar span { color: #a3e7dd; font-size: 20px; }
+  .mcp-app img { display: block; width: 638px; margin: 28px auto 20px; border-radius: 13px; }
+  .mcp-app p { margin: 0 30px 25px; color: #c3d9e9; font-size: 22px; line-height: 1.55; }
+  .mcp-client { position: relative; }
+  .mcp-step { padding: 31px 34px; }
+  .mcp-step h3 { margin: 0 0 14px; font-size: 43px; }
+  .mcp-step p { margin: 0 0 22px; color: #c8e0f0; font-size: 25px; line-height: 1.5; }
+  .mcp-step code, .mcp-step pre { font-family: Consolas, monospace; }
+  .client-list { display: flex; flex-wrap: wrap; gap: 12px; }
+  .client-list span { border: 1px solid #81b6d45c; padding: 10px 15px; border-radius: 7px; color: #dbeeff; font-size: 24px; }
+  .mcp-flow { margin-top: 27px; padding: 22px; border-radius: 9px; background: #1b3544; color: #c6f1f4; font-size: 25px; }
+  .mcp-step p.mcp-flow { margin-top: 18px; }
+  .mcp-code { margin: 0; padding: 24px; border-radius: 9px; background: #0d1722; color: #9ad6ff; line-height: 1.48; font-size: 27px; }
+  .mcp-log { margin: 22px 0; padding: 15px 21px; border-radius: 8px; background: #111d29; color: #deecf7; font: 23px/1.65 Consolas, monospace; }
+  .mcp-log mark { color: #ffe9b3; background: #745329; padding: 0 3px; border-radius: 3px; }
+  .mcp-state { color: #a3e7dd; font-size: 24px; }
   #marker {
     position: absolute;
     width: 40px;
@@ -131,11 +226,25 @@
 </style>
 </head>
 <body>
-<main id="stage" aria-label="SeriTerm 1.2.3 界面演示">
+<main id="stage" aria-label="SeriTerm 1.2.3 产品介绍与演示" data-layout="intro">
   <header class="bar">
     <div class="identity"><img src="../images/seriterm.png" alt="">SeriTerm</div>
     <div class="version">v1.2.3 &nbsp;·&nbsp; Windows</div>
   </header>
+  <section id="overview" aria-label="产品概览">
+    <div class="overview-brand">
+      <div class="overview-emblem"><img src="../images/seriterm.png" alt=""></div>
+      <h1>Seri<span>Term</span></h1>
+      <p>Windows 串口调试助手</p>
+    </div>
+    <ul class="overview-features">
+      <li><b>串口收发</b><span>文本 / HEX · 定时与文件发送</span></li>
+      <li><b>实时日志</b><span>搜索、暂停、保存与离线回放</span></li>
+      <li><b>断线自动重连</b><span>自动发现设备 · 连接预设</span></li>
+      <li><b>AI 接入 · MCP</b><span>读取设备帧 · 等待关键词</span></li>
+    </ul>
+    <p class="overview-platform">免安装单文件 &nbsp;·&nbsp; Windows x64 &nbsp;·&nbsp; MIT 开源</p>
+  </section>
   <div id="story">
     <p id="section"></p>
     <h1 id="headline"></h1>
@@ -146,20 +255,62 @@
     <img id="view" alt="SeriTerm 1.2.3 工作台">
     <img id="previous" alt="" aria-hidden="true">
     <span id="marker" aria-hidden="true"></span>
+    <div id="tour-notes" hidden>
+      <span>工作台巡览</span>
+      <strong id="tour-title"></strong>
+      <p id="tour-detail"></p>
+    </div>
   </div>
+  <section id="mcp-stage" aria-label="AI 接入演示">
+    <h2>让 AI 直接读取串口日志</h2>
+    <p class="mcp-subtitle">设备输出 → SeriTerm → 本机 MCP → AI 客户端</p>
+    <div class="mcp-grid">
+      <div class="mcp-app">
+        <div class="mcp-bar">SeriTerm · 左栏 <span>默认只读</span></div>
+        <img src="shots/mcp-panel.webp" alt="SeriTerm 的 AI 接入面板与复制客户端配置按钮">
+        <p>需要 AI 控制串口或发送数据时，在面板中手动授权。发送记录带 <code>[AI]</code> 标记。</p>
+      </div>
+      <div class="mcp-client">
+        <div class="mcp-bar">AI 客户端 <span>MCP · 示例</span></div>
+        <div class="mcp-step">
+          <h3>复制客户端配置</h3>
+          <p>把 SeriTerm 生成的配置填入客户端的 MCP 设置。</p>
+          <div class="client-list"><span>Claude Desktop</span><span>Cursor</span><span>VS Code</span></div>
+          <div class="mcp-flow">通过本机命名管道接入 · 限当前用户</div>
+        </div>
+        <div class="mcp-step" hidden>
+          <h3>等待设备输出 <code>TIMEOUT</code></h3>
+          <pre class="mcp-code">serial_wait_for_pattern
+{
+  "pattern": "TIMEOUT",
+  "context": 1,
+  "timeoutMs": 2500
+}</pre>
+          <p class="mcp-flow">等待新帧命中关键词</p>
+        </div>
+        <div class="mcp-step" hidden>
+          <h3>收到告警与上下文</h3>
+          <div class="mcp-state">匹配成功 · 返回 2 帧 &nbsp;·&nbsp; <code>nextCursor: 5</code></div>
+          <div class="mcp-log">[sens] seq=0050 &nbsp; temp=24.7 C<br>[warn] <mark>TIMEOUT</mark> waiting for sample #0051</div>
+          <p>按游标调用 <code>serial_read_frames</code> 还能继续读取后续设备帧。</p>
+        </div>
+      </div>
+    </div>
+  </section>
   <div class="footer">
-    <span>SeriTerm 界面演示 · 模拟串口数据</span>
+    <span>SeriTerm 产品演示 · 模拟串口数据</span>
     <span>github.com/newMalloc/SeriTerm</span>
   </div>
   <div id="phase-line" aria-hidden="true"><i></i></div>
 </main>
 <div id="controls" hidden>
   <button id="toggle" type="button">暂停</button>
-  <input id="progress" type="range" min="0" max="34" step=".05" value="0" aria-label="播放进度">
-  <output id="time">0:00 / 0:34</output>
+  <input id="progress" type="range" min="0" max="48" step=".05" value="0" aria-label="播放进度">
+  <output id="time">0:00 / 0:48</output>
+  <button id="fullscreen" type="button">全屏</button>
 </div>
 <script>
-  const duration = 34;
+  const duration = 48;
   const artwork = {
     dark: '../images/workspace-dark.png',
     light: '../images/workspace-light.png',
@@ -174,34 +325,47 @@
     glassDark: 'shots/glass-dark.webp',
     glassAdjusted: 'shots/glass-adjusted.webp',
     glassLight: 'shots/glass-light.webp',
+    mcp: 'shots/mcp-panel.webp',
   };
   const release = 'https://github.com/newMalloc/SeriTerm/releases/tag/v1.2.3';
   const scenes = [
     {
-      at: 0, label: 'Windows 串口工作台', title: '串口调试\n一屏完成',
-      detail: '连接、收发和记录，\n都在一个工作台里。', frames: [[0, 'dark']],
+      at: 0, layout: 'intro', frames: [[0, 'dark']],
     },
     {
-      at: 5, label: '接收与查找', title: '快速定位\n异常日志',
-      detail: '查找浮在右上角，\n保留接收区的完整高度。', keys: ['Ctrl', 'F'],
-      frames: [[0, 'dark'], [.8, 'searchOpen', 66, 362], [1.48, 'searchType'],
-        [1.82, 'searchMatch'], [4.3, 'searchNext', 1050, 111]],
+      at: 6, layout: 'tour', label: '串口工作台', title: '连接、收发\n和记录',
+      detail: '左侧管理设备，右侧查看日志。\n发送区默认只占一行。',
+      frames: [[0, 'dark', 155, 140], [2, 'dark', 500, 228], [4, 'dark', 1003, 623]],
+      tour: [
+        ['设备连接', '端口、波特率和连接预设'],
+        ['接收日志', '支持文本和 HEX 显示'],
+        ['紧凑发送区', '支持多行输入，按 Ctrl+Enter 发送'],
+      ],
     },
     {
-      at: 12, label: '暂停与继续', title: '暂停显示\n继续接收',
+      at: 12, label: '接收与查找', title: '定位异常',
+      detail: '搜索面板浮在右上角，\n命中位置直接在日志中高亮。', keys: ['Ctrl', 'F'],
+      frames: [[0, 'dark'], [.6, 'searchOpen', 66, 362], [1.18, 'searchType'],
+        [1.45, 'searchMatch'], [3.55, 'searchNext', 1050, 111]],
+    },
+    {
+      at: 17, label: '暂停与继续', title: '暂停显示\n继续接收',
       detail: '暂停时仍然接收数据，\n恢复后补齐这段日志。', keys: ['F6'],
       frames: [[0, 'dark'], [1, 'paused', 266, 259], [4.1, 'resumed', 266, 259]],
     },
     {
-      at: 18, label: '个性化', title: '磨砂玻璃\n深浅随心',
-      detail: '即时预览透明度和模糊程度。\n深色、浅色都能用。', keys: ['Ctrl', ','],
-      frames: [[0, 'dark'], [.7, 'settings', 943, 21], [2.05, 'appearance', 1034, 441],
-        [2.75, 'glassDark', 917, 222], [5.1, 'glassAdjusted', 963, 259],
-        [8, 'glassLight', 914, 140]],
+      at: 23, label: '个性化', title: '磨砂玻璃\n深浅可调',
+      detail: '透明度与模糊程度可独立调整，\n深色、浅色主题均支持。', keys: ['Ctrl', ','],
+      frames: [[0, 'settings', 943, 21], [.85, 'appearance', 1034, 441],
+        [1.65, 'glassDark', 917, 222], [3.85, 'glassAdjusted', 963, 259],
+        [5.9, 'glassLight', 914, 140]],
     },
     {
-      at: 29, label: '免费开源 · MIT', title: '开始使用\nSeriTerm',
-      detail: 'Windows 10 / 11 · x64\n下载后双击运行。', download: true,
+      at: 31, layout: 'mcp', frames: [[0, 'mcp'], [4, 'mcp'], [8, 'mcp']],
+    },
+    {
+      at: 43, label: 'MIT 开源', title: '下载 SeriTerm',
+      detail: 'Windows 10 / 11 · x64\n启动器与离线完整版', download: true,
       frames: [[0, 'light']],
     },
   ];
@@ -209,7 +373,6 @@
   const byId = id => document.getElementById(id);
   const stage = byId('stage');
   const story = byId('story');
-  const demo = byId('demo');
   const view = byId('view');
   const prior = byId('previous');
   const marker = byId('marker');
@@ -217,12 +380,19 @@
   const controls = byId('controls');
   const toggle = byId('toggle');
   const progress = byId('progress');
+  const fullscreen = byId('fullscreen');
+  const overviewEmblem = document.querySelector('.overview-emblem');
+  const overviewSubtitle = document.querySelector('.overview-brand p');
+  const overviewCards = document.querySelectorAll('.overview-features li');
+  const mcpSteps = document.querySelectorAll('.mcp-step');
+  const tourNotes = byId('tour-notes');
   const params = new URLSearchParams(location.search);
   const frozen = params.has('static') || params.has('t');
   let playing = !frozen && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   let time = 0;
   let lastTick;
   let currentScene;
+  let currentFrame;
 
   function layout() {
     const scale = Math.min(innerWidth / 1920, innerHeight / 1080);
@@ -234,10 +404,12 @@
   function showCaption(scene) {
     if (scene === currentScene) return;
     currentScene = scene;
-    story.classList.toggle('hero', scene.at === 0);
-    byId('section').textContent = scene.label;
-    byId('headline').textContent = scene.title;
-    byId('detail').textContent = scene.detail;
+    currentFrame = undefined;
+    stage.dataset.layout = scene.layout ?? 'detail';
+    byId('section').textContent = scene.label ?? '';
+    byId('headline').textContent = scene.title ?? '';
+    byId('detail').textContent = scene.detail ?? '';
+    tourNotes.hidden = !scene.tour;
     const action = byId('action');
     action.replaceChildren();
     for (const key of scene.keys ?? []) {
@@ -254,6 +426,19 @@
     }
   }
 
+  function showFrame(scene, index) {
+    if (currentFrame === index) return;
+    currentFrame = index;
+    if (scene.tour) {
+      const [title, detail] = scene.tour[index];
+      byId('tour-title').textContent = title;
+      byId('tour-detail').textContent = detail;
+    }
+    if (scene.layout === 'mcp') {
+      mcpSteps.forEach((step, i) => step.hidden = i !== index);
+    }
+  }
+
   function draw(value) {
     time = Math.max(0, Math.min(duration, value || 0));
     const scene = scenes.findLast(item => item.at <= time);
@@ -265,7 +450,8 @@
     const fade = shot === 'glassLight' ? .32 : .16;
     const previousOpacity = i > 0 ? Math.max(0, 1 - since / fade) : 0;
     showCaption(scene);
-    if (view.getAttribute('src') !== artwork[shot]) view.src = artwork[shot];
+    showFrame(scene, i);
+    if (scene.layout !== 'mcp' && view.getAttribute('src') !== artwork[shot]) view.src = artwork[shot];
     if (previousOpacity > 0) {
       const earlier = artwork[scene.frames[i - 1][1]];
       if (prior.getAttribute('src') !== earlier) prior.src = earlier;
@@ -279,11 +465,25 @@
     }
     story.style.transform = 'translateY(' + (1 - reveal) * 12 + 'px)';
     story.style.opacity = .42 + .58 * reveal;
-    const intro = scene.at === 0 ? Math.pow(Math.max(0, 1 - elapsed / 1.15), 3) : 0;
-    demo.style.transform = 'translateY(' + intro * 20 + 'px) scale(' + (1 - intro * .025) + ')';
+    if (scene.layout === 'intro') {
+      const pulse = Math.sin(Math.PI * Math.min(1, elapsed / 2.4));
+      overviewEmblem.style.setProperty('--orbit', 1 + .19 * pulse);
+      overviewSubtitle.style.opacity = .8 + .2 * Math.min(1, elapsed / .55);
+      overviewCards.forEach((card, index) => {
+        const enter = Math.min(1, Math.max(0, (elapsed - .24 * index) / .64));
+        card.style.transform = 'translateY(' + (1 - enter) * 16 + 'px)';
+        card.style.opacity = .57 + .43 * enter;
+      });
+    }
+    const panelReveal = 1 - Math.pow(1 - Math.min(1, since / .35), 3);
+    const panel = scene.layout === 'mcp' ? mcpSteps[i] : scene.tour ? tourNotes : null;
+    if (panel) {
+      panel.style.transform = 'translateY(' + (1 - panelReveal) * 12 + 'px)';
+      panel.style.opacity = .65 + .35 * panelReveal;
+    }
     fill.style.transform = 'scaleX(' + time / duration + ')';
     progress.value = time;
-    byId('time').value = '0:' + String(Math.floor(time)).padStart(2, '0') + ' / 0:34';
+    byId('time').value = '0:' + String(Math.floor(time)).padStart(2, '0') + ' / 0:' + duration;
     toggle.textContent = playing ? '暂停' : time >= duration ? '重播' : '播放';
   }
 
@@ -305,6 +505,15 @@
   progress.addEventListener('input', () => {
     playing = false;
     draw(Number(progress.value));
+  });
+  fullscreen.hidden = !document.fullscreenEnabled;
+  fullscreen.addEventListener('click', async () => {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    fullscreen.textContent = document.fullscreenElement ? '退出全屏' : '全屏';
+    layout();
   });
   addEventListener('resize', layout);
   layout();

@@ -26,7 +26,7 @@ if (box.w > box.vw + 1 || box.h > box.vh + 1 || box.x < -1 || box.y < -1) {
 }
 
 fs.mkdirSync('verify', { recursive: true });
-for (const t of [2.2, 27.5]) {
+for (const t of [2.2, 26, 40.5]) {
   await page.evaluate(ms => window.seek(ms), t * 1000);
   await page.screenshot({ path: path.join('verify', `pages-${vw}x${vh}-${t}.png`) });
 }

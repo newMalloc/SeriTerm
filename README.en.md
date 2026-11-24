@@ -6,11 +6,13 @@
 
 [简体中文](README.md) | **English**
 
-A Windows serial debugging tool (C# / WPF / .NET) for sending commands, receiving data, searching logs, and saving captures. It supports automatic reconnection and includes a local MCP server.
+**SeriTerm is a portable Windows serial debugging tool.** Send and receive text or HEX, search and save live logs, and reconnect automatically. AI clients can read frames or wait for a keyword over local MCP. Access is read-only by default.
 
 ## v1.2.3 interface demo
 
-https://github.com/user-attachments/assets/03ee7b8a-9bc7-4246-b3dd-78995feff3ab
+This 48-second demo covers the workspace, frosted glass, and AI access. From **0:31**, see how to configure an MCP client, wait for a device warning, and retrieve the matching frame with context.
+
+https://github.com/user-attachments/assets/b2861fe2-41e7-43af-a481-493b5d544ba5
 
 [Watch on the web](https://newmalloc.github.io/SeriTerm/video/) · [Download the 1080p video](https://github.com/newMalloc/SeriTerm/releases/download/v1.2.3/SeriTerm-1.2.3-intro-1080p.mp4)
 
