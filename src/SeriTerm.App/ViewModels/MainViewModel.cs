@@ -30,31 +30,22 @@ namespace SeriTerm.App.ViewModels;
 ///
 /// 线程模型（关键）：
 /// <list type="bullet">
-/// <item>串口读取线程只做三件事：累加计数、在 <c>_pipelineLock</c> 保护下把字节喂给 <see cref="ReceiveProcessor"/>、
-///       然后请求一次界面刷新；</item>
-/// <item>把管线产出的行搬到 <see cref="LogDocument"/> 有两条触发路径——数据一到就投递的
-///       <see cref="RequestFlush"/>（合并成一次），以及约 30 fps 的界面定时器兜底。
-///       为什么不能只靠后者：它跑在 <see cref="DispatcherPriority.Background"/> 上，
-///       排在所有输入、绑定、渲染之后，界面一忙回显就要等几百毫秒才出现在日志里
-///       （用户看到的"点发送后回显慢半拍"就是这个）；</item>
-/// <item>断帧的"最后一帧"由 <c>_gapFlush</c> 这个一次性定时器按时叫醒 FlushIdle 显示出来，
-///       同样不依赖 Background 定时器。</item>
+/// <item>串口读取线程累加计数、在 <c>_pipelineLock</c> 保护下断帧并排队，然后请求界面刷新。</item>
+/// <item>界面在输入之后分批取日志。定时器处理连续接收产生的积压、暂停后的回放和空闲断帧的尾帧。</item>
 /// </list>
 /// </summary>
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     /// <summary>界面刷新间隔（约 30 fps）。</summary>
     private static readonly TimeSpan UiRefreshInterval = TimeSpan.FromMilliseconds(33);
+    private static readonly TimeSpan MinimumLogRefreshInterval = TimeSpan.FromMilliseconds(25);
 
     /// <summary>暂停显示期间最多缓冲的行数，超出部分丢弃（避免内存无上限增长）。</summary>
     private const int MaxPausedBufferLines = 10_000;
 
-    /// <summary>
-    /// 一次界面刷新最多搬多少行（见 <see cref="FlushPendingLines"/>）。
-    /// 600 行 × 约 30 次/秒 = 约 1.8 万行/秒的排空能力，远超任何真实串口速率下的行速率；
-    /// 而单个回调最多压住界面线程 600 行的搬运时间，输入不会再被一次几万行的搬运挡住。
-    /// </summary>
+    // 同时限制行数和文字量，避免少数很长的行占住一次刷新。
     private const int MaxLinesPerFlush = 600;
+    private const int MaxCharactersPerFlush = 64 * 1024;
 
     /// <summary>断帧方式下拉项。</summary>
     private static readonly (FramingMode Value, string Display)[] FramingModeOptions =
@@ -76,9 +67,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private readonly object _pipelineLock = new();
     private readonly ReceiveProcessor _processor;
-    private readonly List<DisplayLine> _pendingLines = [];
+    private readonly Queue<DisplayLine> _pendingLines = new();
     private readonly List<DisplayLine> _scratch = [];
-    private readonly List<DisplayLine> _pausedBuffer = [];
+    private readonly Queue<DisplayLine> _pausedBuffer = new();
+    private int _pausedReformatCount;
 
     private readonly TimedSender _timedSender;
 
@@ -107,15 +99,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private readonly DispatcherTimer _uiTimer;
 
-    /// <summary>
-    /// 空闲断帧的收尾定时器（一次性）：数据到达后过"断帧间隔"再调一次 FlushIdle，
-    /// 把最后一帧吐出来。刻意用 DataBind 优先级——它排在输入与渲染之前，
-    /// 界面忙的时候也不会像 Background 那样被无限期推后。
-    /// </summary>
-    private readonly DispatcherTimer _gapFlush;
-
-    /// <summary>已经投递了一次界面刷新请求，避免每个数据块都投一次。</summary>
+    // 两个字段都由 _pipelineLock 保护。
     private bool _flushQueued;
+    private long _lastLineFlushTimestamp = Stopwatch.GetTimestamp() - Stopwatch.Frequency;
 
     public MainViewModel(
         ISerialTransport transport,
@@ -208,14 +194,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         };
         _uiTimer.Tick += (_, _) => OnUiRefresh();
         _uiTimer.Start();
-
-        // 断帧收尾：一次只叫醒一次，由 ScheduleGapFlush 按当前间隔重新起表
-        _gapFlush = new DispatcherTimer(DispatcherPriority.DataBind, _dispatcher);
-        _gapFlush.Tick += (_, _) =>
-        {
-            _gapFlush.Stop();
-            FlushPendingLines();
-        };
 
         State = _transport.State;
         StatusText = State.ToDisplayText();
@@ -770,6 +748,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         Log.Clear();
         PendingNewLines = 0;
         _pausedBuffer.Clear();
+        _pausedReformatCount = 0;
         _pausedBytes = 0;
         _pausedDroppedLines = 0;
         PausedHintText = string.Empty;
@@ -793,6 +772,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        // 在文件对话框开始处理消息之前，固定点击保存时屏幕上的内容。
+        var snapshot = Log.Lines.Select(line => (line.Timestamp, line.DirectionText, line.Text)).ToArray();
         var path = _fileDialogs.AskSaveFile(
             $"SeriTerm_{DateTime.Now:yyyyMMdd_HHmmss}.log",
             "文本日志 (*.log)|*.log|所有文件 (*.*)|*.*",
@@ -805,13 +786,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            var snapshot = Log.Lines.Select(line => (line.TimeText, line.DirectionText, line.Text)).ToArray();
             StatusDetail = $"正在保存 {snapshot.Length:N0} 行…";
             await Task.Run(async () =>
             {
                 await using var writer = new StreamWriter(path, append: false, new UTF8Encoding(true));
                 foreach (var line in snapshot)
-                    await writer.WriteLineAsync($"{line.TimeText} [{line.DirectionText}] {line.Text}").ConfigureAwait(false);
+                    await writer.WriteLineAsync($"{line.Timestamp:HH:mm:ss.fff} [{line.DirectionText}] {line.Text}").ConfigureAwait(false);
             }).ConfigureAwait(true);
 
             StatusDetail = $"已保存 {snapshot.Length:N0} 行到 {path}";
@@ -832,14 +812,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             PausedHintText = string.Empty;
 
             if (_pausedBuffer.Count > 0)
-            {
-                var buffered = _pausedBuffer.Count;
-                foreach (var line in _pausedBuffer) line.Text = _processor.Reformat(line);
-                AppendToLog([.. _pausedBuffer], record: false);
-                _pausedBuffer.Clear();
-                _pausedBytes = 0;
-                AddSystemLine($"已恢复显示（补显示暂停期间的 {buffered} 行）。");
-            }
+                AddSystemLine($"已恢复显示（补显示暂停期间的 {_pausedBuffer.Count} 行）。");
 
             return;
         }
@@ -1647,10 +1620,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         if (flushed is not null)
-        {
-            if (IsPaused) BufferWhilePaused(flushed);
-            else AppendToLog(flushed);
-        }
+            PresentLines(flushed);
 
         // 只有显示方式变化才需要重刷历史行；断帧参数变化不影响已有内容
         var reformatNeeded = options.HexDisplay != _appliedOptions.HexDisplay
@@ -1660,6 +1630,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (reformatNeeded)
         {
+            _pausedReformatCount = _pausedBuffer.Count;
             Log.Reformat(_processor.Reformat);
         }
     }
@@ -1833,13 +1804,22 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         // 这里在串口读取线程上：只做计数与入管线，绝不碰 UI
         Interlocked.Add(ref _rxBytes, e.Length);
 
+        bool queueFlush;
         lock (_pipelineLock)
         {
-            _processor.ProcessReceived(e.Data, e.Timestamp, DateTime.Now, _pendingLines);
+            _scratch.Clear();
+            _processor.ProcessReceived(e.Data, e.Timestamp, DateTime.Now, _scratch);
+            foreach (var line in _scratch)
+                _pendingLines.Enqueue(line);
+
+            queueFlush = !_disposed && !_flushQueued && _pendingLines.Count > 0
+                && Stopwatch.GetElapsedTime(_lastLineFlushTimestamp) >= MinimumLogRefreshInterval;
+            if (queueFlush)
+                _flushQueued = true;
         }
 
-        // 成帧了的行立刻请界面来取，而不是等下一个 Background 定时器
-        RequestFlush();
+        if (queueFlush)
+            _dispatcher.InvokeAsync(FlushReceivedLines, DispatcherPriority.Background);
     }
 
     private void OnTransportStateChanged(object? sender, TransportStateChangedEventArgs e)
@@ -1858,7 +1838,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 lock (_pipelineLock)
                 {
-                    _processor.FlushAll(DateTime.Now, _pendingLines);
+                    _scratch.Clear();
+                    _processor.FlushAll(DateTime.Now, _scratch);
+                    foreach (var line in _scratch)
+                        _pendingLines.Enqueue(line);
                     _processor.Reset();
                 }
                 FlushPendingLines();
@@ -1905,114 +1888,77 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---------- 界面刷新 ----------
 
-    /// <summary>
-    /// 数据一到就请求一次刷新。可能在串口读取线程上调用，所以只置标志 + 投递，
-    /// 真正的搬运在界面线程的 <see cref="FlushPendingLines"/> 里做。
-    ///
-    /// 合并的意义：1 Mbps 连续数据时每秒会有几十个数据块，逐块投递会把消息队列塞满；
-    /// 这里保证"已经排了一次队"就不再排，代价只有一次加锁。
-    /// </summary>
-    private void RequestFlush()
+    private void FlushReceivedLines()
     {
-        if (_disposed) return;
-        lock (_pipelineLock)
+        try
         {
-            if (_flushQueued)
-            {
-                return;
-            }
-
-            _flushQueued = true;
+            FlushPendingLines();
         }
-
-        if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+        finally
         {
-            return;
+            lock (_pipelineLock)
+                _flushQueued = false;
         }
-
-        // DataBind 而不是 Background：Background 排在输入与渲染之后，
-        // 用户连点或界面正在重绘时，回显行会被压到后面才显示出来。
-        _dispatcher.InvokeAsync(FlushPendingLines, DispatcherPriority.DataBind);
     }
 
-    /// <summary>
-    /// 把接收管线里已经成帧的行搬到日志，并安排断帧收尾。
-    /// 必须在界面线程调用；被 <see cref="RequestFlush"/> 与界面定时器共用，重复调用无副作用。
-    /// </summary>
+    /// <summary>在界面线程按批处理新日志或补显示暂停期间的日志。</summary>
     private void FlushPendingLines()
     {
         if (_disposed) return;
-        List<DisplayLine>? batch = null;
+        var replaying = !IsPaused && _pausedBuffer.Count > 0;
+        List<DisplayLine> batch;
 
         lock (_pipelineLock)
         {
-            _flushQueued = false;
+            var now = Stopwatch.GetTimestamp();
+            if (Stopwatch.GetElapsedTime(_lastLineFlushTimestamp, now) < MinimumLogRefreshInterval)
+                return;
 
-            _scratch.Clear();
-            _processor.FlushIdle(Stopwatch.GetTimestamp(), DateTime.Now, _scratch);
-
-            if (_scratch.Count > 0)
+            if (_processor.Options.Framing == FramingMode.Gap && _processor.PendingByteCount > 0)
             {
-                _pendingLines.AddRange(_scratch);
+                _scratch.Clear();
+                _processor.FlushIdle(now, DateTime.Now, _scratch);
+                foreach (var line in _scratch)
+                    _pendingLines.Enqueue(line);
             }
 
-            if (_pendingLines.Count > 0)
-            {
-                // 按块搬运，不要一次把整条积压搬完。
-                //
-                // 积压是"到达速率 > 界面搬运速率"造成的：原来这里 [.. _pendingLines] 会把积压全量
-                // 复制出来、再逐行走 Log.Append（每行一次集合通知 + 行容器生成 + 布局），
-                // 积压越多这一个回调就越久，点击与滚动被 DataBind 优先级压在后面：
-                // 实测 1 Mbps 连续数据下输入延迟 P95 能到 150 ms 以上（2026-10-08 基准）。
-                // 更糟的是它自我放大——回调期间新数据继续到达，下一轮积压更大。
-                // 切成定长块之后，单个回调的耗时有了上限；剩下的行不会丢，30 Hz 的界面定时器
-                // 与后续数据到达都会再触发本方法，把它排空。
-                var count = Math.Min(_pendingLines.Count, MaxLinesPerFlush);
-                batch = _pendingLines.GetRange(0, count);
+            var source = replaying ? _pausedBuffer : _pendingLines;
+            if (source.Count == 0) return;
 
-                if (count == _pendingLines.Count)
-                {
-                    _pendingLines.Clear();
-                }
-                else
-                {
-                    _pendingLines.RemoveRange(0, count);
-                }
-            }
+            batch = TakeLogBatch(source);
+            _lastLineFlushTimestamp = now;
         }
 
-        if (batch is not null)
+        if (replaying)
         {
-            if (IsPaused)
-            {
-                BufferWhilePaused(batch);
-            }
-            else
-            {
-                AppendToLog(batch);
-            }
-        }
+            foreach (var line in batch)
+                _pausedBytes -= line.ByteLength;
 
-        ScheduleGapFlush();
+            var reformatCount = Math.Min(_pausedReformatCount, batch.Count);
+            for (var i = 0; i < reformatCount; i++)
+                batch[i].Text = _processor.Reformat(batch[i]);
+            _pausedReformatCount -= reformatCount;
+            AppendToLog(batch);
+        }
+        else
+        {
+            PresentLines(batch);
+        }
     }
 
-    /// <summary>
-    /// 空闲间隔断帧时，"最后一帧"要等间隔到了才能确定已经收完。
-    /// 用一次性定时器按当前间隔把它叫醒，而不是靠 30 fps 的 Background 定时器捎带
-    /// ——后者在界面忙时会晚上百毫秒，回显看起来就是"卡一下才出来"。
-    /// </summary>
-    private void ScheduleGapFlush()
+    private static List<DisplayLine> TakeLogBatch(Queue<DisplayLine> source)
     {
-        _gapFlush.Stop();
-
-        if (_disposed || _processor.Options.Framing != FramingMode.Gap || _processor.PendingByteCount == 0)
+        var batch = new List<DisplayLine>(Math.Min(source.Count, MaxLinesPerFlush));
+        var characters = 0;
+        while (batch.Count < MaxLinesPerFlush && source.TryPeek(out var line))
         {
-            return;
+            // 包含时间戳与换行，过长的单行也要能单独取出。
+            var length = line.Text.Length + 20;
+            if (batch.Count > 0 && length > MaxCharactersPerFlush - characters) break;
+            characters += length;
+            batch.Add(source.Dequeue());
         }
-
-        _gapFlush.Interval = TimeSpan.FromMilliseconds(
-            Math.Clamp(_processor.Options.AutoFrameGapMilliseconds, 1, 2000));
-        _gapFlush.Start();
+        return batch;
     }
 
     private void OnUiRefresh()
@@ -2041,14 +1987,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void AppendToLog(List<DisplayLine> lines, bool record = true)
+    private void AppendToLog(List<DisplayLine> lines)
     {
-        if (lines.Count == 0)
-        {
-            return;
-        }
-
-        if (record) RecordLines(lines);
         Log.Append(lines);
 
         if (!AutoScroll)
@@ -2057,23 +1997,30 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void BufferWhilePaused(List<DisplayLine> lines)
+    private void PresentLines(List<DisplayLine> lines)
     {
-        // Persist immediately, even if the bounded display buffer later evicts data.
+        if (lines.Count == 0) return;
+
         RecordLines(lines);
-
-        _pausedBuffer.AddRange(lines);
-        _pausedBytes += lines.Sum(line => (long)line.ByteLength);
-
-        var overflow = 0;
-        while (_pausedBuffer.Count - overflow > MaxPausedBufferLines || _pausedBytes > 16L * 1024 * 1024)
+        if (!IsPaused && _pausedBuffer.Count == 0)
         {
-            _pausedBytes -= _pausedBuffer[overflow++].ByteLength;
+            AppendToLog(lines);
+            return;
         }
-        if (overflow > 0)
+
+        foreach (var line in lines)
         {
-            _pausedBuffer.RemoveRange(0, overflow);
-            _pausedDroppedLines += overflow;
+            _pausedBuffer.Enqueue(line);
+            _pausedBytes += line.ByteLength;
+        }
+
+        if (!IsPaused) return;
+
+        while (_pausedBuffer.Count > MaxPausedBufferLines || _pausedBytes > 16L * 1024 * 1024)
+        {
+            _pausedBytes -= _pausedBuffer.Dequeue().ByteLength;
+            if (_pausedReformatCount > 0) _pausedReformatCount--;
+            _pausedDroppedLines++;
         }
 
         PausedHintText = $"已暂停显示 · {_pausedBuffer.Count:N0} 行待显示"
@@ -2102,14 +2049,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             _processor.ProcessTransmitted(payload, sentAt, lines);
         }
 
-        if (IsPaused)
-        {
-            BufferWhilePaused(lines);
-        }
-        else
-        {
-            AppendToLog(lines);
-        }
+        PresentLines(lines);
     }
 
     private void AddSystemLine(string message)
@@ -2127,14 +2067,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             _processor.ProcessSystem(message, DateTime.Now, lines);
         }
 
-        if (IsPaused)
-        {
-            BufferWhilePaused(lines);
-        }
-        else
-        {
-            AppendToLog(lines);
-        }
+        PresentLines(lines);
     }
 
     public async ValueTask DisposeAsync()
@@ -2143,7 +2076,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _disposed = true;
         _portRefreshTimer.Stop();
         _uiTimer.Stop();
-        _gapFlush.Stop();
         _receiveOptionsDebounce.Stop();
         _baudRateDebounce.Stop();
         _sendFileCts?.Cancel();
@@ -2169,8 +2101,10 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         List<DisplayLine> finalLines;
         lock (_pipelineLock)
         {
-            _processor.FlushAll(DateTime.Now, _pendingLines);
+            _scratch.Clear();
+            _processor.FlushAll(DateTime.Now, _scratch);
             finalLines = [.. _pendingLines];
+            finalLines.AddRange(_scratch);
             _pendingLines.Clear();
         }
         RecordLines(finalLines);

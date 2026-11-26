@@ -24,6 +24,9 @@ public partial class LogView : UserControl
     // A serial record can contain multiple physical text lines.
     private readonly List<int> _recordStarts = [];
     private MainViewModel? _viewModel;
+    private DisplayLine? _highlightedMatch;
+    private string _highlightQuery = string.Empty;
+    private bool _highlightCaseSensitive;
     private bool _followQueued;
     private bool _programmaticScroll;
     private ScrollBar? _dragBar;
@@ -100,6 +103,7 @@ public partial class LogView : UserControl
             viewModel.ScrollToEndRequested += OnScrollToEndRequested;
         }
 
+        OnSearchChanged(this, EventArgs.Empty);
         UpdateText(new(0, IsReset: true));
     }
 
@@ -170,7 +174,22 @@ public partial class LogView : UserControl
         }
     }
 
-    private void OnSearchChanged(object? sender, EventArgs e) => LogText.TextArea.TextView.Redraw();
+    private void OnSearchChanged(object? sender, EventArgs e)
+    {
+        var model = _viewModel;
+        var query = model?.SearchText ?? string.Empty;
+        var caseSensitive = model?.SearchCaseSensitive ?? false;
+        var index = model?.Log.CurrentMatchIndex ?? -1;
+        var currentMatch = model is not null && index >= 0 ? model.Log.Matches[index] : null;
+        // 追加已匹配的新行会由文本控件自行重画，只在查询或当前命中变化时重画旧行。
+        if (_highlightQuery == query && _highlightCaseSensitive == caseSensitive && _highlightedMatch == currentMatch)
+            return;
+
+        _highlightQuery = query;
+        _highlightCaseSensitive = caseSensitive;
+        _highlightedMatch = currentMatch;
+        LogText.TextArea.TextView.Redraw();
+    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -336,6 +355,9 @@ public partial class LogView : UserControl
 
     private sealed class LogColorizer(LogView view) : DocumentColorizingTransformer
     {
+        // 每段高亮都会拆分渲染元素。密集命中时限制单行的拆分次数，搜索仍匹配完整记录。
+        private const int MaxHighlightRangesPerLine = 128;
+
         protected override void ColorizeLine(DocumentLine line)
         {
             if (view._viewModel is not { } model || line.Length == 0 || view._recordStarts.Count == 0)
@@ -365,13 +387,16 @@ public partial class LogView : UserControl
             var comparison = SearchMatchFinder.Comparison(model.SearchCaseSensitive);
             var start = Math.Max(0, contentStart - textStart - query.Length + 1);
             var end = Math.Min(record.Text.Length, line.EndOffset - textStart + query.Length - 1);
-            while (start <= end - query.Length)
+            for (var ranges = 0; ranges < MaxHighlightRangesPerLine && start <= end - query.Length; ranges++)
             {
                 var hit = record.Text.IndexOf(query, start, end - start, comparison);
                 if (hit < 0)
                     break;
 
                 start = hit + query.Length;
+                while (start <= end - query.Length && record.Text.AsSpan(start, query.Length).Equals(query.AsSpan(), comparison))
+                    start += query.Length;
+
                 var from = Math.Max(contentStart, textStart + hit);
                 var to = Math.Min(line.EndOffset, textStart + start);
                 if (from < to)

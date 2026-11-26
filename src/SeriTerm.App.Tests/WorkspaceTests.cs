@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Windows.Threading;
 using SeriTerm.Core.Framing;
 using SeriTerm.Core.Logging;
 using SeriTerm.Core.Mcp;
@@ -46,7 +47,13 @@ public sealed class WorkspaceTests
         Assert.NotNull(livePath);
         Assert.Single(RawLogReader.ReadFile(livePath!));
         var before = (await ReadJournal(h)).TotalFrames;
+        var replayed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Vm.Log.ContentChanged += (_, _) =>
+        {
+            if (h.Vm.Log.Lines.Any(l => l.Direction == LineDirection.Rx)) replayed.TrySetResult();
+        };
         h.Vm.TogglePauseCommand.Execute(null);
+        await replayed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Single(h.Vm.Log.Lines.Where(l => l.Direction == LineDirection.Rx));
         // Resume adds one system line, but must not append the received frame again.
         Assert.Equal(before + 1, (await ReadJournal(h)).TotalFrames);
@@ -54,6 +61,87 @@ public sealed class WorkspaceTests
         var records = RawLogReader.ReadFile(Directory.GetFiles(h.DirectoryPath, "*.bin").Single());
         Assert.Single(records);
         Assert.Equal("paused-frame", Encoding.UTF8.GetString(records[0].Payload));
+    });
+
+    [Fact]
+    public Task ReceiveBurstYieldsToPauseAndSave() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        h.Vm.SelectedFraming = h.Vm.FramingOptions.Single(x => x.Value == FramingMode.Delimiter);
+        h.Vm.Log.Append([new DisplayLine(0, DateTime.Now, LineDirection.Rx, [0x41], "already visible")]);
+        h.Dialogs.SavePath = Path.Combine(h.DirectoryPath, "burst.log");
+
+        const int frameCount = 1600;
+        var frames = Enumerable.Range(0, frameCount).Select(i => $"frame {i:D4}").ToArray();
+        var dispatcher = Dispatcher.CurrentDispatcher;
+
+        // Queue a receive update first, as if bytes arrived just before the user clicked Pause.
+        h.Transport.Receive(Encoding.UTF8.GetBytes(string.Join("\r\n", frames) + "\r\n"));
+        await dispatcher.InvokeAsync(() =>
+        {
+            h.Vm.TogglePauseCommand.Execute(null);
+            Assert.True(h.Vm.IsPaused);
+            Assert.Equal("already visible", Assert.Single(h.Vm.Log.Lines).Text);
+        }, DispatcherPriority.Input);
+
+        h.Transport.Receive("while paused\r\n"u8.ToArray());
+        var saving = await dispatcher.InvokeAsync(() => h.Vm.SaveLogCommand.ExecuteAsync(null), DispatcherPriority.Input);
+        await saving;
+        var saved = Assert.Single(await File.ReadAllLinesAsync(h.Dialogs.SavePath));
+        Assert.EndsWith("[Rx] already visible", saved);
+
+        var buffered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var expectedHint = $"{frameCount + 1:N0} 行待显示";
+        void CheckBuffered()
+        {
+            if (h.Vm.PausedHintText.Contains(expectedHint, StringComparison.Ordinal)) buffered.TrySetResult();
+        }
+        h.Vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(h.Vm.PausedHintText)) CheckBuffered();
+        };
+        CheckBuffered();
+        await buffered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Single(h.Vm.Log.Lines);
+
+        var caughtUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Vm.Log.ContentChanged += (_, _) =>
+        {
+            if (h.Vm.Log.Lines.LastOrDefault()?.Text == "after resume") caughtUp.TrySetResult();
+        };
+        h.Vm.TogglePauseCommand.Execute(null);
+        Assert.Single(h.Vm.Log.Lines);
+        h.Transport.Receive("after resume\r\n"u8.ToArray());
+        await caughtUp.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { "already visible" }.Concat(frames).Concat(["while paused", "after resume"]),
+            h.Vm.Log.Lines.Where(l => l.Direction == LineDirection.Rx).Select(l => l.Text));
+        Assert.Empty(h.Notifier.Errors);
+    });
+
+    [Fact]
+    public Task ResumingLongFramesPreservesUtf8AcrossChunks() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        h.Vm.TogglePauseCommand.Execute(null);
+        var payload = new string('A', DelimiterFrameSplitter.DefaultMaxPendingBytes - 1) + "中end";
+        h.Transport.Receive(Encoding.UTF8.GetBytes(payload));
+        var buffered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(h.Vm.PausedHintText)
+                && h.Vm.PausedHintText.Contains("2 行待显示", StringComparison.Ordinal))
+                buffered.TrySetResult();
+        };
+        await buffered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        h.Vm.TogglePauseCommand.Execute(null);
+        var replayed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Vm.Log.ContentChanged += (_, _) =>
+        {
+            if (h.Vm.Log.Lines.Count(line => line.Direction == LineDirection.Rx) == 2)
+                replayed.TrySetResult();
+        };
+        await replayed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(payload, string.Concat(h.Vm.Log.Lines.Where(line => line.Direction == LineDirection.Rx).Select(line => line.Text)));
     });
 
     [Fact]

@@ -6,7 +6,7 @@ namespace SeriTerm.Core.Framing;
 /// 分隔符断帧：遇到分隔符（如 CRLF）就切出一帧。
 ///
 /// 与空闲断帧的区别：分隔符断帧**不依赖时间**，报文间隔多长都能正确切分，
-/// 代价是数据里没有分隔符时不会显示（直到缓冲区到上限强制成帧）。
+/// 数据不足一帧时会等待分隔符，长数据流会分段输出。
 ///
 /// 约定：
 /// <list type="bullet">
@@ -16,13 +16,14 @@ namespace SeriTerm.Core.Framing;
 /// </summary>
 public sealed class DelimiterFrameSplitter : IFrameSplitter
 {
-    /// <summary>挂起数据上限：超过就强制成帧，避免设备一直不发分隔符导致内存无限增长。</summary>
-    public const int DefaultMaxPendingBytes = 1024 * 1024;
+    /// <summary>单帧载荷上限。超长载荷分段，最后一段仍保留原始分隔符。</summary>
+    public const int DefaultMaxPendingBytes = RawFrame.MaxReceivePayloadBytes;
 
     private readonly List<byte> _pending = [];
     private readonly byte[] _delimiter;
 
     private long _startTimestamp;
+    private int _searchStart;
 
     public DelimiterFrameSplitter(byte[] delimiter, int maxPendingBytes = DefaultMaxPendingBytes)
     {
@@ -33,7 +34,7 @@ public sealed class DelimiterFrameSplitter : IFrameSplitter
             throw new ArgumentException("分隔符不能为空。", nameof(delimiter));
         }
 
-        ArgumentOutOfRangeException.ThrowIfLessThan(maxPendingBytes, delimiter.Length);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPendingBytes);
 
         _delimiter = delimiter;
         MaxPendingBytes = maxPendingBytes;
@@ -61,116 +62,73 @@ public sealed class DelimiterFrameSplitter : IFrameSplitter
         }
 
         _pending.AddRange(data);
-        Drain(output);
-
-        // 一直等不到分隔符：强制成帧，保证内存有上限、数据也不会被无限期压住
-        if (_pending.Count >= MaxPendingBytes)
-        {
-            Flush(output);
-        }
+        Drain(timestamp, output);
     }
 
     public void FlushIdle(long now, List<RawFrame> output)
     {
         ArgumentNullException.ThrowIfNull(output);
-
-        if (_pending.Count >= MaxPendingBytes)
-        {
-            Flush(output);
-        }
     }
 
     public void FlushAll(List<RawFrame> output)
     {
         ArgumentNullException.ThrowIfNull(output);
-        Flush(output);
+        var pending = CollectionsMarshal.AsSpan(_pending);
+        var consumed = 0;
+        EmitFullChunks(pending, ref consumed, pending.Length, _startTimestamp, output);
+        if (consumed < pending.Length)
+            output.Add(new RawFrame(_startTimestamp, pending[consumed..].ToArray()));
+        Reset();
     }
 
     public void Reset()
     {
         _pending.Clear();
         _startTimestamp = 0;
+        _searchStart = 0;
     }
 
-    private void Drain(List<RawFrame> output)
+    private void Drain(long timestamp, List<RawFrame> output)
     {
         var pending = CollectionsMarshal.AsSpan(_pending);
         var consumed = 0;
+        var searchStart = _searchStart;
 
         while (true)
         {
-            var index = IndexOf(pending, _delimiter, consumed);
-
-            if (index < 0)
+            var match = pending[searchStart..].IndexOf(_delimiter);
+            if (match < 0)
             {
+                // 只重扫可能组成分隔符的尾部，保留最后一段载荷以便附上后续分隔符。
+                searchStart = Math.Max(searchStart, pending.Length - _delimiter.Length + 1);
+                EmitFullChunks(pending, ref consumed, searchStart, timestamp, output);
                 break;
             }
 
-            var frameLength = index + _delimiter.Length;
-            var payloadLength = index - consumed;
+            var delimiterStart = searchStart + match;
+            var frameEnd = delimiterStart + _delimiter.Length;
+            EmitFullChunks(pending, ref consumed, delimiterStart, timestamp, output);
 
             // 两个分隔符之间什么都没有 => 空帧，丢弃
-            if (payloadLength > 0)
-            {
-                var frameData = pending[consumed..frameLength].ToArray();
-                output.Add(new RawFrame(_startTimestamp, frameData, payloadLength));
-            }
+            if (delimiterStart > consumed)
+                output.Add(new RawFrame(_startTimestamp, pending[consumed..frameEnd].ToArray(), delimiterStart - consumed));
 
-            consumed = frameLength;
+            consumed = searchStart = frameEnd;
+            _startTimestamp = timestamp;
         }
 
+        _searchStart = searchStart - consumed;
         if (consumed > 0)
-        {
             _pending.RemoveRange(0, consumed);
-        }
     }
 
-    private void Flush(List<RawFrame> output)
+    private void EmitFullChunks(ReadOnlySpan<byte> pending, ref int consumed, int payloadEnd, long timestamp, List<RawFrame> output)
     {
-        if (_pending.Count == 0)
+        while (payloadEnd - consumed > MaxPendingBytes)
         {
-            return;
+            output.Add(new RawFrame(_startTimestamp, pending.Slice(consumed, MaxPendingBytes).ToArray()));
+            consumed += MaxPendingBytes;
+            _startTimestamp = timestamp;
         }
-
-        output.Add(new RawFrame(_startTimestamp, [.. _pending]));
-        _pending.Clear();
-    }
-
-    /// <summary>在 <paramref name="haystack"/> 中从 <paramref name="start"/> 起查找 <paramref name="needle"/>。</summary>
-    private static int IndexOf(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle, int start)
-    {
-        if (needle.Length == 0 || haystack.Length - start < needle.Length)
-        {
-            return -1;
-        }
-
-        var first = needle[0];
-        var limit = haystack.Length - needle.Length;
-
-        for (var i = start; i <= limit; i++)
-        {
-            if (haystack[i] != first)
-            {
-                continue;
-            }
-
-            var matched = true;
-
-            for (var j = 1; j < needle.Length; j++)
-            {
-                if (haystack[i + j] != needle[j])
-                {
-                    matched = false;
-                    break;
-                }
-            }
-
-            if (matched)
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 }

@@ -246,6 +246,61 @@ public sealed class LayoutTests
         log.DataContext = null;
     });
 
+    [Theory]
+    [InlineData(FramingMode.Delimiter, false)]
+    [InlineData(FramingMode.Gap, false)]
+    [InlineData(FramingMode.None, true)]
+    public Task BinaryBurstKeepsLogResponsiveWithSearchOpen(FramingMode framing, bool hex) => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var vm = h.Vm;
+        vm.SelectedFraming = vm.FramingOptions.Single(option => option.Value == framing);
+        vm.HexDisplay = hex;
+        vm.LineWrap = !hex;
+        vm.OpenSearchCommand.Execute(null);
+        vm.SearchText = hex ? "FF" : "\uFFFD";
+        var log = new LogView { DataContext = vm };
+        var editor = (TextEditor)log.FindName("LogText");
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const int blockSize = 64 * 1024;
+        const int burstSize = 16 * blockSize;
+        var expectedBytes = burstSize + (framing == FramingMode.Delimiter ? 2 : 0);
+        var block = new byte[blockSize];
+        Array.Fill(block, (byte)0xFF);
+        var bytesDisplayed = 0;
+        vm.Log.ContentChanged += (_, _) =>
+        {
+            bytesDisplayed = vm.Log.Lines.Where(line => line.Direction == LineDirection.Rx).Sum(line => line.ByteLength);
+            if (bytesDisplayed >= expectedBytes) ready.TrySetResult();
+        };
+
+        await Task.Run(() =>
+        {
+            for (var offset = 0; offset < burstSize; offset += blockSize)
+                h.Transport.Receive(block);
+            if (framing == FramingMode.Delimiter) h.Transport.Receive("\r\n"u8.ToArray());
+        });
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(expectedBytes, bytesDisplayed);
+        Assert.All(editor.Document.Lines, line => Assert.InRange(line.Length, 0, 6200));
+        log.Measure(new Size(1100, 690));
+        log.Arrange(new Rect(0, 0, 1100, 690));
+        await UiThread.Drain();
+        log.UpdateLayout();
+        Assert.NotEmpty(editor.TextArea.TextView.VisualLines);
+
+        h.Dialogs.SavePath = Path.Combine(h.DirectoryPath, "binary-burst.log");
+        vm.TogglePauseCommand.Execute(null);
+        var before = editor.Document.TextLength;
+        h.Transport.Receive(block);
+        await vm.SaveLogCommand.ExecuteAsync(null);
+        Assert.True(vm.IsPaused);
+        Assert.Equal(before, editor.Document.TextLength);
+        Assert.True(File.Exists(h.Dialogs.SavePath));
+        Assert.Empty(h.Notifier.Errors);
+        log.DataContext = null;
+    });
+
     [Fact]
     public Task WindowClosesOnceWhenCleanupFinishesSynchronously() => UiThread.Run(async () =>
     {

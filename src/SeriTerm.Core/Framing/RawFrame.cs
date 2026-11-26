@@ -21,6 +21,9 @@ public enum FramingMode
 /// </summary>
 public readonly record struct RawFrame(long StartTimestamp, byte[] Data, int DisplayLength)
 {
+    // HEX 显示会把每个字节扩展成约三个字符，限制帧大小能避免超长行卡住排版。
+    internal const int MaxReceivePayloadBytes = 2048;
+
     public RawFrame(long startTimestamp, byte[] data)
         : this(startTimestamp, data, data.Length)
     {

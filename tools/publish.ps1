@@ -165,6 +165,7 @@ function New-Bootstrapper {
             '-r', $Runtime,
             '--self-contained=false',
             '-p:PublishSingleFile=true',
+            '-p:IncludeNativeLibrariesForSelfExtract=true',
             '-p:DebugType=none',
             '-p:GenerateDocumentationFile=false',
             '-o', $payloadDir
@@ -233,6 +234,7 @@ if ($wantFrameworkDependent) {
         '-r', $Runtime,
         '--self-contained=false',
         '-p:PublishSingleFile=true',
+        '-p:IncludeNativeLibrariesForSelfExtract=true',
         '-p:DebugType=none',
         '-p:GenerateDocumentationFile=false'
     ) | Out-Null

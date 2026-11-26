@@ -139,7 +139,10 @@ internal static class Program
             startInfo.Environment["DOTNET_ROOT"] = overrideRoot;
         }
 
-        var child = Process.Start(startInfo);
+        if (!wait && ShellProcessLauncher.TryStartWithShellIdentity(startInfo))
+            return;
+
+        using var child = Process.Start(startInfo);
 
         if (!wait || child is null)
         {

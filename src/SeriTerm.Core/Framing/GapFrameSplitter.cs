@@ -18,7 +18,6 @@ public sealed class GapFrameSplitter : IFrameSplitter
 
     private long _startTimestamp;
     private long _lastTimestamp;
-    private bool _hasPending;
 
     public GapFrameSplitter(TimeSpan gap)
     {
@@ -46,18 +45,23 @@ public sealed class GapFrameSplitter : IFrameSplitter
         }
 
         // 与上一块的间隔达到阈值 => 上一帧结束
-        if (_hasPending && timestamp - _lastTimestamp >= _gapTicks)
+        if (_pending.Count > 0 && timestamp - _lastTimestamp >= _gapTicks)
         {
             Flush(output);
         }
 
-        if (!_hasPending)
+        while (!data.IsEmpty)
         {
-            _startTimestamp = timestamp;
-            _hasPending = true;
+            if (_pending.Count == 0)
+                _startTimestamp = timestamp;
+
+            var length = Math.Min(data.Length, RawFrame.MaxReceivePayloadBytes - _pending.Count);
+            _pending.AddRange(data[..length]);
+            data = data[length..];
+            if (_pending.Count == RawFrame.MaxReceivePayloadBytes)
+                Flush(output);
         }
 
-        _pending.AddRange(data);
         _lastTimestamp = timestamp;
     }
 
@@ -65,7 +69,7 @@ public sealed class GapFrameSplitter : IFrameSplitter
     {
         ArgumentNullException.ThrowIfNull(output);
 
-        if (_hasPending && now - _lastTimestamp >= _gapTicks)
+        if (_pending.Count > 0 && now - _lastTimestamp >= _gapTicks)
         {
             Flush(output);
         }
@@ -80,7 +84,6 @@ public sealed class GapFrameSplitter : IFrameSplitter
     public void Reset()
     {
         _pending.Clear();
-        _hasPending = false;
         _startTimestamp = 0;
         _lastTimestamp = 0;
     }
@@ -93,6 +96,5 @@ public sealed class GapFrameSplitter : IFrameSplitter
         }
 
         _pending.Clear();
-        _hasPending = false;
     }
 }

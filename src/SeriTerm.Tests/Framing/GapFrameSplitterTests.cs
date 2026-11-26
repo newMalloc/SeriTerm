@@ -133,6 +133,25 @@ public class GapFrameSplitterTests
     }
 
     [Fact]
+    public void 连续数据达到上限就分段而无需等待空闲()
+    {
+        var splitter = CreateSplitter();
+        var data = new byte[DelimiterFrameSplitter.DefaultMaxPendingBytes * 3 + 1];
+        new Random(42).NextBytes(data);
+        var output = new List<RawFrame>();
+        splitter.Append(data.AsSpan(0, 10), Ticks(5), output);
+        splitter.Append(data.AsSpan(10), Ticks(6), output);
+
+        Assert.Equal(3, output.Count);
+        Assert.All(output, frame => Assert.Equal(DelimiterFrameSplitter.DefaultMaxPendingBytes, frame.DisplayLength));
+        Assert.Equal(Ticks(5), output[0].StartTimestamp);
+        Assert.Equal(Ticks(6), output[1].StartTimestamp);
+        Assert.Equal(1, splitter.PendingByteCount);
+        splitter.FlushIdle(Ticks(6 + GapMs), output);
+        Assert.Equal(data, output.SelectMany(frame => frame.Data).ToArray());
+    }
+
+    [Fact]
     public void 非法间隔_应抛出异常()
         => Assert.Throws<ArgumentOutOfRangeException>(() => new GapFrameSplitter(TimeSpan.Zero));
 }

@@ -111,15 +111,37 @@ public class DelimiterFrameSplitterTests
     }
 
     [Fact]
-    public void 超过挂起上限应强制成帧()
+    public void 超长数据按上限分段且保留跨块分隔符()
     {
         var splitter = new DelimiterFrameSplitter(Crlf, maxPendingBytes: 8);
 
-        var frames = Append(splitter, "0123456789"u8.ToArray());
+        var frames = Append(splitter, "01234567890123456789\r"u8.ToArray(), 1);
 
-        Assert.Single(frames);
-        Assert.Equal(10, frames[0].DisplayLength);
+        Assert.Equal(new[] { 8, 8 }, frames.Select(frame => frame.DisplayLength));
+        Assert.Equal(5, splitter.PendingByteCount);
+        var tail = Append(splitter, "\nOK\r\n"u8.ToArray(), 2);
+        Assert.Equal(new[] { 4, 2 }, tail.Select(frame => frame.DisplayLength));
+        Assert.Equal(2, tail[1].StartTimestamp);
+        Assert.Equal("01234567890123456789\r\nOK\r\n"u8.ToArray(),
+            frames.Concat(tail).SelectMany(frame => frame.Data).ToArray());
         Assert.Equal(0, splitter.PendingByteCount);
+    }
+
+    [Fact]
+    public void 限长边界上的分隔符前缀未完成时应保留()
+    {
+        var splitter = new DelimiterFrameSplitter(Crlf, maxPendingBytes: 2);
+
+        Assert.Empty(Append(splitter, "OK\r"u8.ToArray()));
+        var frame = Assert.Single(Append(splitter, "\n"u8.ToArray()));
+        Assert.Equal("OK\r\n"u8.ToArray(), frame.Data);
+        Assert.Equal(2, frame.DisplayLength);
+
+        Assert.Empty(Append(splitter, "AB\r"u8.ToArray()));
+        var flushed = new List<RawFrame>();
+        splitter.FlushAll(flushed);
+        Assert.Equal(new[] { 2, 1 }, flushed.Select(frame => frame.DisplayLength));
+        Assert.Equal("AB\r"u8.ToArray(), flushed.SelectMany(frame => frame.Data).ToArray());
     }
 
     [Fact]
