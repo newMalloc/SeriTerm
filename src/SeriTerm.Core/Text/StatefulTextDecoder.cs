@@ -24,10 +24,12 @@ public sealed class StatefulTextDecoder
 
     private Decoder _decoder;
     private Encoding _encoding;
+    private readonly bool _omitInvalidBytes;
 
-    public StatefulTextDecoder(string encodingName)
+    public StatefulTextDecoder(string encodingName, bool omitInvalidBytes = false)
     {
-        _encoding = Resolve(encodingName);
+        _omitInvalidBytes = omitInvalidBytes;
+        _encoding = ResolveForDecoder(encodingName);
         _decoder = _encoding.GetDecoder();
         EncodingName = _encoding.WebName;
     }
@@ -37,7 +39,7 @@ public sealed class StatefulTextDecoder
     /// <summary>切换编码并重置解码状态（调用方通常需要同时清空已有显示）。</summary>
     public void SetEncoding(string encodingName)
     {
-        var resolved = Resolve(encodingName);
+        var resolved = ResolveForDecoder(encodingName);
 
         if (string.Equals(resolved.WebName, _encoding.WebName, StringComparison.OrdinalIgnoreCase))
         {
@@ -69,6 +71,15 @@ public sealed class StatefulTextDecoder
 
     /// <summary>重置解码状态（清空显示、重新打开串口时调用）。</summary>
     public void Reset() => _decoder = _encoding.GetDecoder();
+
+    private Encoding ResolveForDecoder(string? encodingName)
+    {
+        var encoding = Resolve(encodingName);
+        if (!_omitInvalidBytes) return encoding;
+        var copy = (Encoding)encoding.Clone();
+        copy.DecoderFallback = new DecoderReplacementFallback(string.Empty);
+        return copy;
+    }
 
     public static Encoding Resolve(string? encodingName)
     {

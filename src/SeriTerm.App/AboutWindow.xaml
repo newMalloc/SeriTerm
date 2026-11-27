@@ -29,12 +29,12 @@
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="34"
                       ResizeBorderThickness="0"
-                      CornerRadius="0"
+                      CornerRadius="10"
                       GlassFrameThickness="0"
                       UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
-    <controls:GlassFlyout BorderBrush="{DynamicResource WindowBorderBrush}" BorderThickness="1">
+    <controls:GlassFlyout BorderBrush="{DynamicResource WindowBorderBrush}" BorderThickness="1" CornerRadius="10">
         <DockPanel>
 
             <!-- ===== 自绘标题栏 ===== -->

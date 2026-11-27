@@ -32,7 +32,7 @@ public class ReceiveProcessorAnsiTests
     }
 
     [Fact]
-    public void 关闭ANSI过滤时序列会原样显示()
+    public void 关闭ANSI过滤时隐藏控制字符但保留序列文本和原始字节()
     {
         var processor = new ReceiveProcessor(new ReceiveOptions
         {
@@ -43,7 +43,8 @@ public class ReceiveProcessorAnsiTests
         var lines = Feed(processor, "\u001b[32mOK\u001b[0m"u8.ToArray());
 
         Assert.Single(lines);
-        Assert.Contains('\u001b', lines[0].Text);
+        Assert.Equal("[32mOK[0m", lines[0].Text);
+        Assert.Contains((byte)0x1B, lines[0].Raw);
     }
 
     [Fact]

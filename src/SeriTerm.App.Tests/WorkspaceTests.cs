@@ -1,10 +1,12 @@
 using System.IO;
 using System.Text;
 using System.Windows.Threading;
+using SeriTerm.App.ViewModels;
 using SeriTerm.Core.Framing;
 using SeriTerm.Core.Logging;
 using SeriTerm.Core.Mcp;
 using SeriTerm.Core.Pipeline;
+using SeriTerm.Core.Presets;
 using SeriTerm.Core.Send;
 using SeriTerm.Core.Serial;
 
@@ -12,8 +14,68 @@ namespace SeriTerm.App.Tests;
 
 public sealed class WorkspaceTests
 {
+    [Fact]
+    public Task OpenConnectionAppliesPresetToPortAndAllSerialParameters() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        var port = new PortItem("COM_OTHER", "测试设备");
+        h.Vm.Ports.Add(port);
+        await h.Connect();
+        var serial = new SerialSettings { PortName = port.PortName, BaudRate = 9600, DataBits = 7, Parity = System.IO.Ports.Parity.Even };
+        h.Vm.SelectedPreset = new SerialPreset { Name = "设备预设", Serial = serial, HexDisplay = true };
+        await UiThread.Drain();
+        Assert.Equal(serial, h.Transport.CurrentSettings);
+        Assert.Equal(TransportState.Open, h.Transport.State);
+        Assert.Equal(port, h.Vm.SelectedPort);
+        Assert.True(h.Vm.HexDisplay);
+        Assert.Empty(h.Notifier.Errors);
+    });
+
+    [Fact]
+    public Task PresetSwitchReportsMissingPortOrOpenFailure() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        await h.Connect();
+        h.Vm.SelectedPreset = new SerialPreset { Name = "缺失", Serial = new SerialSettings { PortName = "COM_MISSING" } };
+        Assert.Equal(TransportState.Open, h.Transport.State);
+        Assert.Equal("COM_TEST", h.Transport.CurrentSettings?.PortName);
+        Assert.Null(h.Vm.SelectedPreset);
+        Assert.Contains("找不到串口", Assert.Single(h.Notifier.Errors));
+
+        var port = new PortItem("COM_OTHER", "测试设备");
+        h.Vm.Ports.Add(port);
+        h.Transport.OpenFailure = _ => new IOException("端口被占用");
+        h.Vm.SelectedPreset = new SerialPreset { Name = "占用", Serial = new SerialSettings { PortName = port.PortName } };
+        await UiThread.Drain();
+        Assert.Equal(TransportState.Closed, h.Transport.State);
+        Assert.Null(h.Vm.SelectedPreset);
+        Assert.Contains("端口被占用", h.Notifier.Errors.Last());
+        Assert.True(h.Vm.CanSelectPort);
+    });
+
     private static Task<McpFramePage> ReadJournal(AppHarness h) => ((IMcpSession)h.Vm).ReadFramesAsync(
         new McpFrameQuery(0, 500, McpFrameDirection.All, true, true, 4096), CancellationToken.None);
+
+    [Fact]
+    public Task DisplayBacklogIsBoundedWithoutDroppingRawLog() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness(logging: true);
+        var block = new byte[9 * 1024 * 1024];
+        var initialFrames = (await ReadJournal(h)).TotalFrames;
+        h.Transport.Receive(block);
+
+        var journal = await ReadJournal(h);
+        Assert.Equal(initialFrames + block.Length / 2048, journal.TotalFrames);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!h.Vm.Log.Lines.Any(line => line.Text.Contains("显示队列淘汰", StringComparison.Ordinal))
+               && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+        Assert.Contains(h.Vm.Log.Lines, line => line.Text.Contains("显示队列淘汰", StringComparison.Ordinal));
+
+        await h.Vm.DisposeAsync();
+        var records = RawLogReader.ReadFile(Directory.GetFiles(h.DirectoryPath, "*.bin").Single());
+        Assert.Equal(block.Length, records.Sum(record => record.Payload.Length));
+    });
 
     [Fact]
     public Task ExportUsesSnapshotAndFinishesBeforeShutdown() => UiThread.Run(async () =>

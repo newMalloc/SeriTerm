@@ -46,6 +46,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     // 同时限制行数和文字量，避免少数很长的行占住一次刷新。
     private const int MaxLinesPerFlush = 600;
     private const int MaxCharactersPerFlush = 64 * 1024;
+    private const int MaxPendingLines = 10_000;
+    private const long MaxPendingMemoryBytes = 8L * 1024 * 1024;
 
     /// <summary>断帧方式下拉项。</summary>
     private static readonly (FramingMode Value, string Display)[] FramingModeOptions =
@@ -68,6 +70,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly object _pipelineLock = new();
     private readonly ReceiveProcessor _processor;
     private readonly Queue<DisplayLine> _pendingLines = new();
+    private long _pendingMemoryBytes;
+    private long _pendingDroppedLines;
     private readonly List<DisplayLine> _scratch = [];
     private readonly Queue<DisplayLine> _pausedBuffer = new();
     private int _pausedReformatCount;
@@ -281,7 +285,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         _baudRateDebounce.Stop();
 
-        if (IsOpen)
+        if (IsOpen && !_applyingPreset && !_switchingPort)
         {
             _baudRateDebounce.Start();
         }
@@ -497,11 +501,31 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        ApplyPreset(value);
+        _ = ApplyPresetAsync(value);
     }
 
-    private void ApplyPreset(SerialPreset preset)
+    private async Task ApplyPresetAsync(SerialPreset preset)
     {
+        var port = Ports.FirstOrDefault(p => string.Equals(p.PortName, preset.Serial.PortName, StringComparison.OrdinalIgnoreCase));
+        if (port is null)
+        {
+            RejectPreset(preset, $"找不到串口 {preset.Serial.PortName}，请检查设备是否连接。");
+            return;
+        }
+
+        try { preset.Serial.Validate(); }
+        catch (ArgumentException ex)
+        {
+            RejectPreset(preset, ex.Message);
+            return;
+        }
+
+        var wasOpen = IsOpen;
+        var needsReconnect = wasOpen && _transport.CurrentSettings != preset.Serial;
+        _switchingPort = true;
+        OnPropertyChanged(nameof(CanSelectPort));
+        ToggleOpenCommand.NotifyCanExecuteChanged();
+        _baudRateDebounce.Stop();
         _applyingPreset = true;
         try
         {
@@ -515,12 +539,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             DtrEnable = serial.DtrEnable;
             RtsEnable = serial.RtsEnable;
 
-            var port = Ports.FirstOrDefault(p => string.Equals(p.PortName, serial.PortName, StringComparison.OrdinalIgnoreCase));
-
-            if (port is not null)
-            {
-                SelectedPort = port;
-            }
+            SelectedPort = port;
 
             SelectedFraming = FramingOptions.FirstOrDefault(o => o.Value == preset.Framing) ?? FramingOptions[0];
             AutoFrameGapText = preset.AutoFrameGapMilliseconds.ToString();
@@ -529,17 +548,40 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             HexDisplay = preset.HexDisplay;
             SelectedLineEnding = LineEndingOptions.FirstOrDefault(o => o.Value == preset.SendLineEnding) ?? LineEndingOptions[0];
             SendHex = preset.SendHex;
+
+            if (needsReconnect)
+            {
+                await _reconnect.StopAsync().ConfigureAwait(true);
+                await _transport.CloseAsync().ConfigureAwait(true);
+                await _transport.OpenAsync(serial).ConfigureAwait(true);
+                _settings.LastSerial = serial;
+            }
+
+            StatusDetail = $"已套用预设：{preset.Name}";
+            AddSystemLine($"已套用配置预设：{preset.Name}" + (needsReconnect ? $"，串口已切换：{serial.ToShortDescription()}" : string.Empty));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "套用连接预设 {PresetName} 失败", preset.Name);
+            RejectPreset(preset, ex.Message);
         }
         finally
         {
             _applyingPreset = false;
+            _switchingPort = false;
+            OnPropertyChanged(nameof(CanSelectPort));
+            ToggleOpenCommand.NotifyCanExecuteChanged();
         }
+    }
 
-        // 波特率在打开状态下也是立即生效的（见 ApplyBaudRateToOpenPortAsync），
-        // 只有其余参数要关掉重开——提示词必须说清楚是哪一类，否则用户会以为改了个寂寞。
-        var suffix = IsOpen ? "（串口已打开：波特率立即生效，其余参数重新打开后生效）" : string.Empty;
-        StatusDetail = $"已套用预设：{preset.Name}{suffix}";
-        AddSystemLine($"已套用配置预设：{preset.Name}{suffix}");
+    private void RejectPreset(SerialPreset preset, string error)
+    {
+        _applyingPreset = true;
+        try { SelectedPreset = null; }
+        finally { _applyingPreset = false; }
+        StatusDetail = $"套用预设 {preset.Name} 失败。";
+        AddSystemLine($"套用预设 {preset.Name} 失败：{error}");
+        _notifier.ShowError($"套用预设 {preset.Name} 失败", error);
     }
 
     private SerialPreset BuildPreset(string name, SerialSettings serial) => new()
@@ -756,6 +798,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         lock (_pipelineLock)
         {
             _pendingLines.Clear();
+            _pendingMemoryBytes = 0;
+            _pendingDroppedLines = 0;
             _processor.Reset();
         }
 
@@ -1118,7 +1162,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            _sessionLogger = new SessionLogger(new LogSessionOptions
+            var logger = new SessionLogger(new LogSessionOptions
             {
                 Directory = string.IsNullOrWhiteSpace(LogDirectory) ? LogSessionOptions.DefaultDirectory : LogDirectory,
                 TextEnabled = SaveLogToFile,
@@ -1127,8 +1171,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 EncodingName = SelectedEncodingName,
             });
 
-            LogStatusText = $"正在记录到 {_sessionLogger.Directory}";
-            AddSystemLine($"开始保存日志到：{_sessionLogger.Directory}");
+            lock (_pipelineLock) _sessionLogger = logger;
+            LogStatusText = $"正在记录到 {logger.Directory}";
+            AddSystemLine($"开始保存日志到：{logger.Directory}");
         }
         catch (Exception ex)
         {
@@ -1141,8 +1186,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void StopLogging()
     {
-        var logger = _sessionLogger;
-        _sessionLogger = null;
+        SessionLogger? logger;
+        lock (_pipelineLock)
+        {
+            logger = _sessionLogger;
+            _sessionLogger = null;
+        }
 
         if (logger is null)
         {
@@ -1616,6 +1665,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (_scratch.Count > 0)
             {
                 flushed = [.. _scratch];
+                RecordLines(flushed);
             }
         }
 
@@ -1809,8 +1859,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             _scratch.Clear();
             _processor.ProcessReceived(e.Data, e.Timestamp, DateTime.Now, _scratch);
-            foreach (var line in _scratch)
-                _pendingLines.Enqueue(line);
+            QueueReceivedLines(_scratch);
 
             queueFlush = !_disposed && !_flushQueued && _pendingLines.Count > 0
                 && Stopwatch.GetElapsedTime(_lastLineFlushTimestamp) >= MinimumLogRefreshInterval;
@@ -1840,8 +1889,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 {
                     _scratch.Clear();
                     _processor.FlushAll(DateTime.Now, _scratch);
-                    foreach (var line in _scratch)
-                        _pendingLines.Enqueue(line);
+                    QueueReceivedLines(_scratch);
                     _processor.Reset();
                 }
                 FlushPendingLines();
@@ -1888,6 +1936,24 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---------- 界面刷新 ----------
 
+    // Caller holds _pipelineLock. Persist and publish before applying the UI-only backlog limit.
+    private void QueueReceivedLines(List<DisplayLine> lines)
+    {
+        RecordLines(lines);
+        foreach (var line in lines)
+        {
+            _pendingLines.Enqueue(line);
+            _pendingMemoryBytes += PendingLineSize(line);
+            while (_pendingLines.Count > MaxPendingLines || _pendingMemoryBytes > MaxPendingMemoryBytes)
+            {
+                _pendingMemoryBytes -= PendingLineSize(_pendingLines.Dequeue());
+                _pendingDroppedLines++;
+            }
+        }
+    }
+
+    private static long PendingLineSize(DisplayLine line) => line.ByteLength + (long)line.Text.Length * sizeof(char) + 128;
+
     private void FlushReceivedLines()
     {
         try
@@ -1907,6 +1973,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_disposed) return;
         var replaying = !IsPaused && _pausedBuffer.Count > 0;
         List<DisplayLine> batch;
+        long dropped;
 
         lock (_pipelineLock)
         {
@@ -1918,16 +1985,22 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 _scratch.Clear();
                 _processor.FlushIdle(now, DateTime.Now, _scratch);
-                foreach (var line in _scratch)
-                    _pendingLines.Enqueue(line);
+                QueueReceivedLines(_scratch);
             }
 
             var source = replaying ? _pausedBuffer : _pendingLines;
             if (source.Count == 0) return;
 
             batch = TakeLogBatch(source);
+            if (!replaying)
+                foreach (var line in batch) _pendingMemoryBytes -= PendingLineSize(line);
+            dropped = _pendingDroppedLines;
+            _pendingDroppedLines = 0;
             _lastLineFlushTimestamp = now;
         }
+
+        if (dropped > 0)
+            AddSystemLine($"接收速度超过界面显示能力，显示队列淘汰 {dropped:N0} 行；原始日志以实际记录状态为准。");
 
         if (replaying)
         {
@@ -2001,7 +2074,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (lines.Count == 0) return;
 
-        RecordLines(lines);
         if (!IsPaused && _pausedBuffer.Count == 0)
         {
             AppendToLog(lines);
@@ -2029,8 +2101,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void RecordLines(List<DisplayLine> lines)
     {
-        PublishToJournal(lines);
-        foreach (var line in lines) _sessionLogger?.Log(line);
+        // The processor, journal order and logger's decoder share this lock across producer and UI.
+        lock (_pipelineLock)
+        {
+            PublishToJournal(lines);
+            foreach (var line in lines) _sessionLogger?.Log(line);
+        }
     }
 
     private void RecordTransmitted(byte[] payload, DateTime sentAt)
@@ -2047,6 +2123,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         lock (_pipelineLock)
         {
             _processor.ProcessTransmitted(payload, sentAt, lines);
+            RecordLines(lines);
         }
 
         PresentLines(lines);
@@ -2065,6 +2142,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         lock (_pipelineLock)
         {
             _processor.ProcessSystem(message, DateTime.Now, lines);
+            RecordLines(lines);
         }
 
         PresentLines(lines);
@@ -2098,16 +2176,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _transport.StateChanged -= OnTransportStateChanged;
         await _transport.CloseAsync().ConfigureAwait(true);
         _transport.BytesReceived -= OnBytesReceived;
-        List<DisplayLine> finalLines;
         lock (_pipelineLock)
         {
             _scratch.Clear();
             _processor.FlushAll(DateTime.Now, _scratch);
-            finalLines = [.. _pendingLines];
-            finalLines.AddRange(_scratch);
+            RecordLines(_scratch);
             _pendingLines.Clear();
+            _pendingMemoryBytes = 0;
         }
-        RecordLines(finalLines);
 
         var logger = _sessionLogger;
         _sessionLogger = null;

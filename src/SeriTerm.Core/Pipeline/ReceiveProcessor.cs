@@ -29,9 +29,9 @@ public sealed class ReceiveProcessor
     public ReceiveProcessor(ReceiveOptions options)
     {
         Options = (options ?? new ReceiveOptions()).Normalize();
-        _rxDecoder = new StatefulTextDecoder(Options.EncodingName);
-        _txDecoder = new StatefulTextDecoder(Options.EncodingName);
-        _reformatDecoder = new StatefulTextDecoder(Options.EncodingName);
+        _rxDecoder = new StatefulTextDecoder(Options.EncodingName, omitInvalidBytes: true);
+        _txDecoder = new StatefulTextDecoder(Options.EncodingName, omitInvalidBytes: true);
+        _reformatDecoder = new StatefulTextDecoder(Options.EncodingName, omitInvalidBytes: true);
         _splitter = CreateSplitter(Options);
     }
 
@@ -232,7 +232,7 @@ public sealed class ReceiveProcessor
 
     /// <summary>
     /// 文本模式下的显示净化：把 CR/LF 显示成空格（否则一行文本会被拆成多行、界面错乱），
-    /// 并去掉尾部空白。HEX 模式不做任何处理，原始字节永远可查。
+    /// 隐藏无法显示的控制字符和替代符，并去掉尾部空白。HEX 模式不做处理，原始字节永远可查。
     /// </summary>
     private static string Sanitize(string text)
     {
@@ -241,10 +241,12 @@ public sealed class ReceiveProcessor
             return string.Empty;
         }
 
-        return text
+        var normalized = text
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
             .Replace('\n', ' ')
             .TrimEnd();
+        return string.Concat(normalized.Where(ch =>
+            ch == '\t' || (!char.IsControl(ch) && ch != '\uFFFD'))).TrimEnd();
     }
 }

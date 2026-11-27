@@ -246,6 +246,37 @@ public sealed class LayoutTests
         log.DataContext = null;
     });
 
+    [Fact]
+    public Task NullBytesAreHiddenWithoutChangingRawData() => UiThread.Run(async () =>
+    {
+        await using var h = new AppHarness();
+        h.Vm.ShowTimestamp = false;
+        var log = new LogView { DataContext = h.Vm };
+        var editor = (TextEditor)log.FindName("LogText");
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Vm.Log.ContentChanged += (_, _) =>
+        {
+            if (h.Vm.Log.Lines.Count(line => line.Direction == LineDirection.Rx) >= 64)
+                ready.TrySetResult();
+        };
+        await Task.Run(() => h.Transport.Receive(new byte[128 * 1024]));
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(8));
+        log.Measure(new Size(1100, 690));
+        log.Arrange(new Rect(0, 0, 1100, 690));
+        log.UpdateLayout();
+        await UiThread.Drain();
+        Assert.DoesNotContain('\u2400', editor.Text);
+        Assert.DoesNotContain('\0', editor.Text);
+        Assert.All(h.Vm.Log.Lines.Where(line => line.Direction == LineDirection.Rx), line =>
+        {
+            Assert.All(line.Raw, b => Assert.Equal(0, b));
+            Assert.Empty(line.Text);
+        });
+        h.Vm.TogglePauseCommand.Execute(null);
+        Assert.True(h.Vm.IsPaused);
+        log.DataContext = null;
+    });
+
     [Theory]
     [InlineData(FramingMode.Delimiter, false)]
     [InlineData(FramingMode.Gap, false)]
@@ -352,8 +383,7 @@ public sealed class LayoutTests
         Assert.InRange(toolbar.ActualHeight, 25, 48);
         var sendCard = (FrameworkElement)window.FindName("SendCard");
         Assert.InRange(sendCard.ActualHeight, 45, 52);
-        var options = (ToggleButton)window.FindName("SendOptionsToggle");
-        Assert.NotEqual(true, options.IsChecked);
+        Assert.Null(window.FindName("SendOptionsToggle"));
         var sidebar = (ScrollViewer)window.FindName("SidebarScrollViewer");
         Assert.True(sidebar.IsAncestorOf(toolbar));
         var connection = (Button)window.FindName("ConnectionButton");
@@ -458,17 +488,17 @@ public sealed class LayoutTests
             encoder.Save(file);
         }
         Capture("workspace");
-        options.IsChecked = true;
-        root.UpdateLayout();
-        foreach (var name in new[] { "TimedIntervalBox", "SendFileButton", "TerminalModeCheck" })
+        var sendToolbar = (FrameworkElement)window.FindName("SendToolbar");
+        foreach (var name in new[] { "SendTextBox", "SendHistoryBox", "TimedIntervalBox", "TimedSendButton", "SendFileButton", "TerminalModeCheck", "SendHexCheck", "SendButton" })
         {
             var element = (FrameworkElement)window.FindName(name);
             var bounds = element.TransformToAncestor(root).TransformBounds(new Rect(element.RenderSize));
             Assert.True(bounds.Width > 20 && bounds.Height > 10, $"{name} has no usable size: {bounds}");
             Assert.True(bounds.Left >= 0 && bounds.Right <= width + 1 && bounds.Top >= 0 && bounds.Bottom <= height + 1,
-                $"{name} clipped after expanding options: {bounds}");
+                $"{name} clipped in send toolbar: {bounds}");
+            var toolbarBounds = element.TransformToAncestor(sendToolbar).TransformBounds(new Rect(element.RenderSize));
+            Assert.InRange(toolbarBounds.Top + toolbarBounds.Height / 2, sendToolbar.ActualHeight / 2 - 2, sendToolbar.ActualHeight / 2 + 2);
         }
-        Capture("workspace-options");
         // Hiding the scrollbar must not make the lower settings unreachable or change the column width.
         ((Expander)window.FindName("AdvancedConnectionExpander")).IsExpanded = true;
         root.UpdateLayout();

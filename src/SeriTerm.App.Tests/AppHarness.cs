@@ -85,6 +85,7 @@ internal sealed class FakeTransport : ISerialTransport
     public event EventHandler<BytesReceivedEventArgs>? BytesReceived;
     public List<byte[]> Writes { get; } = [];
     public Func<CancellationToken, Task>? BeforeWrite { get; set; }
+    public Func<SerialSettings, Exception?>? OpenFailure { get; set; }
 
     public void SetState(TransportState state)
     {
@@ -93,7 +94,10 @@ internal sealed class FakeTransport : ISerialTransport
         StateChanged?.Invoke(this, new TransportStateChangedEventArgs(old, state));
     }
     public Task OpenAsync(SerialSettings settings, CancellationToken cancellationToken = default)
-    { CurrentSettings = settings; SetState(TransportState.Open); return Task.CompletedTask; }
+    {
+        if (OpenFailure?.Invoke(settings) is { } error) throw error;
+        CurrentSettings = settings; SetState(TransportState.Open); return Task.CompletedTask;
+    }
     public Task CloseAsync() { SetState(TransportState.Closed); return Task.CompletedTask; }
     public Task SetBaudRateAsync(int baudRate, CancellationToken cancellationToken = default)
     { CurrentSettings = CurrentSettings! with { BaudRate = baudRate }; return Task.CompletedTask; }

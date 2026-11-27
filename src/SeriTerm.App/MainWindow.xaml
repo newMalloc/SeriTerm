@@ -279,8 +279,8 @@
                     <Border Style="{StaticResource SectionPanel}" Padding="16,12">
                         <Expander Header="连接预设">
                             <StackPanel Margin="0,12,0,0">
-                                <ComboBox x:Name="PresetCombo" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}" IsEnabled="{Binding CanEditSettings}"
-                                          AutomationProperties.Name="连接预设" ToolTip="选择后回填连接和显示参数">
+                                <ComboBox x:Name="PresetCombo" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}" IsEnabled="{Binding CanSelectPort}"
+                                          AutomationProperties.Name="连接预设" ToolTip="选择后应用连接和显示参数；串口打开时自动切换">
                                     <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" /></DataTemplate></ComboBox.ItemTemplate>
                                 </ComboBox>
                                 <UniformGrid Columns="2" Margin="0,8,0,0">
@@ -396,6 +396,11 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox x:Name="SendTextBox" Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}"
                                      AcceptsReturn="True" MinHeight="32" MaxHeight="96" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
@@ -415,52 +420,31 @@
                                     <DataTrigger Binding="{Binding SendText}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger>
                                 </Style.Triggers></Style></TextBlock.Style>
                             </TextBlock>
-                            <CheckBox x:Name="SendHexCheck" Grid.Column="1" Content="HEX" IsChecked="{Binding SendHex}" Margin="10,0"
+                            <Grid Grid.Column="1" Width="92" Height="32" Margin="6,0,0,0" VerticalAlignment="Center">
+                                <ComboBox x:Name="SendHistoryBox" ItemsSource="{Binding SendHistory}" SelectedItem="{Binding SelectedSendHistory}"
+                                          AutomationProperties.Name="最近发送记录" ToolTip="最近 30 条成功发送记录；选择后仅回填">
+                                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}" MinWidth="160" MaxWidth="320" /></DataTemplate></ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="最近发送" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="8,0,20,0" IsHitTestVisible="False">
+                                    <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedSendHistory}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                                    </Style.Triggers></Style></TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                            <TextBox x:Name="TimedIntervalBox" Grid.Column="2" Text="{Binding TimedSendIntervalText, UpdateSourceTrigger=LostFocus}" Width="44" Height="32" Margin="6,0,0,0" VerticalAlignment="Center"
+                                     AutomationProperties.Name="定时发送间隔" ToolTip="定时发送间隔（秒），范围 0.05～86400" />
+                            <TextBlock Grid.Column="3" Text="秒" Style="{StaticResource HintText}" Margin="4,0,0,0" VerticalAlignment="Center" />
+                            <Button x:Name="TimedSendButton" Grid.Column="4" Content="{Binding TimedSendButtonText}" Command="{Binding ToggleTimedSendCommand}" Height="32" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            <Button x:Name="SendFileButton" Grid.Column="5" Content="发送文件…" Command="{Binding SendFileCommand}" Height="32" Margin="6,0,0,0" VerticalAlignment="Center" />
+                            <CheckBox x:Name="TerminalModeCheck" Grid.Column="6" Content="终端" IsChecked="{Binding TerminalMode}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                      AutomationProperties.Name="终端模式" ToolTip="终端模式：焦点离开发送框后，键盘输入直接发往串口" />
+                            <CheckBox x:Name="SendHexCheck" Grid.Column="7" Content="HEX" IsChecked="{Binding SendHex}" Margin="8,0,0,0"
                                       VerticalAlignment="Center" ToolTip="以十六进制字节发送" AutomationProperties.Name="HEX 发送" />
-                            <Button x:Name="SendButton" Grid.Column="2" Content="发送" Width="60" Height="32" VerticalAlignment="Center"
+                            <Button x:Name="SendButton" Grid.Column="8" Content="发送" Width="60" Height="32" VerticalAlignment="Center"
                                     Command="{Binding SendCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" ToolTip="发送当前内容（Ctrl+Enter）；Enter 换行" />
-                            <ToggleButton x:Name="SendOptionsToggle" Grid.Column="3" Content="更多" Width="48" Height="32" VerticalAlignment="Center"
-                                          Style="{StaticResource CompactToggleButton}" Margin="6,0,0,0" AutomationProperties.Name="更多发送选项"
-                                          ToolTip="发送历史、字节预览、定时发送、文件发送与终端设置" />
                         </Grid>
                         <TextBlock Text="{Binding SendValidationText}" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                    Visibility="{Binding HasSendError, Converter={StaticResource BoolToVisibility}}" />
-                        <Border x:Name="SendOptionsPanel" BorderBrush="{DynamicResource PanelBorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,8,0,0"
-                                Visibility="{Binding IsChecked, ElementName=SendOptionsToggle, Converter={StaticResource BoolToVisibility}}">
-                            <StackPanel>
-                                <DockPanel Margin="0,0,0,8">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding SendValidationText}" ToolTip="{Binding SendPreviewText}" Style="{StaticResource HintText}"
-                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="200" Margin="12,0,0,0" />
-                                    <TextBlock DockPanel.Dock="Left" Text="最近发送" Style="{StaticResource HintText}" Margin="0,0,8,0" />
-                                    <Grid Width="180" HorizontalAlignment="Left">
-                                        <ComboBox ItemsSource="{Binding SendHistory}" SelectedItem="{Binding SelectedSendHistory}"
-                                                  AutomationProperties.Name="最近发送记录" ToolTip="最近 30 条成功发送记录；选择后仅回填">
-                                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
-                                        </ComboBox>
-                                        <TextBlock Text="选择记录回填" Foreground="{DynamicResource SubtleForegroundBrush}" Margin="8,0,28,0" IsHitTestVisible="False">
-                                            <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedSendHistory}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
-                                            </Style.Triggers></Style></TextBlock.Style>
-                                        </TextBlock>
-                                    </Grid>
-                                </DockPanel>
-                                <WrapPanel Margin="0,0,0,3">
-                                    <TextBlock Text="间隔" Style="{StaticResource HintText}" Margin="0,0,8,5" />
-                                    <TextBox x:Name="TimedIntervalBox" Text="{Binding TimedSendIntervalText, UpdateSourceTrigger=LostFocus}" Width="62" Margin="0,0,0,5"
-                                             AutomationProperties.Name="定时发送间隔" ToolTip="0.05～86400 秒，使用小数点" />
-                                    <TextBlock Text="秒" Style="{StaticResource HintText}" Margin="6,0,12,5" />
-                                    <Button Content="{Binding TimedSendButtonText}" Command="{Binding ToggleTimedSendCommand}" Margin="0,0,8,5" />
-                                    <Button x:Name="SendFileButton" Content="发送文件…" Command="{Binding SendFileCommand}" Margin="0,0,0,5" />
-                                </WrapPanel>
-                                <WrapPanel>
-                                    <CheckBox x:Name="TerminalModeCheck" Content="终端模式" IsChecked="{Binding TerminalMode}" Margin="0,0,16,4"
-                                              ToolTip="焦点离开发送框后，键盘输入直接发往串口" />
-                                    <CheckBox Content="本地回显" IsChecked="{Binding TerminalLocalEcho}" Margin="0,0,16,4" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}" />
-                                    <CheckBox Content="退格 DEL" IsChecked="{Binding TerminalBackspaceSendsDel}" Margin="0,0,0,4" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-                        <!-- 活跃任务的停止入口常驻，不随“更多”折叠。 -->
                         <DockPanel Margin="0,5,0,0" Visibility="{Binding TimedSendEnabled, Converter={StaticResource BoolToVisibility}}">
                             <Button x:Name="StopTimedSendButton" DockPanel.Dock="Right" Content="停止定时" Command="{Binding ToggleTimedSendCommand}" Margin="12,0,0,0" />
                             <TextBlock Text="{Binding TimedSendStatusText}" Style="{StaticResource HintText}" />
@@ -472,7 +456,8 @@
                         </DockPanel>
                         <ProgressBar Height="3" Margin="0,5,0,0" Value="{Binding SendFileProgress}" Maximum="100" Visibility="{Binding IsSendingFile, Converter={StaticResource BoolToVisibility}}" />
                         <DockPanel Margin="0,5,0,0" Visibility="{Binding TerminalMode, Converter={StaticResource BoolToVisibility}}">
-                            <CheckBox x:Name="ActiveTerminalModeCheck" DockPanel.Dock="Right" Content="终端模式已开启" IsChecked="{Binding TerminalMode}" Margin="12,0,0,0" ToolTip="取消勾选即可退出逐键发送" />
+                            <CheckBox DockPanel.Dock="Right" Content="退格 DEL" IsChecked="{Binding TerminalBackspaceSendsDel}" Margin="12,0,0,0" />
+                            <CheckBox DockPanel.Dock="Right" Content="本地回显" IsChecked="{Binding TerminalLocalEcho}" Margin="12,0,0,0" />
                             <TextBlock Text="{Binding TerminalEchoText, StringFormat=终端当前输入：{0}}" Style="{StaticResource HintText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </StackPanel>

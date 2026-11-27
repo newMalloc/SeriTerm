@@ -17,6 +17,32 @@ public class ReceiveProcessorTests
         return output;
     }
 
+    [Theory]
+    [InlineData("UTF-8")]
+    [InlineData("ASCII")]
+    public void 不可显示内容隐藏并保留原始字节(string encoding)
+    {
+        var processor = new ReceiveProcessor(new ReceiveOptions { Framing = FramingMode.None, EncodingName = encoding });
+        byte[] raw = [0x41, 0x00, 0xFF, 0x1B, 0x42, 0x7F];
+        var line = Assert.Single(Feed(processor, raw, 0));
+        Assert.Equal("AB", line.Text);
+        Assert.Equal(raw, line.Raw);
+        Assert.Equal("AB", processor.Reformat(line));
+
+        processor.ApplyOptions(new ReceiveOptions { Framing = FramingMode.None, EncodingName = encoding, HexDisplay = true }, WallClock, []);
+        Assert.Equal("41 00 FF 1B 42 7F", processor.Reformat(line));
+    }
+
+    [Fact]
+    public void 隐藏不可显示字符时保留正常文本和跨帧中文()
+    {
+        var processor = new ReceiveProcessor(new ReceiveOptions { Framing = FramingMode.None, EncodingName = "UTF-8" });
+        var first = Assert.Single(Feed(processor, [0x41, 0xE4, 0xB8], 0));
+        var second = Assert.Single(Feed(processor, [0xAD, 0x00, 0xEF, 0xBF, 0xBD, 0x42], 1));
+        Assert.Equal("A", first.Text);
+        Assert.Equal("中B", second.Text);
+    }
+
     [Fact]
     public void 不断帧_每块数据一行()
     {
